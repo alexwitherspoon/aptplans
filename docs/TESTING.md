@@ -17,6 +17,7 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 - Builder writes `index.html`, `about/index.html`, and CSS into an output directory
 - Compose stack is `site`, `worker`, and `ollama`, with Ollama off the host network
 - sshd drop-in allows only `aptplans` and disables remote root
+- Worker compose interpolates empty defaults for `APTPLANS_FETCH_PROXY` and `INTAKE_GITHUB_TOKEN`
 - Worker one-shot entry returns success while the catalog is empty
 
 ## What is not covered yet

@@ -39,6 +39,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - weekly Docker prune (Sunday 02:00 Pacific)
    - pipeline timer
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
+   - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS and intake GitHub token if those Actions secrets are set)
    - `docker compose` up for the full stack: Caddy on 80/443, worker, CPU Ollama
    - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
 
@@ -52,7 +53,8 @@ Host layout:
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
-| `/home/aptplans/.env.production` | Compose paths |
+| `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
+| `/home/aptplans/.env.secrets` | PIA SOCKS + intake GitHub token (CD; bootstrap does not overwrite) |
 
 ## Manual deploy
 

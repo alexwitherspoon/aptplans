@@ -29,6 +29,7 @@ Run one job by hand:
 ```bash
 cd /opt/aptplans
 docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
   exec -T worker python3 pipeline/run_once.py
 ```
@@ -39,6 +40,7 @@ The stack is `site`, `worker`, and `ollama`. The worker reaches Ollama at `http:
 
 ```bash
 docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
   exec ollama ollama list
 ```
@@ -48,6 +50,7 @@ Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after imp
 ```bash
 systemctl status aptplans-ollama-warmup.service
 docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
   exec ollama ollama ps
 ```

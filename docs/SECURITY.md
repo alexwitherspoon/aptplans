@@ -48,7 +48,7 @@ CD keeps the Debian 13 box minimal and reapplies this on every deploy:
 
 The document worker is not exposed to the internet. It is a Compose service on the same stack as Caddy, with no published ports, and it calls Ollama by Compose DNS name. Do not publish a prompt box, a host port, or a Cloudflare route in front of the local model.
 
-Crawlers identify as `aptplans.org`. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository.
+Crawlers identify as `aptplans.org`. Fetch egress may use Private Internet Access SOCKS5 via `APTPLANS_FETCH_PROXY` on the worker only. That value is assembled from GitHub Actions secrets and written to `/home/aptplans/.env.secrets`. Do not install a host VPN. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository. Do not log `APTPLANS_FETCH_PROXY` or `INTAKE_GITHUB_TOKEN`.
 
 ## If something sensitive lands in git
 
