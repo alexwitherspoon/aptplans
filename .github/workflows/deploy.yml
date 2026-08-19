@@ -128,6 +128,62 @@ jobs:
           rm -f /tmp/origin.pem /tmp/origin.key
           echo "installed Cloudflare Origin CA material"
 
+      - name: Install worker secrets
+        env:
+          PIA_SOCKS_USER: ${{ secrets.PIA_SOCKS_USER }}
+          PIA_SOCKS_PASSWORD: ${{ secrets.PIA_SOCKS_PASSWORD }}
+          PIA_SOCKS_HOST: ${{ secrets.PIA_SOCKS_HOST }}
+          PIA_SOCKS_PORT: ${{ secrets.PIA_SOCKS_PORT }}
+          INTAKE_GITHUB_TOKEN: ${{ secrets.INTAKE_GITHUB_TOKEN }}
+          INTAKE_GITHUB_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from urllib.parse import quote
+
+          lines = [
+              "# Written by GitHub Actions Deploy. Do not commit.",
+              f"INTAKE_GITHUB_REPO={os.environ.get('INTAKE_GITHUB_REPO', '').strip()}",
+          ]
+          token = os.environ.get("INTAKE_GITHUB_TOKEN", "").strip()
+          if token:
+              lines.append(f"INTAKE_GITHUB_TOKEN={token}")
+          user = os.environ.get("PIA_SOCKS_USER", "").strip()
+          password = os.environ.get("PIA_SOCKS_PASSWORD", "").strip()
+          host = os.environ.get("PIA_SOCKS_HOST", "").strip() or (
+              "proxy-nl.privateinternetaccess.com"
+          )
+          port = os.environ.get("PIA_SOCKS_PORT", "").strip() or "1080"
+          if user and password:
+              lines.append(
+                  "APTPLANS_FETCH_PROXY=socks5h://"
+                  f"{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
+              )
+          path = Path("/tmp/aptplans.env.secrets")
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+          scp /tmp/aptplans.env.secrets "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/aptplans.env.secrets"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          set -euo pipefail
+          sudo mkdir -p /home/aptplans
+          sudo mv /tmp/aptplans.env.secrets /home/aptplans/.env.secrets
+          sudo chown aptplans:aptplans /home/aptplans/.env.secrets
+          sudo chmod 600 /home/aptplans/.env.secrets
+          EOF
+          rm -f /tmp/aptplans.env.secrets
+          if [ -n "${PIA_SOCKS_USER}" ] && [ -n "${PIA_SOCKS_PASSWORD}" ]; then
+            echo "PIA SOCKS proxy: set"
+          else
+            echo "PIA SOCKS proxy: unset"
+          fi
+          if [ -n "${INTAKE_GITHUB_TOKEN}" ]; then
+            echo "intake GitHub token: set"
+          else
+            echo "intake GitHub token: unset"
+          fi
+
       - name: Bootstrap host and start Caddy
         run: |
           ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
