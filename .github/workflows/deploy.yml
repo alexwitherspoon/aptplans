@@ -1,0 +1,165 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for this deploy
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: make test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [verify]
+    if: |
+      always() &&
+      (
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event_name == 'workflow_dispatch' && needs.verify.result == 'success')
+      )
+    timeout-minutes: 45
+    env:
+      DEPLOY_USER: ${{ secrets.USER }}
+      DEPLOY_HOST: ${{ secrets.HOST }}
+    steps:
+      - name: Require deploy secrets
+        run: |
+          if [ -z "${DEPLOY_USER}" ] || [ -z "${DEPLOY_HOST}" ]; then
+            echo "Set repository secrets USER and HOST (and SSH_PRIVATE_KEY)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build static site
+        run: |
+          pip install -e .
+          make site
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Install rsync on origin
+        run: |
+          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          set -euo pipefail
+          if command -v rsync >/dev/null; then
+            exit 0
+          fi
+          export DEBIAN_FRONTEND=noninteractive
+          if [ "$(id -u)" -eq 0 ]; then
+            apt-get update -qq
+            apt-get install -y rsync sudo
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y rsync
+          fi
+          EOF
+
+      - name: Sync repository
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
+          set -euo pipefail
+          if [ "\$(id -u)" -eq 0 ]; then
+            mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
+          else
+            sudo mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
+            sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
+          fi
+          EOF
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.venv/' \
+            --exclude 'dist/' \
+            --exclude '__pycache__/' \
+            --exclude '*.egg-info/' \
+            --exclude '.pytest_cache/' \
+            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:/opt/aptplans/"
+          rsync -az --delete dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:/var/lib/aptplans/site/"
+
+      - name: Install origin TLS material
+        env:
+          ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+          ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
+        run: |
+          if [ -n "${ORIGIN_CERT}" ] && [ -n "${ORIGIN_KEY}" ]; then
+            umask 077
+            printf '%s\n' "${ORIGIN_CERT}" > /tmp/origin.pem
+            printf '%s\n' "${ORIGIN_KEY}" > /tmp/origin.key
+            ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+            set -euo pipefail
+            if [ "$(id -u)" -eq 0 ]; then mkdir -p /var/lib/aptplans/tls; else sudo mkdir -p /var/lib/aptplans/tls; fi
+            EOF
+            scp /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
+            ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+            set -euo pipefail
+            if [ "$(id -u)" -eq 0 ]; then
+              mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/
+              chmod 644 /var/lib/aptplans/tls/origin.pem
+              chmod 600 /var/lib/aptplans/tls/origin.key
+            else
+              sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/
+              sudo chmod 644 /var/lib/aptplans/tls/origin.pem
+              sudo chmod 600 /var/lib/aptplans/tls/origin.key
+            fi
+            EOF
+            rm -f /tmp/origin.pem /tmp/origin.key
+            echo "installed Cloudflare Origin CA material"
+          else
+            echo "no CLOUDFLARE_ORIGIN_CERT/KEY secrets; bootstrap will keep or create a self-signed origin cert"
+          fi
+
+      - name: Bootstrap host and start Caddy
+        run: |
+          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          set -euo pipefail
+          chmod +x /opt/aptplans/scripts/host/*.sh /opt/aptplans/scripts/docker-cleanup-weekly.sh
+          if [ "$(id -u)" -eq 0 ]; then
+            /opt/aptplans/scripts/host/remote-deploy.sh
+          else
+            sudo /opt/aptplans/scripts/host/remote-deploy.sh
+          fi
+          EOF
+
+      - name: Smoke check from runner
+        run: |
+          curl -fsS -o /dev/null --retry 5 --retry-delay 3 "http://${DEPLOY_HOST}/" \
+            || curl -kfsS -o /dev/null --retry 5 --retry-delay 3 "https://${DEPLOY_HOST}/"

@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Sunday 02:00 Pacific (host timezone is America/Los_Angeles)
+0 2 * * 0 root /opt/aptplans/scripts/docker-cleanup-weekly.sh >> /var/log/aptplans-docker-cleanup.log 2>&1

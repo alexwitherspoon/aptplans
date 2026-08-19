@@ -16,3 +16,8 @@
 :80 {
 	import static
 }
+
+:443 {
+	tls /certs/origin.pem /certs/origin.key
+	import static
+}

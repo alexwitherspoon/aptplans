@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly origin reboot at Monday 12:00 Pacific
+
+[Timer]
+OnCalendar=Mon *-*-* 12:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

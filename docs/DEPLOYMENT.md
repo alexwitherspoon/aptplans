@@ -1,56 +1,72 @@
 # Deployment
 
-Canonical URL: **https://aptplans.org**. `aptplans.com` must 301 there.
+Canonical URL: **https://aptplans.org**. `aptplans.com` 301s there.
 
-## DNS and TLS
+CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** install. The host stays thin: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy and the pipeline run in Compose.
 
-1. Point nameservers for `aptplans.org` and `aptplans.com` at Cloudflare.
-2. Orange-cloud `aptplans.org` (apex and www) to the origin A/AAAA record.
-3. On `aptplans.com`, 301 apex and www to `https://aptplans.org`.
-4. Origin is Caddy on the KS-6. Cloudflare can handle visitor TLS; keep origin HTTPS or authenticated origin pulls as configured in Cloudflare.
+## One-time: DNS and SSH
 
-## Origin host
+1. Point Cloudflare nameservers for `aptplans.org` and `aptplans.com`.
+2. Orange-cloud `aptplans.org` (apex and www) to the KS-6 A/AAAA record.
+3. 301 `aptplans.com` (apex and www) to `https://aptplans.org`.
+4. Cloudflare SSL/TLS: **Full** until an Origin CA cert is in GitHub secrets, then **Full (strict)**.
+5. On the new Debian 13 box, put the GitHub Actions public key in `/root/.ssh/authorized_keys` (OVH rescue/install SSH is enough).
 
-Target: Debian stable, Docker Engine, Compose plugin, unattended-upgrades.
+`HOST` in GitHub secrets should be the **origin IP**, not `aptplans.org` (that name is proxied).
 
-Suggested layout on the RAID1 root:
+## GitHub secrets
+
+See [`.github/SETUP.md`](../.github/SETUP.md). Required: `HOST`, `USER`, `SSH_PRIVATE_KEY`. First deploy: `USER=root`. After bootstrap you can switch to `aptplans`.
+
+## What CD does
+
+On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
+
+1. Build `dist/` on the runner.
+2. Rsync this repo to `/opt/aptplans` and `dist/` to `/var/lib/aptplans/site`.
+3. Run [`scripts/host/remote-deploy.sh`](../scripts/host/remote-deploy.sh), which is idempotent:
+   - Confirms Debian 13
+   - Installs the small host package set (no Python, no Caddy, no nginx on the host)
+   - Installs Docker Engine from Docker’s Debian repo
+   - Creates `aptplans` (docker group, passwordless sudo)
+   - Timezone `America/Los_Angeles`
+   - sshd drop-in (no passwords, `PermitRootLogin prohibit-password`)
+   - sysctl hardening
+   - UFW: deny inbound except 22/80/443
+   - fail2ban on sshd (5 failures / 10 minutes → 7 day ban)
+   - unattended-upgrades for Debian and Docker packages (installs automatically; **does not reboot by itself**)
+   - systemd timer **Monday 12:00 Pacific** → reboot
+   - weekly Docker prune (Sunday 02:00 Pacific)
+   - pipeline timer
+   - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
+   - `docker compose` up for Caddy on 80/443
+
+Host layout:
 
 | Path | Contents |
 | --- | --- |
-| `/opt/aptplans` | git clone of this repository |
-| `/var/lib/aptplans/site` | generated `dist/` tree Caddy serves |
-| `/var/lib/aptplans/files` | hashed PDFs and WARCs (not in git) |
+| `/opt/aptplans` | rsynced git tree |
+| `/var/lib/aptplans/site` | generated HTML |
+| `/var/lib/aptplans/files` | hashed PDFs (not in git) |
+| `/var/lib/aptplans/tls` | origin certificate |
+| `/home/aptplans/.env.production` | Compose paths |
+
+## Manual deploy
+
+Only needed if GitHub cannot reach the box:
 
 ```bash
-git clone https://github.com/alexwitherspoon/aptplans.git /opt/aptplans
-cd /opt/aptplans
-cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
-# edit host paths if they differ
+sudo /opt/aptplans/scripts/host/remote-deploy.sh
 ```
 
-Install the timer:
+## Reboots
+
+Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). Caddy has `restart: unless-stopped`. The pipeline is a oneshot timer and will run again on schedule.
 
 ```bash
-sudo cp systemd/aptplans-pipeline.service systemd/aptplans-pipeline.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now aptplans-pipeline.timer
+systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer
 ```
 
-Bring the site up:
+## What not to install on the host
 
-```bash
-cd /opt/aptplans
-make site
-# copy dist/ to SITE_PATH, or bind-mount it via compose override
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d site
-```
-
-The pipeline is not a long-running daemon. The timer starts it; the container should exit.
-
-## Cache headers
-
-Caddy already sets long `Cache-Control` on `/files/*`. After a catalog publish, purge HTML/RSS in Cloudflare if a change must be visible immediately. Hashed PDF URLs can stay cached.
-
-## What not to deploy
-
-Do not put PDFs, `.gguf` weights, or extracted text in git. Do not run a public LLM endpoint. Do not add Redis, Postgres, or a second orchestrator for the first deployment.
+Python, Caddy, nginx, certbot, Redis, Postgres, Kubernetes. If it is not Docker, UFW, fail2ban, or unattended-upgrades, it does not belong on the base OS.

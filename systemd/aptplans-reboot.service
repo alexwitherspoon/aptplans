@@ -1,0 +1,6 @@
+[Unit]
+Description=Reboot origin host (kernel / Docker Engine updates)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/reboot
