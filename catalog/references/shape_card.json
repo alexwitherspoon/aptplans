@@ -1,0 +1,19 @@
+{
+  "id": "ac-150-5070-6b",
+  "title": "Airport Master Plans",
+  "circular": "AC 150/5070-6B",
+  "source_url": "https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_150_5070-6B_with_chg_1&2.pdf",
+  "core_elements": [
+    "inventory",
+    "forecasts",
+    "facility_requirements",
+    "alternatives",
+    "alp",
+    "implementation"
+  ],
+  "notes": [
+    "FAA strongly recommends a master plan. An FAA-approved Airport Layout Plan is required for AIP grant eligibility.",
+    "Planners tailor depth to airport size. Small GA plans are shorter but the same elements still appear.",
+    "An ALP drawing set without a narrative report is still a first-class record (kind alp), not no_plan_known."
+  ]
+}
