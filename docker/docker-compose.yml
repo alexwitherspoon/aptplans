@@ -1,0 +1,33 @@
+name: aptplans
+
+services:
+  site:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: aptplans-site
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  pipeline:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.pipeline
+    image: aptplans-pipeline
+    profiles: ["jobs"]
+    working_dir: /app
+    volumes:
+      - ..:/app
+      - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
+    environment:
+      - APTPLANS_FILES=/var/lib/aptplans/files
+      - APTPLANS_USER_AGENT=${APTPLANS_USER_AGENT:-aptplans.org}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

@@ -1,0 +1,13 @@
+# Copy to docker-compose.override.yml and adjust host paths.
+# docker-compose.override.yml is gitignored.
+
+services:
+  site:
+    volumes:
+      - /var/lib/aptplans/site:/srv/site:ro
+      - /var/lib/aptplans/files:/srv/site/files:ro
+
+  pipeline:
+    volumes:
+      - /opt/aptplans:/app
+      - /var/lib/aptplans/files:/var/lib/aptplans/files

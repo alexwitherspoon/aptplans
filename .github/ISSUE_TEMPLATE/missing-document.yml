@@ -1,0 +1,44 @@
+name: Missing or dead document
+description: Point us at a master plan, ALP, or statute we should capture, or report a dead official URL
+title: "[Document] "
+labels: ["intake"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Official URLs are the citation of record. Send the sponsor, FAA, or legislature link if you have it.
+        This project is unofficial and is not an FAA or airport publication.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this?
+      options:
+        - Airport master plan
+        - Airport layout plan (ALP)
+        - State aviation or land-use statute
+        - Dead or replaced official URL
+        - Other planning document
+    validations:
+      required: true
+  - type: input
+    id: airport
+    attributes:
+      label: Airport (if applicable)
+      description: FAA LID, ICAO, or name (for example PAE or Snohomish County)
+  - type: input
+    id: state
+    attributes:
+      label: State
+      description: Two-letter code when known
+  - type: input
+    id: official_url
+    attributes:
+      label: Official URL
+      description: Sponsor, state DOT, legislature, or FAA page or PDF
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Edition year, what replaced a dead link, or anything else useful
+    validations:
+      required: true

@@ -1,0 +1,18 @@
+services:
+  site:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${SITE_PATH:-/var/lib/aptplans/site}:/srv/site:ro
+      - ${FILES_PATH:-/var/lib/aptplans/files}:/srv/site/files:ro
+    restart: unless-stopped
+
+  pipeline:
+    volumes:
+      - ${REPO_PATH:-/opt/aptplans}:/app
+      - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
+    environment:
+      - APP_ENV=production
+      - APTPLANS_FILES=/var/lib/aptplans/files
+      - APTPLANS_USER_AGENT=aptplans.org

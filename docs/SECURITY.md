@@ -1,0 +1,45 @@
+# Security
+
+AptPlans serves public planning documents. It still must not become a dumping ground for secrets, SSI, or a public model endpoint.
+
+## Do not commit
+
+- Source PDFs and WARCs
+- Model weights (`.gguf`)
+- Extracted full text dumps
+- `.env` files and Compose overrides with host secrets
+- Anything that looks like SSI, security identification, or non-public engineering drawings
+
+`.gitignore` already covers the common cases. Review `git diff` before you push.
+
+## Public vs origin
+
+| Public (git / HTML) | Origin disk only |
+| --- | --- |
+| Catalog metadata | Hashed PDFs |
+| Statute snapshots | WARCs |
+| Reviewed summaries | Extracted text |
+| Builder and Compose files | Model weights |
+
+Cloudflare is a cache. It is not an access-control layer for private files. If a file should not be on the public internet, do not store it under the Caddy docroot.
+
+## Takedown and copyright
+
+Master plans often carry consultant copyright lines even when they are public records. Cite the official source. Provide a contact (`contact@aptplans.org` and GitHub issues) for takedown requests. Do not present the site as an official FAA or airport publication.
+
+## HTTP
+
+Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. Prefer HTTPS at the edge. Hashed file URLs may be cached for a long time; a takedown therefore needs an origin delete plus a Cloudflare purge of that object.
+
+## Pipeline
+
+The document pipeline is not exposed to the internet. It runs as a oneshot container from systemd. Do not publish a prompt box or an HTTP API in front of the local model.
+
+Crawlers identify as `aptplans.org`. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository.
+
+## If something sensitive lands in git
+
+1. Stop serving the object if it was also on origin.
+2. Rotate any exposed credentials.
+3. Remove the file in a new commit and, if it was pushed, scrub history (`git filter-repo` or a fresh repo).
+4. Purge CDN caches for the path.

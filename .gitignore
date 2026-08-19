@@ -1,0 +1,100 @@
+# Generated site
+/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local Python installs
+.python-version
+
+# Corpus (never commit). Lives on the origin host.
+*.pdf
+*.PDF
+*.gguf
+*.GGUF
+*.warc
+*.warc.gz
+data/files/
+/files/
+extracted/
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+.tmp/
+.temp/
+*.bak
+*.backup
+*~
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Docker Compose local overrides (user-specific paths)
+docker/docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+._*
+.Spotlight-V100
+.Trashes
+desktop.ini
+
+# Diagnostic and temporary documentation (never commit)
+docs/*DIAGNOSTICS*.md
+docs/*TROUBLESHOOTING*.md
+docs/*TEST*.md
+docs/*TEMP*.md
+docs/*ANALYSIS*.md
+docs/*CHECKLIST*.md
+docs/*PLAN*.md
+docs/*PLANNING*.md
+docs/*QUESTIONS*.md
+docs/*RESULTS*.md
+docs/*FINDINGS*.md
+docs/*INVESTIGATION*.md
+docs/*DESIGN*.md
+docs/*EXECUTION*.md
+docs/*FIXES*.md
+docs/*SUMMARY*.md
+
+# Optional local tooling (keep local only)
+.cursorrules
+.cursor/
+.planning/
+*.cursorrules
+.cursorrc
+.cursor-settings.json
+
+# Generated scratch files
+*.ai-temp
+*.ai-backup
+*_ai_*.tmp

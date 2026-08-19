@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aptplans.org/schema/document.json",
+  "title": "AptPlans document",
+  "description": "A master plan, ALP, statute snapshot, or related record. A document is complete only when both the official URL and a preserved copy exist.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "source_url",
+    "completeness"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["master_plan", "alp", "statute", "sasp", "other"]
+    },
+    "airport_lid": { "type": ["string", "null"] },
+    "state": { "type": ["string", "null"] },
+    "title": { "type": ["string", "null"] },
+    "edition": { "type": ["string", "null"] },
+    "source_url": { "type": "string", "format": "uri" },
+    "source_retrieved_at": { "type": ["string", "null"] },
+    "source_status": {
+      "type": "string",
+      "enum": ["live", "moved", "dead", "replaced", "unknown"]
+    },
+    "content_sha256": { "type": ["string", "null"] },
+    "preserved_url": { "type": ["string", "null"] },
+    "ia_item": { "type": ["string", "null"] },
+    "mirrors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "license_or_rights": {
+      "type": "string",
+      "enum": ["public_record", "government_edict", "unknown", "takedown"]
+    },
+    "supersedes": { "type": ["string", "null"] },
+    "review_status": {
+      "type": "string",
+      "enum": ["pending", "auto_pass", "needs_human", "published"]
+    },
+    "completeness": {
+      "type": "string",
+      "enum": ["complete", "link_only", "preserved_only", "missing", "no_plan_known"]
+    },
+    "summary": { "type": ["string", "null"] }
+  }
+}

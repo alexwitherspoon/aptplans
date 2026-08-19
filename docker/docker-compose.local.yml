@@ -1,0 +1,13 @@
+services:
+  site:
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - ../dist:/srv/site:ro
+    environment:
+      - APP_ENV=local
+
+  pipeline:
+    environment:
+      - APP_ENV=local
+      - APTPLANS_FILES=/var/lib/aptplans/files

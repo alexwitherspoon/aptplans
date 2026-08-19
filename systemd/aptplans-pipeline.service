@@ -1,0 +1,11 @@
+[Unit]
+Description=AptPlans serial document pipeline
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aptplans
+Environment=FILES_PATH=/var/lib/aptplans/files
+ExecStart=/usr/bin/docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml --profile jobs run --rm --no-deps pipeline
+Nice=10

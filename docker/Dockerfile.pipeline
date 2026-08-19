@@ -1,0 +1,15 @@
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY pyproject.toml LICENSE README.md /app/
+COPY site /app/site
+COPY catalog /app/catalog
+
+RUN pip install --no-cache-dir .
+
+# Serial jobs only. The timer starts this container; it should exit when done.
+CMD ["python3", "site/build.py", "--out", "dist"]

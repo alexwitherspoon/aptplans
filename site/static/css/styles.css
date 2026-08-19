@@ -1,0 +1,75 @@
+:root {
+  --bg: #f7f4ef;
+  --fg: #1c1a16;
+  --muted: #5c574e;
+  --accent: #2f4a3c;
+  --rule: #d8d2c8;
+  --measure: 40rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color: var(--fg);
+  background: var(--bg);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0 auto;
+  max-width: calc(var(--measure) + 4rem);
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.wordmark {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--fg);
+  letter-spacing: 0.02em;
+}
+
+nav a {
+  margin-left: 1rem;
+  text-decoration: none;
+}
+
+h1 {
+  font-size: 1.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+}
+
+.lede {
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.site-footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.site-footer p {
+  margin: 0.35rem 0;
+}
