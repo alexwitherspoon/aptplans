@@ -3,7 +3,7 @@
 # Keeps the OS thin: Docker Engine, firewall, fail2ban, unattended-upgrades.
 # Caddy, the worker, and Ollama run in Compose - not on the host.
 #
-# Run as root (first deploy) or as a user with passwordless sudo.
+# Run as aptplans (CD) or from console as root. Remote root SSH is disabled.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,13 +110,31 @@ EOF
     as_root chmod 440 /etc/sudoers.d/aptplans
     as_root visudo -cf /etc/sudoers.d/aptplans
 
-    if [ ! -s "/home/${APP_USER}/.ssh/authorized_keys" ] && [ -f /root/.ssh/authorized_keys ]; then
-        as_root cp /root/.ssh/authorized_keys "/home/${APP_USER}/.ssh/authorized_keys"
+    seed_app_user_keys
+    as_root chown "${APP_USER}:${APP_USER}" "/home/${APP_USER}/.ssh/authorized_keys"
+    as_root chmod 600 "/home/${APP_USER}/.ssh/authorized_keys"
+}
+
+seed_app_user_keys() {
+    local dest="/home/${APP_USER}/.ssh/authorized_keys"
+    if [ -s "${dest}" ]; then
+        return 0
     fi
-    if [ -f "/home/${APP_USER}/.ssh/authorized_keys" ]; then
-        as_root chown "${APP_USER}:${APP_USER}" "/home/${APP_USER}/.ssh/authorized_keys"
-        as_root chmod 600 "/home/${APP_USER}/.ssh/authorized_keys"
+    local src=""
+    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && [ "${SUDO_USER}" != "${APP_USER}" ] \
+        && [ -s "/home/${SUDO_USER}/.ssh/authorized_keys" ]; then
+        src="/home/${SUDO_USER}/.ssh/authorized_keys"
+    elif [ "$(id -u)" -ne 0 ] && [ "$(id -un)" != "${APP_USER}" ] && [ -s "${HOME}/.ssh/authorized_keys" ]; then
+        src="${HOME}/.ssh/authorized_keys"
+    elif [ -s /root/.ssh/authorized_keys ]; then
+        src=/root/.ssh/authorized_keys
     fi
+    if [ -z "${src}" ]; then
+        log "error: ${APP_USER} has no authorized_keys; add the CD public key before locking sshd"
+        exit 1
+    fi
+    log "seeding ${APP_USER} authorized_keys from ${src}"
+    as_root cp "${src}" "${dest}"
 }
 
 ensure_directories() {

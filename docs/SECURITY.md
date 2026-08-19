@@ -38,7 +38,7 @@ Hashed file URLs may be cached for a long time; a takedown needs an origin delet
 CD keeps the Debian 13 box minimal and reapplies this on every deploy:
 
 - UFW default-deny, 22/80/443 only
-- sshd: no passwords, `PermitRootLogin prohibit-password`
+- sshd: no passwords, `PermitRootLogin no`, `AllowUsers aptplans`
 - fail2ban on sshd (5 tries / 10 minutes → 7 day ban)
 - unattended-upgrades for Debian and Docker
 - Weekly reboot Monday 12:00 Pacific so kernel updates actually apply

@@ -165,4 +165,4 @@ This is not legal advice. State statutes are generally public domain as governme
 
 ## Replaceable origin
 
-Rebuild: Debian 13 plus an SSH key, then GitHub Actions CD (or `scripts/host/remote-deploy.sh`). The catalog in git is the index. The origin disk is the file store. There is no offsite document replica in the first deployment.
+Rebuild: Debian 13 plus an SSH key for `aptplans`, then GitHub Actions CD (or `scripts/host/remote-deploy.sh`). The catalog in git is the index. The origin disk is the file store. There is no offsite document replica in the first deployment.

@@ -7,10 +7,10 @@ CD SSHs into the origin from GitHub-hosted runners and converges a bare Debian 1
 | Secret | Value |
 | --- | --- |
 | `HOST` | Origin IP or hostname (the KS-6) |
-| `USER` | SSH user. Use `root` for the first deploy; `aptplans` after bootstrap creates that account |
-| `SSH_PRIVATE_KEY` | Private key whose public half is already in that user's `authorized_keys` |
+| `USER` | SSH user. Must be `aptplans` |
+| `SSH_PRIVATE_KEY` | Private key whose public half is already in `/home/aptplans/.ssh/authorized_keys` |
 
-The first OVH install only needs SSH as root with that key. Later deploys can keep using `root` or switch `USER` to `aptplans`.
+CD SSHs only as `aptplans`. sshd sets `PermitRootLogin no` and `AllowUsers aptplans`, so `root` and the image `debian` account cannot log in remotely. Seed that authorized_keys file from console or the image user before the first deploy.
 
 ## Optional
 

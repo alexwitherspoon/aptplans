@@ -10,13 +10,13 @@ CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** 
 2. Orange-cloud `aptplans.org` (apex and www) to the KS-6 A/AAAA record.
 3. 301 `aptplans.com` (apex and www) to `https://aptplans.org`.
 4. Cloudflare SSL/TLS: **Full** until an Origin CA cert is in GitHub secrets, then **Full (strict)**.
-5. On the new Debian 13 box, put the GitHub Actions public key in `/root/.ssh/authorized_keys` (OVH rescue/install SSH is enough).
+5. From console or the image `debian` user, put the GitHub Actions public key in `/home/aptplans/.ssh/authorized_keys` (create `aptplans` first if the account is not there yet). Confirm `ssh aptplans@ORIGIN_IP` works. Remote root SSH is disabled.
 
 `HOST` in GitHub secrets should be the **origin IP**, not `aptplans.org` (that name is proxied).
 
 ## GitHub secrets
 
-See [`.github/SETUP.md`](../.github/SETUP.md). Required: `HOST`, `USER`, `SSH_PRIVATE_KEY`. First deploy: `USER=root`. After bootstrap you can switch to `aptplans`.
+See [`.github/SETUP.md`](../.github/SETUP.md). Required: `HOST`, `USER=aptplans`, `SSH_PRIVATE_KEY`. The public half of that key must already be in `/home/aptplans/.ssh/authorized_keys`.
 
 ## What CD does
 
@@ -30,7 +30,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - Installs Docker Engine from Docker’s Debian repo
    - Creates `aptplans` (docker group, passwordless sudo)
    - Timezone `America/Los_Angeles`
-   - sshd drop-in (no passwords, `PermitRootLogin prohibit-password`)
+   - sshd drop-in (no passwords, `PermitRootLogin no`, `AllowUsers aptplans`)
    - sysctl hardening
    - UFW: deny inbound except 22/80/443
    - fail2ban on sshd (5 failures / 10 minutes → 7 day ban)

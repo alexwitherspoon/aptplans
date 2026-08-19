@@ -52,6 +52,10 @@ jobs:
             echo "Set repository secrets USER and HOST (and SSH_PRIVATE_KEY)."
             exit 1
           fi
+          if [ "${DEPLOY_USER}" != "aptplans" ]; then
+            echo "USER must be aptplans; sshd AllowUsers rejects root and the image debian account."
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
         with:
@@ -85,25 +89,16 @@ jobs:
             exit 0
           fi
           export DEBIAN_FRONTEND=noninteractive
-          if [ "$(id -u)" -eq 0 ]; then
-            apt-get update -qq
-            apt-get install -y rsync sudo
-          else
-            sudo apt-get update -qq
-            sudo apt-get install -y rsync
-          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y rsync
           EOF
 
       - name: Sync repository
         run: |
           ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
           set -euo pipefail
-          if [ "\$(id -u)" -eq 0 ]; then
-            mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
-          else
-            sudo mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
-            sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
-          fi
+          sudo mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
+          sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
           EOF
           rsync -az --delete \
             --exclude '.git/' \
@@ -127,9 +122,9 @@ jobs:
           umask 077
           printf '%s\n' "${ORIGIN_CERT}" > /tmp/origin.pem
           printf '%s\n' "${ORIGIN_KEY}" > /tmp/origin.key
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'if [ "$(id -u)" -eq 0 ]; then mkdir -p /var/lib/aptplans/tls; else sudo mkdir -p /var/lib/aptplans/tls; fi'
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mkdir -p /var/lib/aptplans/tls'
           scp /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'if [ "$(id -u)" -eq 0 ]; then mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; chmod 644 /var/lib/aptplans/tls/origin.pem; chmod 600 /var/lib/aptplans/tls/origin.key; else sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; sudo chmod 644 /var/lib/aptplans/tls/origin.pem; sudo chmod 600 /var/lib/aptplans/tls/origin.key; fi'
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; sudo chmod 644 /var/lib/aptplans/tls/origin.pem; sudo chmod 600 /var/lib/aptplans/tls/origin.key'
           rm -f /tmp/origin.pem /tmp/origin.key
           echo "installed Cloudflare Origin CA material"
 
@@ -138,11 +133,7 @@ jobs:
           ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
           chmod +x /opt/aptplans/scripts/host/*.sh /opt/aptplans/scripts/docker-cleanup-weekly.sh
-          if [ "$(id -u)" -eq 0 ]; then
-            /opt/aptplans/scripts/host/remote-deploy.sh
-          else
-            sudo /opt/aptplans/scripts/host/remote-deploy.sh
-          fi
+          sudo /opt/aptplans/scripts/host/remote-deploy.sh
           EOF
 
       - name: Smoke check from runner

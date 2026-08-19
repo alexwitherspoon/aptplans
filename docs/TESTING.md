@@ -16,6 +16,7 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 - Catalog schema loads and includes the completeness states
 - Builder writes `index.html`, `about/index.html`, and CSS into an output directory
 - Compose stack is `site`, `worker`, and `ollama`, with Ollama off the host network
+- sshd drop-in allows only `aptplans` and disables remote root
 - Worker one-shot entry returns success while the catalog is empty
 
 ## What is not covered yet

@@ -39,7 +39,7 @@ Host scripts under `scripts/host/` are idempotent and must be safe to re-run fro
 
 - `set -euo pipefail` on new bash.
 - 2-space indent in `.sh` files. Makefiles use tabs.
-- Quote variables. Prefer `$(id -u)` tests over assuming `sudo` exists (first deploy is often root).
+- Quote variables. Prefer `$(id -u)` tests over assuming `sudo` exists (console bootstrap may be root; CD is always `aptplans`).
 - Do not `ufw --force reset` from CD. Do not install Python, Caddy, nginx, or certbot on the origin host.
 - Log in UTC timestamps or systemd's journal. No emoji in operational scripts.
 
