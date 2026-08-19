@@ -216,7 +216,8 @@ def _item_for_document(document) -> dict:
         "title": document.title or document.id,
         "link": f"{CANONICAL}/documents/{quote(document.id)}/",
         "date": document.source_retrieved_at,
-        "description": f"{KIND_LABELS.get(document.kind, document.kind)} - {document.completeness}",
+        "description": document.summary
+        or f"{KIND_LABELS.get(document.kind, document.kind)} - {document.completeness}",
     }
 
 
@@ -232,7 +233,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> None:
     stats = counts(catalog)
     recently = sorted(
         catalog.documents,
-        key=lambda doc: doc.source_retrieved_at or "",
+        key=lambda doc: (doc.source_retrieved_at or "", 1 if doc.summary else 0, doc.title or ""),
         reverse=True,
     )[:12]
     context = {
@@ -320,6 +321,11 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> None:
             document=document,
             airport=airport,
             kind_label=KIND_LABELS.get(document.kind, document.kind),
+            changes=[
+                change
+                for change in catalog.changes
+                if change.entity_id == document.id
+            ],
         )
 
     css_src = STATIC / "css"

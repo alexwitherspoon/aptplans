@@ -189,6 +189,18 @@ def write_grants_overlay(overlay_dir: Path, grants: list[Grant]) -> None:
     _write_jsonl(overlay_dir / "grants.jsonl", rows)
 
 
+def load_changes_overlay(overlay_dir: Path | None) -> list[ChangeEvent]:
+    if overlay_dir is None:
+        return []
+    return [ChangeEvent.from_dict(row) for row in _read_jsonl(overlay_dir / "changes.jsonl")]
+
+
+def append_change(overlay_dir: Path, event: ChangeEvent) -> None:
+    rows = load_changes_overlay(overlay_dir)
+    rows.append(event)
+    _write_jsonl(overlay_dir / "changes.jsonl", [item.to_dict() for item in rows])
+
+
 def upsert_airport_overlay(overlay_dir: Path, airport: Airport) -> None:
     by_lid = {item.lid: item for item in load_airports_overlay(overlay_dir)}
     by_lid[airport.lid] = airport

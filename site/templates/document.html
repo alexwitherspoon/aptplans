@@ -32,6 +32,15 @@
   <p>{{ document.summary }}</p>
   {% endif %}
 
+  {% if changes %}
+  <h2>What changed</h2>
+  <ul>
+    {% for change in changes %}
+    <li>{{ change.detected_at }} · {{ change.unofficial_note or "Preserved bytes changed." }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
   <p>
     Stale, dead, or the wrong file?
     <a href="{{ intake_url }}">Tell us</a>.

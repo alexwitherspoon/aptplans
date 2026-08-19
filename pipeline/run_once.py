@@ -10,9 +10,9 @@ import os
 import subprocess
 import sys
 
-from catalog.models import Airport
+from catalog.models import Airport, ChangeEvent
 from catalog.seed import seed_catalog
-from catalog.store import completeness_for_airport, upsert_airport_overlay, write_overlay_update
+from catalog.store import append_change, completeness_for_airport, upsert_airport_overlay, write_overlay_update
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.files import store_bytes
 from pipeline.gates import evaluate_file, filename_from_url, intake_status
@@ -118,7 +118,7 @@ def process_fetch(
         log.info("fetch HTTP %s %s -> %s", exc.code, job.source_url, status)
         _reply(job, status, None)
         return status
-    except (URLError, OSError, TimeoutError, ValueError) as exc:
+    except (URLError, OSError, TimeoutError, ValueError, PermissionError) as exc:
         log.info("fetch failed %s: %s", job.source_url, exc)
         _reply(job, "needs_human", None)
         return "needs_human"
@@ -169,6 +169,30 @@ def process_fetch(
         "review_status": "auto_pass",
         "license_or_rights": previous.license_or_rights if previous else "public_record",
     }
+    if previous and previous.content_sha256 and previous.content_sha256 != stored.sha256:
+        append_change(
+            overlay_dir,
+            ChangeEvent(
+                id=f"{document_id}-{stored.sha256[:12]}",
+                entity_type="document",
+                entity_id=document_id,
+                detected_at=_utc_now(),
+                review_status="pending",
+                from_sha256=previous.content_sha256,
+                to_sha256=stored.sha256,
+                unofficial_note="Preserved bytes changed at the official URL.",
+            ),
+        )
+    if os.environ.get("APTPLANS_LLM") == "1":
+        try:
+            from pipeline.ollama import unofficial_note
+            from pipeline.parse import extract_text, viable_chunk
+
+            text = extract_text(data)
+            if text.strip():
+                updates["summary"] = unofficial_note(viable_chunk(text))
+        except Exception:
+            log.exception("unofficial note failed; preserve still counts")
     write_overlay_update(overlay_dir, document_id, updates)
     _reply(job, "preserved", None)
     log.info(

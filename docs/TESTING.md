@@ -19,7 +19,8 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 - Worker cold start fetches FAA overlays only when files are missing or from a prior month (fixtures in tests; no live FAA or USAspending)
 - Reference master plans and ALPs (PDX, TTD, Mulino, plus other regions) validate as `link_only` fixtures against AC 150/5070-6B elements
 - Embedded reference PDFs under `catalog/references/files/` match committed SHA-256 values (no network)
-- Fetch-hash-store, SSI and newsletter kind gates, and a one-job on-disk queue
+- Fetch-hash-store, SSI and newsletter kind gates, robots.txt, native PDF text extract, and a one-job on-disk queue
+- Ollama unofficial notes are opt-in (`APTPLANS_LLM=1` on origin). CI mocks generate and never talks to a model.
 - GitHub intake form fields (add, stale, wrong, outdated) close when resolved and mention `@alexwitherspoon` when a human is needed
 - Builder writes airport, state, and document pages, RSS, sitemap, `status.json`, and bulk dumps
 - Compose stack is `site`, `worker`, and `ollama`, with Ollama off the host network

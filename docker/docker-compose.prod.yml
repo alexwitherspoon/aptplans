@@ -43,6 +43,7 @@ services:
       - INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}
       - INTAKE_GITHUB_REPO=${INTAKE_GITHUB_REPO:-}
       - APTPLANS_REFRESH_AIRPORTS=1
+      - APTPLANS_LLM=1
 
   ollama:
     # NUMA nodes 1-3: physical cores 4-15 plus SMT siblings (24 threads).

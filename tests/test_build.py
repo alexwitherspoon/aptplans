@@ -50,6 +50,8 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     oregon = (out / "states" / "OR" / "index.html").read_text(encoding="utf-8")
     assert "Oregon Department of Aviation" in oregon
     assert "or-ors-836" in (out / "documents" / "or-ors-836" / "index.html").read_text(encoding="utf-8")
+    inventory = (out / "documents" / "4s9-2008-inventory" / "index.html").read_text(encoding="utf-8")
+    assert "Unofficial. Chapter 2 inventories Mulino" in inventory
     home = (out / "index.html").read_text(encoding="utf-8")
     assert "state law records" in home
     sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")

@@ -6,11 +6,13 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 from urllib.request import OpenerDirector, Request, build_opener, urlopen
+from urllib.robotparser import RobotFileParser
 import os
 
 from pipeline.gates import MAX_BYTES
 
 DEFAULT_UA = "aptplans.org"
+_robots: dict[str, RobotFileParser | None] = {}
 
 
 def _user_agent() -> str:
@@ -37,11 +39,35 @@ def _socks_opener(proxy_url: str) -> OpenerDirector:
     return build_opener(handler)
 
 
+def _robots_ok(url: str, timeout: int, proxy_url: str | None) -> bool:
+    parsed = urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    if origin in _robots:
+        parser = _robots[origin]
+        return True if parser is None else parser.can_fetch(_user_agent(), url)
+    robots_url = origin + "/robots.txt"
+    try:
+        data, status = fetch_bytes(
+            robots_url, timeout=min(timeout, 15), proxy_url=proxy_url, honor_robots=False
+        )
+    except Exception:
+        _robots[origin] = None
+        return True
+    if int(status) >= 400:
+        _robots[origin] = None
+        return True
+    parser = RobotFileParser()
+    parser.parse(data.decode("utf-8", errors="replace").splitlines())
+    _robots[origin] = parser
+    return parser.can_fetch(_user_agent(), url)
+
+
 def fetch_bytes(
     url: str,
     user_agent: str | None = None,
     timeout: int = 60,
     proxy_url: str | None = None,
+    honor_robots: bool = True,
 ) -> tuple[bytes, int]:
     parsed = urlparse(url)
     if parsed.scheme == "file":
@@ -49,6 +75,8 @@ def fetch_bytes(
         return path.read_bytes(), 200
 
     proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    if honor_robots and parsed.scheme in {"http", "https"} and not _robots_ok(url, timeout, proxy or None):
+        raise PermissionError(f"robots.txt disallows {url}")
     headers = {"User-Agent": user_agent or _user_agent()}
     request = Request(url, headers=headers)
     if proxy:

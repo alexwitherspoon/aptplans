@@ -8,7 +8,14 @@ from pathlib import Path
 
 from catalog.geo import US_STATES
 from catalog.models import Airport, Document, Grant, State
-from catalog.store import Catalog, load_airports_overlay, load_grants_overlay, load_overlay, merge_overlay
+from catalog.store import (
+    Catalog,
+    load_airports_overlay,
+    load_changes_overlay,
+    load_grants_overlay,
+    load_overlay,
+    merge_overlay,
+)
 
 
 def _states(catalog_root: Path) -> list[State]:
@@ -81,7 +88,7 @@ def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog
         airports=airports,
         states=_states(catalog_root),
         documents=documents,
-        changes=[],
+        changes=load_changes_overlay(overlay_dir),
         grants=overlay_grants or _reference_grants(catalog_root),
     )
     overlay = load_overlay(overlay_dir)
