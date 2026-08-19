@@ -120,32 +120,18 @@ jobs:
           ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
           ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
         run: |
-          if [ -n "${ORIGIN_CERT}" ] && [ -n "${ORIGIN_KEY}" ]; then
-            umask 077
-            printf '%s\n' "${ORIGIN_CERT}" > /tmp/origin.pem
-            printf '%s\n' "${ORIGIN_KEY}" > /tmp/origin.key
-            ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
-            set -euo pipefail
-            if [ "$(id -u)" -eq 0 ]; then mkdir -p /var/lib/aptplans/tls; else sudo mkdir -p /var/lib/aptplans/tls; fi
-            EOF
-            scp /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
-            ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
-            set -euo pipefail
-            if [ "$(id -u)" -eq 0 ]; then
-              mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/
-              chmod 644 /var/lib/aptplans/tls/origin.pem
-              chmod 600 /var/lib/aptplans/tls/origin.key
-            else
-              sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/
-              sudo chmod 644 /var/lib/aptplans/tls/origin.pem
-              sudo chmod 600 /var/lib/aptplans/tls/origin.key
-            fi
-            EOF
-            rm -f /tmp/origin.pem /tmp/origin.key
-            echo "installed Cloudflare Origin CA material"
-          else
+          if [ -z "${ORIGIN_CERT}" ] || [ -z "${ORIGIN_KEY}" ]; then
             echo "no CLOUDFLARE_ORIGIN_CERT/KEY secrets; bootstrap will keep or create a self-signed origin cert"
+            exit 0
           fi
+          umask 077
+          printf '%s\n' "${ORIGIN_CERT}" > /tmp/origin.pem
+          printf '%s\n' "${ORIGIN_KEY}" > /tmp/origin.key
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'if [ "$(id -u)" -eq 0 ]; then mkdir -p /var/lib/aptplans/tls; else sudo mkdir -p /var/lib/aptplans/tls; fi'
+          scp /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'if [ "$(id -u)" -eq 0 ]; then mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; chmod 644 /var/lib/aptplans/tls/origin.pem; chmod 600 /var/lib/aptplans/tls/origin.key; else sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; sudo chmod 644 /var/lib/aptplans/tls/origin.pem; sudo chmod 600 /var/lib/aptplans/tls/origin.key; fi'
+          rm -f /tmp/origin.pem /tmp/origin.key
+          echo "installed Cloudflare Origin CA material"
 
       - name: Bootstrap host and start Caddy
         run: |
