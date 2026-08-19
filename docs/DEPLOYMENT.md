@@ -47,7 +47,7 @@ Host layout:
 | --- | --- |
 | `/opt/aptplans` | rsynced git tree |
 | `/var/lib/aptplans/site` | generated HTML |
-| `/var/lib/aptplans/files` | hashed PDFs (not in git) |
+| `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/home/aptplans/.env.production` | Compose paths |
 

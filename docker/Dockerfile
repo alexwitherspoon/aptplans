@@ -3,7 +3,7 @@ FROM caddy:2-alpine
 RUN apk add --no-cache curl
 
 COPY docker/Caddyfile /etc/caddy/Caddyfile
-RUN mkdir -p /srv/site
+RUN mkdir -p /srv/site /srv/files
 
 EXPOSE 80 443
 

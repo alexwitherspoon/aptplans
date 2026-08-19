@@ -5,7 +5,7 @@ services:
   site:
     volumes:
       - /var/lib/aptplans/site:/srv/site:ro
-      - /var/lib/aptplans/files:/srv/site/files:ro
+      - /var/lib/aptplans/files:/srv/files:ro
 
   pipeline:
     volumes:

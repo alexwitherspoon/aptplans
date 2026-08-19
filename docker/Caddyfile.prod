@@ -1,7 +1,5 @@
 (static) {
-	root * /srv/site
 	encode gzip zstd
-	file_server
 
 	header {
 		X-Content-Type-Options nosniff
@@ -9,8 +7,16 @@
 		X-Frame-Options SAMEORIGIN
 	}
 
-	@hashed path /files/*
-	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	handle_path /files/* {
+		root * /srv/files
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		root * /srv/site
+		file_server
+	}
 }
 
 :80 {

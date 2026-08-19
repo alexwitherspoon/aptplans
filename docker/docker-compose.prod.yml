@@ -4,8 +4,10 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      # Keep files off the site mount. A nested bind under /srv/site:ro fails
+      # because Docker cannot mkdir the mountpoint on a read-only volume.
       - ${SITE_PATH:-/var/lib/aptplans/site}:/srv/site:ro
-      - ${FILES_PATH:-/var/lib/aptplans/files}:/srv/site/files:ro
+      - ${FILES_PATH:-/var/lib/aptplans/files}:/srv/files:ro
       - ${TLS_PATH:-/var/lib/aptplans/tls}:/certs:ro
       - ${REPO_PATH:-/opt/aptplans}/docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
     restart: unless-stopped
