@@ -48,7 +48,7 @@ Host scripts under `scripts/host/` are idempotent and must be safe to re-run fro
 - Schema changes go in `catalog/schema.json` and tests.
 - Completeness states stay `complete`, `link_only`, `preserved_only`, `missing`, `no_plan_known`. `no_plan_known` means neither a master plan nor an ALP is known.
 - Same official URL plus a new SHA-256 is a new version.
-- Do not commit PDFs, WARCs, `.gguf` weights, extracted full text, or `.env` files.
+- Do not commit corpus PDFs, WARCs, `.gguf` weights, extracted full text, or `.env` files. The exception is hashed reference fixtures under `catalog/references/files/`.
 
 ## Tests
 

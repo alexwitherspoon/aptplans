@@ -4,7 +4,7 @@ AptPlans serves public planning documents. It still must not become a dumping gr
 
 ## Do not commit
 
-- Source PDFs and WARCs
+- Source PDFs and WARCs (except hashed fixtures under `catalog/references/files/`)
 - Model weights (`.gguf`)
 - Extracted full text dumps
 - `.env` files and Compose overrides with host secrets

@@ -21,6 +21,8 @@ htmlcov/
 # Corpus (never commit). Lives on the origin host.
 *.pdf
 *.PDF
+!catalog/references/files/
+!catalog/references/files/*.pdf
 *.gguf
 *.GGUF
 *.warc

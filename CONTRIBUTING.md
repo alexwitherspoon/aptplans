@@ -31,7 +31,7 @@ make dev
 2. Follow [CODE_STYLE.md](CODE_STYLE.md).
 3. Add tests for new behavior.
 4. Update docs when the change is user-facing or operational.
-5. Do not commit PDFs, model weights, secrets, or generated `dist/` output.
+5. Do not commit corpus PDFs, model weights, secrets, or generated `dist/` output. Hashed fixtures under `catalog/references/files/` are the exception.
 6. Write a short commit message that explains why the change exists.
 
 This project is an **unofficial document library**. It is not flight-planning weather, not legal advice, and not an FAA or airport publication. Keep that distinction in copy and in code.
