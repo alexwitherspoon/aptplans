@@ -20,6 +20,7 @@
     <li><strong>{{ counts.complete }}</strong> with a complete plan or ALP</li>
     <li><strong>{{ counts.link_only }}</strong> official URL only</li>
     <li><strong>{{ counts.missing }}</strong> still missing</li>
+    {% if counts.statutes %}<li><strong>{{ counts.statutes }}</strong> state law records</li>{% endif %}
   </ul>
   <p>
     Most airports have no published master plan or ALP located yet. That is

@@ -1,0 +1,254 @@
+{
+  "description": "State aviation agencies from NASAO member names. Agency URLs are official .gov/.org homepages checked in August 2026; omitted when no stable page was confirmed. SASP and statute guide URLs are added only when an official HTML page is known.",
+  "nasao_members": "https://nasao.org/page/members",
+  "states": [
+    {
+      "code": "AL",
+      "agency": "Alabama Department of Transportation Aeronautics Bureau"
+    },
+    {
+      "code": "AK",
+      "agency": "Alaska Department of Transportation and Public Facilities Statewide Aviation",
+      "agency_url": "https://dot.alaska.gov/stwdav/"
+    },
+    {
+      "code": "AZ",
+      "agency": "Arizona Department of Transportation Aeronautics Group",
+      "agency_url": "https://azdot.gov/"
+    },
+    {
+      "code": "AR",
+      "agency": "Arkansas Department of Aeronautics"
+    },
+    {
+      "code": "CA",
+      "agency": "Caltrans Division of Aeronautics",
+      "agency_url": "https://dot.ca.gov/programs/aeronautics"
+    },
+    {
+      "code": "CO",
+      "agency": "Colorado Department of Transportation Division of Aeronautics",
+      "agency_url": "https://www.codot.gov/programs/aeronautics"
+    },
+    {
+      "code": "CT",
+      "agency": "Connecticut Airport Authority",
+      "agency_url": "https://ctairports.org/"
+    },
+    {
+      "code": "DE",
+      "agency": "Delaware Department of Transportation Office of Aeronautics",
+      "agency_url": "https://deldot.gov/Programs/aviation/index.shtml"
+    },
+    {
+      "code": "FL",
+      "agency": "Florida Department of Transportation Aviation Office",
+      "agency_url": "https://www.fdot.gov/aviation"
+    },
+    {
+      "code": "GA",
+      "agency": "Georgia Department of Transportation Aviation Programs",
+      "agency_url": "https://www.dot.ga.gov/"
+    },
+    {
+      "code": "HI",
+      "agency": "Hawaii Department of Transportation Airports Division",
+      "agency_url": "https://hidot.hawaii.gov/airports/"
+    },
+    {
+      "code": "ID",
+      "agency": "Idaho Transportation Department Division of Aeronautics",
+      "agency_url": "https://itd.idaho.gov/aero/"
+    },
+    {
+      "code": "IL",
+      "agency": "Illinois Department of Transportation Division of Aeronautics",
+      "agency_url": "https://idot.illinois.gov/"
+    },
+    {
+      "code": "IN",
+      "agency": "Indiana Department of Transportation Office of Aviation",
+      "agency_url": "https://www.in.gov/indot/multimodal/aviation/"
+    },
+    {
+      "code": "IA",
+      "agency": "Iowa Department of Transportation Aviation Bureau",
+      "agency_url": "https://iowadot.gov/aviation"
+    },
+    {
+      "code": "KS",
+      "agency": "Kansas Department of Transportation Division of Aviation",
+      "agency_url": "https://www.ksdot.gov/bureaus/divaviation/default.asp"
+    },
+    {
+      "code": "KY",
+      "agency": "Kentucky Department of Aviation",
+      "agency_url": "https://transportation.ky.gov/"
+    },
+    {
+      "code": "LA",
+      "agency": "Louisiana Department of Transportation and Development Aviation",
+      "agency_url": "https://wwwsp.dotd.la.gov/Inside_LaDOTD/Divisions/Multimodal/Aviation/Pages/default.aspx"
+    },
+    {
+      "code": "ME",
+      "agency": "Maine Department of Transportation Aviation",
+      "agency_url": "https://www.maine.gov/mdot/"
+    },
+    {
+      "code": "MD",
+      "agency": "Maryland Aviation Administration",
+      "agency_url": "https://marylandaviation.com/"
+    },
+    {
+      "code": "MA",
+      "agency": "MassDOT Aeronautics Division",
+      "agency_url": "https://www.mass.gov/orgs/massdot-aeronautics-division"
+    },
+    {
+      "code": "MI",
+      "agency": "Michigan Department of Transportation Office of Aeronautics",
+      "agency_url": "https://www.michigan.gov/mdot/travel/mobility/aeronautics"
+    },
+    {
+      "code": "MN",
+      "agency": "Minnesota Department of Transportation Office of Aeronautics",
+      "agency_url": "https://www.dot.state.mn.us/aero/"
+    },
+    {
+      "code": "MS",
+      "agency": "Mississippi Department of Transportation Aeronautics Division",
+      "agency_url": "https://mdot.ms.gov/"
+    },
+    {
+      "code": "MO",
+      "agency": "Missouri Department of Transportation Aviation",
+      "agency_url": "https://www.modot.org/aviation"
+    },
+    {
+      "code": "MT",
+      "agency": "Montana Department of Transportation Aeronautics Division",
+      "agency_url": "https://www.mdt.mt.gov/aviation/"
+    },
+    {
+      "code": "NE",
+      "agency": "Nebraska Department of Transportation Division of Aeronautics",
+      "agency_url": "https://dot.nebraska.gov/"
+    },
+    {
+      "code": "NV",
+      "agency": "Nevada Department of Transportation Aviation Planning",
+      "agency_url": "https://www.dot.nv.gov/doing-business/about-ndot/ndot-divisions/planning/aviation"
+    },
+    {
+      "code": "NH",
+      "agency": "New Hampshire Department of Transportation Bureau of Aeronautics",
+      "agency_url": "https://www.dot.nh.gov/projects-plans-and-programs/programs/aeronautics"
+    },
+    {
+      "code": "NJ",
+      "agency": "New Jersey Department of Transportation Bureau of Aeronautics",
+      "agency_url": "https://www.nj.gov/transportation/"
+    },
+    {
+      "code": "NM",
+      "agency": "New Mexico Department of Transportation Aviation Division",
+      "agency_url": "https://www.dot.nm.gov/aviation/"
+    },
+    {
+      "code": "NY",
+      "agency": "New York State Department of Transportation Aviation Bureau",
+      "agency_url": "https://www.dot.ny.gov/divisions/operating/opdm/aviation"
+    },
+    {
+      "code": "NC",
+      "agency": "North Carolina Department of Transportation Division of Aviation",
+      "agency_url": "https://www.ncdot.gov/divisions/aviation/Pages/default.aspx"
+    },
+    {
+      "code": "ND",
+      "agency": "North Dakota Aeronautics Commission",
+      "agency_url": "https://www.aero.nd.gov/"
+    },
+    {
+      "code": "OH",
+      "agency": "Ohio Department of Transportation Office of Aviation",
+      "agency_url": "https://www.transportation.ohio.gov/"
+    },
+    {
+      "code": "OK",
+      "agency": "Oklahoma Department of Aerospace and Aeronautics",
+      "agency_url": "https://oklahoma.gov/aerospace.html"
+    },
+    {
+      "code": "OR",
+      "agency": "Oregon Department of Aviation",
+      "agency_url": "https://www.oregon.gov/aviation",
+      "sasp_url": "https://www.oregon.gov/aviation/airports/planning-and-programs/Pages/default.aspx",
+      "statute_guide_url": "https://www.oregonlegislature.gov/bills_laws/ors/ors836.html"
+    },
+    {
+      "code": "PA",
+      "agency": "Pennsylvania Department of Transportation Bureau of Aviation",
+      "agency_url": "https://www.penndot.pa.gov/TravelInPA/aviation/Pages/default.aspx"
+    },
+    {
+      "code": "RI",
+      "agency": "Rhode Island Airport Corporation"
+    },
+    {
+      "code": "SC",
+      "agency": "South Carolina Aeronautics Commission"
+    },
+    {
+      "code": "SD",
+      "agency": "South Dakota Department of Transportation Office of Air, Rail and Transit",
+      "agency_url": "https://dot.sd.gov/"
+    },
+    {
+      "code": "TN",
+      "agency": "Tennessee Department of Transportation Aeronautics Division",
+      "agency_url": "https://www.tn.gov/tdot/aeronautics.html"
+    },
+    {
+      "code": "TX",
+      "agency": "Texas Department of Transportation Aviation Division",
+      "agency_url": "https://www.txdot.gov/inside-txdot/division/aviation.html"
+    },
+    {
+      "code": "UT",
+      "agency": "Utah Department of Transportation Division of Aeronautics",
+      "agency_url": "https://www.udot.utah.gov/connect/business/aviation/"
+    },
+    {
+      "code": "VT",
+      "agency": "Vermont Agency of Transportation Aviation Program",
+      "agency_url": "https://vtrans.vermont.gov/aviation"
+    },
+    {
+      "code": "VA",
+      "agency": "Virginia Department of Aviation",
+      "agency_url": "https://www.doav.virginia.gov/"
+    },
+    {
+      "code": "WA",
+      "agency": "Washington State Department of Transportation Aviation Division",
+      "agency_url": "https://wsdot.wa.gov/travel/aviation"
+    },
+    {
+      "code": "WV",
+      "agency": "West Virginia Aeronautics Commission",
+      "agency_url": "https://transportation.wv.gov/"
+    },
+    {
+      "code": "WI",
+      "agency": "Wisconsin Department of Transportation Bureau of Aeronautics",
+      "agency_url": "https://wisconsindot.gov/Pages/doing-bus/aeronautics/default.aspx"
+    },
+    {
+      "code": "WY",
+      "agency": "Wyoming Department of Transportation Aeronautics",
+      "agency_url": "https://www.dot.state.wy.us/home/aeronautics.html"
+    }
+  ]
+}

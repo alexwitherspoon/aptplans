@@ -23,6 +23,11 @@ def test_seed_catalog_includes_reference_airports_and_states() -> None:
     assert pdx_docs
     assert all(doc.completeness == "link_only" for doc in pdx_docs)
     assert catalog.airports_by_lid["PDX"].name.startswith("Portland")
+    oregon = catalog.states_by_code["OR"]
+    assert oregon.agency == "Oregon Department of Aviation"
+    assert oregon.agency_url == "https://www.oregon.gov/aviation"
+    assert any(doc.id == "or-ors-836" for doc in catalog.documents)
+    assert catalog.document("or-ors-836").kind == "statute"
 
 
 def test_seed_without_overlay_is_reference_airports_only() -> None:

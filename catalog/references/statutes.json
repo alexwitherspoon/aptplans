@@ -1,0 +1,66 @@
+{
+  "description": "Official state aviation law and statewide system plan pages. Git stores the citation, not the compiled code. Snapshots and diffs wait for origin fetch.",
+  "documents": [
+    {
+      "id": "or-ors-836",
+      "kind": "statute",
+      "state": "OR",
+      "title": "Oregon Revised Statutes Chapter 836 - Airports and Landing Fields",
+      "source_url": "https://www.oregonlegislature.gov/bills_laws/ors/ors836.html",
+      "source_status": "live",
+      "completeness": "link_only",
+      "license_or_rights": "government_edict",
+      "review_status": "pending",
+      "summary": "State law for establishing, licensing, and protecting airports, including municipal airport authority and airport land-use compatibility (ORS 836.600-836.630). The legislature text is the citation of record."
+    },
+    {
+      "id": "or-ors-835",
+      "kind": "statute",
+      "state": "OR",
+      "title": "Oregon Revised Statutes Chapter 835 - Aviation Administration",
+      "source_url": "https://www.oregonlegislature.gov/bills_laws/ors/ors835.html",
+      "source_status": "live",
+      "completeness": "link_only",
+      "license_or_rights": "government_edict",
+      "review_status": "pending",
+      "summary": "Creates the Oregon Department of Aviation and sets statewide aviation administration. Read with Chapter 836 for airport land use."
+    },
+    {
+      "id": "or-oap",
+      "kind": "sasp",
+      "state": "OR",
+      "title": "Oregon Aviation Plan",
+      "edition": "2019",
+      "source_url": "https://www.oregon.gov/aviation/airports/planning-and-programs/Pages/default.aspx",
+      "source_status": "live",
+      "completeness": "link_only",
+      "license_or_rights": "public_record",
+      "review_status": "pending",
+      "summary": "Oregon's statewide aviation system plan. Individual airport master plans and ALPs sit under this framework; this page is not an ALP."
+    },
+    {
+      "id": "ma-gl-90",
+      "kind": "statute",
+      "state": "MA",
+      "title": "Massachusetts General Laws Chapter 90 - Motor Vehicles and Aircraft",
+      "source_url": "https://malegislature.gov/Laws/GeneralLaws/PartI/TitleXXII/Chapter90",
+      "source_status": "live",
+      "completeness": "link_only",
+      "license_or_rights": "government_edict",
+      "review_status": "pending",
+      "summary": "Includes aircraft registration and airport-related provisions for the Commonwealth. Official General Court text is the citation of record."
+    },
+    {
+      "id": "co-title-41",
+      "kind": "statute",
+      "state": "CO",
+      "title": "Colorado Revised Statutes Title 41 - Aeronautics, Aircraft, and Airports",
+      "source_url": "https://leg.colorado.gov/agencies/office-legislative-legal-services/colorado-revised-statutes",
+      "source_status": "live",
+      "completeness": "link_only",
+      "license_or_rights": "government_edict",
+      "review_status": "pending",
+      "summary": "Colorado's compiled aeronautics and airport title. Use the General Assembly CRS publication as the citation of record."
+    }
+  ]
+}

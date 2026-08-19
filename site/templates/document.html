@@ -23,6 +23,10 @@
   <p>No preservation copy yet. Completeness stays {{ document.completeness }} until the worker stores a hash-verified file.</p>
   {% endif %}
 
+  {% if document.supersedes %}
+  <p>This record replaces <a href="/documents/{{ document.supersedes }}/">{{ document.supersedes }}</a>.</p>
+  {% endif %}
+
   {% if document.summary %}
   <h2>Unofficial note</h2>
   <p>{{ document.summary }}</p>

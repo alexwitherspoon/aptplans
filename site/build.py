@@ -339,6 +339,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> None:
         "/airports/",
         "/states/",
         "/feeds/all.xml",
+        "/feeds/laws.xml",
     ]
     urls += [f"/states/{state.code}/" for state in catalog.states]
     urls += [f"/airports/{airport.lid}/" for airport in catalog.airports]
@@ -403,15 +404,25 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> None:
                 "title": f"{airport.lid} {airport.name}",
                 "url": f"/airports/{airport.lid}/",
                 "state": airport.state,
+                "text": " ".join(
+                    part
+                    for part in (airport.lid, airport.icao, airport.iata, airport.city, airport.npias_role)
+                    if part
+                ),
             }
         )
     for document in catalog.documents:
         search_index.append(
             {
-                "type": "document",
+                "type": document.kind,
                 "title": document.title or document.id,
                 "url": f"/documents/{document.id}/",
                 "state": document.state,
+                "text": " ".join(
+                    part
+                    for part in (document.id, document.kind, document.edition, document.summary)
+                    if part
+                ),
             }
         )
     _write(out_dir / "data" / "search.json", json.dumps(search_index) + "\n")

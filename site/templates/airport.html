@@ -3,36 +3,10 @@
 {% block title %}{{ airport.lid }} - {{ airport.name }}{% endblock %}
 {% block description %}Unofficial AptPlans briefing for {{ airport.name }} ({{ airport.lid }}): identity, plans, ALP, and FAA grants.{% endblock %}
 
-{% block content %}
-  <p class="crumb"><a href="/airports/">Airports</a>{% if airport.state %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}</p>
-  <h1>{{ airport.name }}</h1>
-  <p class="lede">
-    {{ airport.lid }}{% if airport.icao %} · {{ airport.icao }}{% endif %}{% if airport.iata %} · {{ airport.iata }}{% endif %}{% if airport.city or airport.state %} · {{ airport.city }}{% if airport.city and airport.state %}, {% endif %}{{ airport.state }}{% endif %}
-    · {% if airport.npias_role %}NPIAS {{ airport.npias_role|role_label }}{% elif airport.in_npias %}NPIAS{% else %}not in NPIAS{% endif %}
-  </p>
-  <p>{{ completeness|completeness_phrase }}</p>
-  {% if airport.facility_use or airport.ownership or airport.service_level or airport.nasr_effective or (airport.latitude is not none and airport.longitude is not none) %}
-  <p class="meta">
-    {% if airport.facility_use == "PU" %}public-use{% elif airport.facility_use == "PR" %}private-use{% endif %}
-    {% if airport.ownership %}{% if airport.facility_use %} · {% endif %}{{ airport.ownership|ownership_label }} ownership{% endif %}
-    {% if airport.service_level %} · {{ airport.service_level|service_label }}{% endif %}
-    {% if airport.latitude is not none and airport.longitude is not none %}
-    · <a href="geo:{{ airport.latitude }},{{ airport.longitude }}">{{ "%.4f"|format(airport.latitude) }}, {{ "%.4f"|format(airport.longitude) }}</a>
-    {% endif %}
-    {% if airport.nasr_effective %} · NASR {{ airport.nasr_effective }}{% endif %}
-  </p>
-  {% endif %}
-  {% if airport.admitted and "nasr" not in airport.sources %}
-  <p class="meta">Listed because a plan or issue admitted it. It is not in the current public-use NASR set.</p>
-  {% endif %}
-
-  <h2>Master plans and Airport Layout Plans</h2>
-  {% if documents %}
-  <ul class="doc-list">
-    {% for doc in documents %}
+{% macro plan_item(doc, show_kind=false) %}
     <li>
       <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
-      <span class="badge">{{ doc.kind|kind_label }}</span>
+      {% if show_kind %}<span class="badge">{{ doc.kind|kind_label }}</span>{% endif %}
       {% if doc.edition %}<span class="meta">{{ doc.edition }}</span>{% endif %}
       <span class="badge">{{ doc.completeness }}</span>
       <p class="meta">
@@ -41,10 +15,57 @@
       </p>
       {% if doc.summary %}<p>{{ doc.summary }}</p>{% endif %}
     </li>
-    {% endfor %}
+{% endmacro %}
+
+{% block content %}
+  <p class="crumb"><a href="/airports/">Airports</a>{% if airport.state %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}</p>
+  <h1>{{ airport.name }}</h1>
+  <p class="lede">
+    {{ airport.lid }}{% if airport.icao %} · {{ airport.icao }}{% endif %}{% if airport.iata %} · {{ airport.iata }}{% endif %}{% if airport.city or airport.state %} · {{ airport.city }}{% if airport.city and airport.state %}, {% endif %}{{ airport.state }}{% endif %}
+    · {% if airport.npias_role %}NPIAS {{ airport.npias_role|role_label }}{% elif airport.in_npias %}NPIAS{% else %}not in NPIAS{% endif %}
+  </p>
+  <p>{{ completeness|completeness_phrase }}</p>
+  {% if airport.facility_use or airport.ownership or airport.service_level or airport.nasr_effective or airport.website or (airport.latitude is not none and airport.longitude is not none) %}
+  <p class="meta">
+    {% if airport.facility_use == "PU" %}public-use{% elif airport.facility_use == "PR" %}private-use{% endif %}
+    {% if airport.ownership %}{% if airport.facility_use %} · {% endif %}{{ airport.ownership|ownership_label }} ownership{% endif %}
+    {% if airport.service_level %} · {{ airport.service_level|service_label }}{% endif %}
+    {% if airport.latitude is not none and airport.longitude is not none %}
+    · <a href="geo:{{ airport.latitude }},{{ airport.longitude }}">{{ "%.4f"|format(airport.latitude) }}, {{ "%.4f"|format(airport.longitude) }}</a>
+    {% endif %}
+    {% if airport.nasr_effective %} · NASR {{ airport.nasr_effective }}{% endif %}
+    {% if airport.website %} · <a href="{{ airport.website }}">Airport website</a>{% endif %}
+  </p>
+  {% endif %}
+  {% if airport.admitted and "nasr" not in airport.sources %}
+  <p class="meta">Listed because a plan or issue admitted it. It is not in the current public-use NASR set.</p>
+  {% endif %}
+
+  {% set alps = documents | selectattr("kind", "equalto", "alp") | list %}
+  {% set plans = documents | selectattr("kind", "equalto", "master_plan") | list %}
+  {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan"]) | list %}
+  <h2>Airport Layout Plans</h2>
+  {% if alps %}
+  <ul class="doc-list">
+    {% for doc in alps %}{{ plan_item(doc) }}{% endfor %}
   </ul>
   {% else %}
-  <p>No master plan or Airport Layout Plan is listed yet. That does not mean none exists.</p>
+  <p>No Airport Layout Plan is listed yet. That does not mean none exists.</p>
+  {% endif %}
+
+  <h2>Master plans</h2>
+  {% if plans %}
+  <ul class="doc-list">
+    {% for doc in plans %}{{ plan_item(doc) }}{% endfor %}
+  </ul>
+  {% else %}
+  <p>No narrative master plan is listed yet.{% if alps %} An ALP can stand on its own.{% endif %}</p>
+  {% endif %}
+  {% if other_docs %}
+  <h2>Other planning records</h2>
+  <ul class="doc-list">
+    {% for doc in other_docs %}{{ plan_item(doc, true) }}{% endfor %}
+  </ul>
   {% endif %}
 
   <h2>Federal funding</h2>
@@ -63,6 +84,9 @@
   {% endif %}
   {% if grant_stats.by_year %}
   <p class="meta">{% for year, total in grant_stats.by_year %}FY {{ year }} {{ total|usd }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if grant_stats.planning_count %}
+  <p class="meta">{{ grant_stats.planning_count }} planning grant{% if grant_stats.planning_count != 1 %}s{% endif %} in this list{% if grant_stats.planning %} - {{ grant_stats.planning[0].description|grant_title }}{% if grant_stats.planning[0].fiscal_year %} (FY {{ grant_stats.planning[0].fiscal_year }}){% endif %}{% endif %}.</p>
   {% endif %}
   <ul class="grant-list">
     {% for grant in grants %}
@@ -93,6 +117,31 @@
   </ul>
   {% else %}
   <p>No FAA grants are listed yet for this LocID.</p>
+  {% endif %}
+
+  {% if airport.state %}
+  <h2>State aviation law</h2>
+  <p>
+    {% if state and state.agency %}
+      {% if state.agency_url %}<a href="{{ state.agency_url }}">{{ state.agency }}</a>{% else %}{{ state.agency }}{% endif %}
+    {% else %}
+      <a href="/states/{{ airport.state }}/">{{ airport.state }} hub</a>
+    {% endif %}
+    {% if state and state.sasp_url %} · <a href="{{ state.sasp_url }}">Statewide system plan</a>{% endif %}
+    {% if state and state.statute_guide_url %} · <a href="{{ state.statute_guide_url }}">Airport statute</a>{% endif %}
+    {% if state and state.agency %} · <a href="/states/{{ airport.state }}/">{{ airport.state }} hub</a>{% endif %}
+  </p>
+  {% if state_documents %}
+  <ul class="doc-list">
+    {% for doc in state_documents %}
+    <li>
+      <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
+      <span class="badge">{{ doc.kind|kind_label }}</span>
+      {% if doc.summary %}<p class="meta">{{ doc.summary }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% endif %}
 
   <aside class="page-notes">

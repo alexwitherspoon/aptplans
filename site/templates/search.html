@@ -33,6 +33,7 @@
         if (q) {
           hits = items.filter(function (item) {
             return (item.title || "").toLowerCase().indexOf(q) !== -1 ||
+              (item.text || "").toLowerCase().indexOf(q) !== -1 ||
               (item.state || "").toLowerCase() === q;
           }).slice(0, 100);
         } else {

@@ -6,25 +6,31 @@
 {% block content %}
   <p class="crumb"><a href="/states/">States</a></p>
   <h1>{{ state.name }}</h1>
-  <p class="lede">Airports in this state and a slot for aviation and airport land-use statutes. This page is unofficial.</p>
+  <p class="lede">Airports in this state, plus official aviation and airport land-use law when we have a citation. This page is unofficial.</p>
   {% if state.agency %}
   <p>State aviation agency: {% if state.agency_url %}<a href="{{ state.agency_url }}">{{ state.agency }}</a>{% else %}{{ state.agency }}{% endif %}</p>
   {% endif %}
   {% if state.sasp_url %}
-  <p>State aviation system plan: <a href="{{ state.sasp_url }}">Official source</a></p>
-  {% else %}
-  <p>State aviation system plan: not listed yet.</p>
+  <p>Statewide aviation system plan: <a href="{{ state.sasp_url }}">Official source</a></p>
+  {% endif %}
+  {% if state.statute_guide_url %}
+  <p>Airport statute: <a href="{{ state.statute_guide_url }}">Official source</a></p>
   {% endif %}
   {% if documents %}
   <h2>Statutes and system plans</h2>
-  <ul>
+  <ul class="doc-list">
     {% for doc in documents %}
-    <li><a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a> <span class="badge">{{ doc.completeness }}</span></li>
+    <li>
+      <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
+      <span class="badge">{{ doc.kind|kind_label }}</span>
+      <span class="badge">{{ doc.completeness }}</span>
+      {% if doc.summary %}<p class="meta">{{ doc.summary }}</p>{% endif %}
+    </li>
     {% endfor %}
   </ul>
   {% else %}
   <h2>Statutes</h2>
-  <p>Statute snapshots for this state are not in the catalog yet. Hint an official URL with <a href="{{ intake_url }}">a GitHub issue</a>.</p>
+  <p>No compiled statute snapshot is in the catalog yet for this state. The agency link above is the usual starting point. Hint an official URL with <a href="{{ intake_url }}">a GitHub issue</a>.</p>
   {% endif %}
   <h2>Airports</h2>
   <ul>
@@ -36,5 +42,8 @@
     </li>
     {% endfor %}
   </ul>
-  <p><a href="/feeds/states/{{ state.code }}.xml">State RSS</a></p>
+  <p class="meta">
+    <a href="/feeds/states/{{ state.code }}.xml">State RSS</a>
+    · <a href="https://nasao.org/page/members">NASAO member directory</a>
+  </p>
 {% endblock %}

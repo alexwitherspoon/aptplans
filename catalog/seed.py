@@ -11,8 +11,25 @@ from catalog.models import Airport, Document, Grant, State
 from catalog.store import Catalog, load_airports_overlay, load_grants_overlay, load_overlay, merge_overlay
 
 
-def _states() -> list[State]:
-    return [State(code=code, name=name) for code, name in US_STATES.items()]
+def _states(catalog_root: Path) -> list[State]:
+    by_code = {code: State(code=code, name=name) for code, name in US_STATES.items()}
+    path = catalog_root / "references" / "states.json"
+    if path.is_file():
+        for row in json.loads(path.read_text(encoding="utf-8")).get("states") or []:
+            code = row.get("code")
+            current = by_code.get(code)
+            if current is None:
+                continue
+            by_code[code] = State.from_dict({**current.to_dict(), **row, "name": current.name})
+    return [by_code[code] for code in US_STATES]
+
+
+def _reference_statutes(catalog_root: Path) -> list[Document]:
+    path = catalog_root / "references" / "statutes.json"
+    if not path.is_file():
+        return []
+    rows = json.loads(path.read_text(encoding="utf-8")).get("documents") or []
+    return [Document.from_dict(row) for row in rows]
 
 
 def _apply_reference_cases(by_lid: dict[str, Airport], catalog_root: Path) -> list[Document]:
@@ -57,11 +74,12 @@ def _reference_grants(catalog_root: Path) -> list[Grant]:
 def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog:
     by_lid = {airport.lid: airport for airport in load_airports_overlay(overlay_dir)}
     documents = _apply_reference_cases(by_lid, catalog_root)
+    documents.extend(_reference_statutes(catalog_root))
     airports = sorted(by_lid.values(), key=lambda item: (item.state, item.lid))
     overlay_grants = load_grants_overlay(overlay_dir)
     catalog = Catalog(
         airports=airports,
-        states=_states(),
+        states=_states(catalog_root),
         documents=documents,
         changes=[],
         grants=overlay_grants or _reference_grants(catalog_root),

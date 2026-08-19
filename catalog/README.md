@@ -4,7 +4,8 @@ A document is **complete** only when both an official `source_url` and a hash-ve
 
 Airport identity is not committed. Origin fetches FAA NASR APT (the public-use superset) and NPIAS Appendix A into overlay `airports.jsonl`, and AIP grant histories into `grants.jsonl`. NPIAS is a likelihood flag, not a gate. CI and a git-only site build use `references/` (about seven airports). See `data/README.md` and [FAA terms and systems](../docs/FAA.md).
 
-- `references/` holds known-good official master plans and Airport Layout Plans used as development fixtures. They stay `link_only` until the worker stores a hash. `references/grants.json` is a small LocID sample so git-only builds can render the funding list; origin `grants.jsonl` replaces it.
+- `references/` holds known-good official master plans and Airport Layout Plans used as development fixtures. They stay `link_only` until the worker stores a hash. `references/grants.json` is a small LocID sample so git-only builds can render the funding list; origin `grants.jsonl` replaces it. `references/states.json` names each state's aviation agency. `references/statutes.json` holds a few official law and SASP citations so state hubs are not empty.
+- Origin overlay JSONL (`APTPLANS_CATALOG_OVERLAY`) records airport identity after a monthly refresh, plus hashes and completeness after a fetch. Git stays the public index; the overlay is origin disk.
 - Origin overlay JSONL (`APTPLANS_CATALOG_OVERLAY`) records airport identity after a monthly refresh, plus hashes and completeness after a fetch. Git stays the public index; the overlay is origin disk.
 
 Do not add origin corpus files here.

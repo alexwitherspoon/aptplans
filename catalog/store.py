@@ -229,4 +229,5 @@ def counts(catalog: Catalog) -> dict[str, int]:
         "no_plan_known": sum(1 for status in airport_status if status == "no_plan_known"),
         "documents_complete": sum(1 for doc in catalog.documents if doc.completeness == "complete"),
         "documents_link_only": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
+        "statutes": sum(1 for doc in catalog.documents if doc.kind in {"statute", "sasp"}),
     }

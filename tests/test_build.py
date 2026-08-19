@@ -42,6 +42,18 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     )
     assert "not an FAA" in pdx.lower() or "unofficial" in pdx.lower()
     assert "Federal funding" in pdx
+    assert "Airport Layout Plans" in pdx
+    assert "Master plans" in pdx
+    assert "State aviation law" in pdx
+    assert "Oregon Department of Aviation" in pdx
+    assert "Airports and Landing Fields" in pdx
+    oregon = (out / "states" / "OR" / "index.html").read_text(encoding="utf-8")
+    assert "Oregon Department of Aviation" in oregon
+    assert "or-ors-836" in (out / "documents" / "or-ors-836" / "index.html").read_text(encoding="utf-8")
+    home = (out / "index.html").read_text(encoding="utf-8")
+    assert "state law records" in home
+    sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
+    assert "/feeds/laws.xml" in sitemap
     assert "AIP grant histories" in pdx
     assert "KPDX" in pdx
     assert "large hub" in pdx
@@ -118,6 +130,7 @@ def test_build_airport_lists_grants(tmp_path: Path) -> None:
     assert "FY 2025 $500,000" in pdx
     assert "9 Jul 2025" in pdx
     assert "Planning grants" not in pdx
+    assert "planning grant" in pdx
     assert "https://www.usaspending.gov/award/ASST_NON_34100480642025_069" in pdx
     assert "https://www.faa.gov/airports/aip/grant_histories/2025" in pdx
     assert "$100,000 spent · $400,000 still obligated" in pdx
