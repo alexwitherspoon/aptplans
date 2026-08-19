@@ -72,6 +72,7 @@ desktop.ini
 docs/*DIAGNOSTICS*.md
 docs/*TROUBLESHOOTING*.md
 docs/*TEST*.md
+!docs/TESTING.md
 docs/*TEMP*.md
 docs/*ANALYSIS*.md
 docs/*CHECKLIST*.md
