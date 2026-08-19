@@ -34,6 +34,9 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "OLLAMA_HOST=http://ollama:11434" in text
     assert "APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}" in text
     assert "INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}" in prod
+    assert "APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog" in prod
+    assert "APTPLANS_QUEUE=/var/lib/aptplans/queue" in prod
+    assert "APTPLANS_SITE=/var/lib/aptplans/site" in prod
     assert "OLLAMA_NO_CLOUD=1" in text
     assert "OLLAMA_KEEP_ALIVE=-1" in text
     assert "OLLAMA_MAX_LOADED_MODELS=1" in text

@@ -11,3 +11,5 @@ services:
     volumes:
       - /opt/aptplans:/app
       - /var/lib/aptplans/files:/var/lib/aptplans/files
+      - /var/lib/aptplans/queue:/var/lib/aptplans/queue
+      - /var/lib/aptplans/catalog:/var/lib/aptplans/catalog

@@ -53,4 +53,10 @@ fi
 
 echo "Provisioning Ollama model"
 "${SCRIPT_DIR}/provision-ollama.sh"
+if [ ! -s /var/lib/aptplans/catalog/airports.jsonl ] || [ ! -s /var/lib/aptplans/catalog/grants.jsonl ]; then
+    echo "Fetching NASR, NPIAS, and AIP grant histories (missing overlay)"
+    "${COMPOSE[@]}" exec -T worker python3 -m pipeline.refresh_airports --force
+fi
+echo "Rebuilding HTML from git catalog plus origin overlay"
+"${COMPOSE[@]}" run --rm --no-deps --no-TTY worker python3 site/build.py --out /var/lib/aptplans/site
 echo "deploy complete"

@@ -18,7 +18,7 @@ CD SSHs only as `aptplans`. sshd sets `PermitRootLogin no` and `AllowUsers aptpl
 | --- | --- |
 | `CLOUDFLARE_ORIGIN_CERT` | PEM for a [Cloudflare Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/) certificate covering `aptplans.org` |
 | `CLOUDFLARE_ORIGIN_KEY` | Matching private key |
-| `PIA_SOCKS_USER` | Private Internet Access SOCKS5 username (`x…` from the [Client Control Panel](https://www.privateinternetaccess.com), not the `p…` VPN login) |
+| `PIA_SOCKS_USER` | Private Internet Access SOCKS5 username (`x...` from the [Client Control Panel](https://www.privateinternetaccess.com), not the `p...` VPN login) |
 | `PIA_SOCKS_PASSWORD` | Matching SOCKS5 password |
 | `PIA_SOCKS_HOST` | SOCKS host. Default `proxy-nl.privateinternetaccess.com` if unset |
 | `PIA_SOCKS_PORT` | SOCKS port. Default `1080` if unset |

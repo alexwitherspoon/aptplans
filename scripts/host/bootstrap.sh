@@ -14,6 +14,8 @@ APP_USER="${APP_USER:-aptplans}"
 REPO_DIR="${REPO_DIR:-/opt/aptplans}"
 SITE_DIR="${SITE_DIR:-/var/lib/aptplans/site}"
 FILES_DIR="${FILES_DIR:-/var/lib/aptplans/files}"
+QUEUE_DIR="${QUEUE_DIR:-/var/lib/aptplans/queue}"
+CATALOG_OVERLAY_DIR="${CATALOG_OVERLAY_DIR:-/var/lib/aptplans/catalog}"
 TLS_DIR="${TLS_DIR:-/var/lib/aptplans/tls}"
 OLLAMA_DIR="${OLLAMA_DIR:-/var/lib/aptplans/ollama}"
 MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"
@@ -142,11 +144,13 @@ ensure_directories() {
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${REPO_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SITE_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${FILES_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${QUEUE_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${CATALOG_OVERLAY_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${TLS_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${OLLAMA_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${MODELS_DIR}"
     as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
-    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}"
+    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}"
 }
 
 ensure_origin_tls() {
@@ -205,6 +209,8 @@ install_systemd_units() {
     log "installing systemd units"
     as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.service" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.timer" /etc/systemd/system/
+    as_root cp "${REPO_ROOT}/systemd/aptplans-airports.service" /etc/systemd/system/
+    as_root cp "${REPO_ROOT}/systemd/aptplans-airports.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.service" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-ollama-warmup.service" /etc/systemd/system/
@@ -213,6 +219,7 @@ install_systemd_units() {
     as_root chmod 644 /etc/cron.d/aptplans-docker-cleanup /etc/logrotate.d/aptplans-docker-cleanup
     as_root systemctl daemon-reload
     as_root systemctl enable --now aptplans-pipeline.timer
+    as_root systemctl enable --now aptplans-airports.timer
     as_root systemctl enable --now aptplans-reboot.timer
     as_root systemctl enable aptplans-ollama-warmup.service
 }
@@ -223,6 +230,8 @@ write_env_file() {
 # Written by scripts/host/bootstrap.sh - do not commit.
 SITE_PATH=${SITE_DIR}
 FILES_PATH=${FILES_DIR}
+QUEUE_PATH=${QUEUE_DIR}
+CATALOG_OVERLAY_PATH=${CATALOG_OVERLAY_DIR}
 REPO_PATH=${REPO_DIR}
 TLS_PATH=${TLS_DIR}
 OLLAMA_PATH=${OLLAMA_DIR}

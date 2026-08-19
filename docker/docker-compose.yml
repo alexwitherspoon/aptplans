@@ -45,8 +45,12 @@ services:
     volumes:
       - ..:/app
       - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
+      - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue
+      - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
     environment:
       - APTPLANS_FILES=/var/lib/aptplans/files
+      - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_USER_AGENT=${APTPLANS_USER_AGENT:-aptplans.org}
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-bonsai-27b}

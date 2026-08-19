@@ -1,17 +1,29 @@
-name: Missing or dead document
-description: Point us at a master plan, Airport Layout Plan (ALP), or statute we should capture, or report a dead official URL
+name: Document hint
+description: Hint a missing master plan, ALP, or statute, or tell us a listed URL is stale, dead, or wrong
 title: "[Document] "
 labels: ["intake"]
 body:
   - type: markdown
     attributes:
       value: |
-        Official URLs are the citation of record. Send the sponsor, FAA, or legislature link if you have it.
+        This is a hint for the fetch queue, not a publish switch. Official URLs stay the citation of record.
         This project is unofficial and is not an FAA or airport publication.
+  - type: dropdown
+    id: report_type
+    attributes:
+      label: What should we do?
+      options:
+        - Add a missing document
+        - Official URL is stale or dead
+        - Listed document is wrong (wrong airport, kind, or file)
+        - Edition is out of date
+        - Other
+    validations:
+      required: true
   - type: dropdown
     id: kind
     attributes:
-      label: What is this?
+      label: What kind of document?
       options:
         - Airport master plan
         - Airport Layout Plan (ALP)
@@ -23,8 +35,8 @@ body:
   - type: input
     id: airport
     attributes:
-      label: Airport (if applicable)
-      description: FAA LID, ICAO, or name (for example PAE or Snohomish County)
+      label: Airport
+      description: FAA LID, ICAO, or name (for example PDX or Mulino). Required when this is about an airport.
   - type: input
     id: state
     attributes:
@@ -34,11 +46,11 @@ body:
     id: official_url
     attributes:
       label: Official URL
-      description: Sponsor, state DOT, legislature, or FAA page or PDF
+      description: Sponsor, state DOT, legislature, or FAA page or PDF to fetch or to correct
   - type: textarea
     id: notes
     attributes:
       label: Notes
-      description: Edition year, what replaced a dead link, or anything else useful
+      description: Edition year, what replaced a dead link, why a listing is wrong, or anything else useful
     validations:
       required: true
