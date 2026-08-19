@@ -27,7 +27,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
 3. Run [`scripts/host/remote-deploy.sh`](../scripts/host/remote-deploy.sh), which is idempotent:
    - Confirms Debian 13
    - Installs the small host package set (no Python, no Caddy, no nginx on the host)
-   - Installs Docker Engine from Docker’s Debian repo
+   - Installs Docker Engine from Docker's Debian repo
    - Creates `aptplans` (docker group, passwordless sudo)
    - Timezone `America/Los_Angeles`
    - sshd drop-in (no passwords, `PermitRootLogin no`, `AllowUsers aptplans`)
@@ -37,7 +37,8 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - unattended-upgrades for Debian and Docker packages (installs automatically; **does not reboot by itself**)
    - systemd timer **Monday 12:00 Pacific** → reboot
    - weekly Docker prune (Sunday 02:00 Pacific)
-   - pipeline timer
+   - weekly document pipeline timer
+   - monthly NASR/NPIAS airport refresh (1st of the month, Pacific)
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
    - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS and intake GitHub token if those Actions secrets are set)
    - `docker compose` up for the full stack: Caddy on 80/443, worker, CPU Ollama
@@ -50,6 +51,8 @@ Host layout:
 | `/opt/aptplans` | rsynced git tree |
 | `/var/lib/aptplans/site` | generated HTML |
 | `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
+| `/var/lib/aptplans/catalog` | worker overlay (airport identity, completeness, hashes; not in git) |
+| `/var/lib/aptplans/queue` | serial job JSON |
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
@@ -69,7 +72,7 @@ sudo /opt/aptplans/scripts/host/remote-deploy.sh
 Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The pipeline timer execs one job into the running worker.
 
 ```bash
-systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer
+systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer aptplans-airports.timer
 ```
 
 ## What not to install on the host

@@ -6,9 +6,9 @@ Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and [CODE_STYLE.md](CODE_ST
 
 ## Ways to help
 
-- **Missing documents.** If you know where a master plan, Airport Layout Plan (ALP), or statute lives, [open an issue](https://github.com/alexwitherspoon/aptplans/issues/new?template=missing-document.yml). Official URLs are the most useful thing you can send.
+- **Missing, stale, or wrong documents.** If you know where a master plan, Airport Layout Plan (ALP), or statute lives, or a listed URL is dead or the wrong file, [open an issue](https://github.com/alexwitherspoon/aptplans/issues/new?template=missing-document.yml). Official URLs are the most useful thing you can send. Issues are hints for the fetch queue, not a publish switch.
 - **Dead or replaced links.** If an official PDF 404s or was quietly swapped, tell us the airport (FAA LID), the old URL, and anything that replaced it.
-- **Code and docs.** Fork, branch, and open a pull request. See [Local setup](docs/LOCAL_SETUP.md).
+- **Code and docs.** Fork, branch, and open a pull request. See [Local setup](docs/LOCAL_SETUP.md). FAA names used in this repo are defined in [FAA terms and systems](docs/FAA.md).
 
 ## Local development
 

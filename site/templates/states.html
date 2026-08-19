@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}States - AptPlans{% endblock %}
+{% block description %}Fifty-state aviation and airport land-use statute hubs.{% endblock %}
+
+{% block content %}
+  <h1>States</h1>
+  <p class="lede">Aviation, airport, and airport land-use law snapshots, plus that state's NPIAS airports.</p>
+  <ul>
+    {% for state in states %}
+    <li>
+      <a href="/states/{{ state.code }}/">{{ state.name }}</a>
+      ({{ airport_counts[state.code] }} airports)
+    </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

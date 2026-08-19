@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title or document.id }} - AptPlans{% endblock %}
+{% block description %}Unofficial AptPlans record for {{ document.title or document.id }}. Official sources remain the citation of record.{% endblock %}
+
+{% block content %}
+  <p class="crumb">
+    {% if airport %}<a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a> ·{% endif %}
+    {% if document.state %}<a href="/states/{{ document.state }}/">{{ document.state }}</a>{% endif %}
+  </p>
+  <h1>{{ document.title or document.id }}</h1>
+  <p class="lede">{{ kind_label }}{% if document.edition %} · {{ document.edition }}{% endif %} · <span class="badge">{{ document.completeness }}</span></p>
+  <p>This record is unofficial. It is not an FAA, state, or airport publication, and it is not legal advice.</p>
+
+  <h2>Official source</h2>
+  <p><a href="{{ document.source_url }}">{{ document.source_url }}</a></p>
+  <p>Source status: {{ document.source_status }}{% if document.source_retrieved_at %} · retrieved {{ document.source_retrieved_at }}{% endif %}</p>
+
+  <h2>Archived copy</h2>
+  {% if document.preserved_url %}
+  <p><a href="{{ document.preserved_url }}">Preservation copy</a> (SHA-256 {{ document.content_sha256 }})</p>
+  {% else %}
+  <p>No preservation copy yet. Completeness stays {{ document.completeness }} until the worker stores a hash-verified file.</p>
+  {% endif %}
+
+  {% if document.summary %}
+  <h2>Unofficial note</h2>
+  <p>{{ document.summary }}</p>
+  {% endif %}
+
+  <p>
+    Stale, dead, or the wrong file?
+    <a href="{{ intake_url }}">Tell us</a>.
+  </p>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Search - AptPlans{% endblock %}
+
+{% block content %}
+  <h1>Search</h1>
+  <p class="lede">Filter the airport list and catalogued documents. This is not a legal research tool.</p>
+  <form class="search-form" action="/search/" method="get" role="search">
+    <label for="q">Query</label>
+    <input id="q" name="q" type="search" placeholder="PDX, Hood River, ALP">
+    <button type="submit">Search</button>
+  </form>
+  <p id="status"></p>
+  <ul id="results" class="doc-list"></ul>
+  <noscript>
+    <p>JavaScript is off. Use the <a href="/airports/">airport index</a> or browser find.</p>
+  </noscript>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var q = (params.get("q") || "").trim().toLowerCase();
+      var input = document.getElementById("q");
+      if (input) input.value = params.get("q") || "";
+      var results = document.getElementById("results");
+      var status = document.getElementById("status");
+      function esc(value) {
+        return String(value).replace(/[&<>"']/g, function (char) {
+          return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char];
+        });
+      }
+      fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
+        var hits = items;
+        if (q) {
+          hits = items.filter(function (item) {
+            return (item.title || "").toLowerCase().indexOf(q) !== -1 ||
+              (item.state || "").toLowerCase() === q;
+          }).slice(0, 100);
+        } else {
+          hits = items.slice(0, 25);
+        }
+        status.textContent = q ? (hits.length + " matches") : "Type a LID, airport, or state.";
+        results.innerHTML = hits.map(function (item) {
+          return "<li><a href=\"" + esc(item.url) + "\">" + esc(item.title) + "</a> <span class=\"badge\">" + esc(item.type) + "</span></li>";
+        }).join("");
+      }).catch(function () {
+        status.textContent = "Search index failed to load.";
+      });
+    })();
+  </script>
+{% endblock %}

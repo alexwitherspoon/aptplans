@@ -7,7 +7,7 @@ This is an **unofficial document library**, not flight-planning weather and not 
 ## Product and copy
 
 - Official sources are the citation of record. A document is `complete` only with both an official URL and a hash-verified preserved copy.
-- Name **airport master plans** and **Airport Layout Plans (ALPs)** as coequal works. Use the FAA term Airport Layout Plan on first mention, then ALP. An ALP without a narrative master plan is still a catalogued document (`kind: alp`), not `no_plan_known`.
+- Name **airport master plans** and **Airport Layout Plans (ALPs)** as coequal works. Use the FAA term Airport Layout Plan on first mention, then ALP. An ALP without a narrative master plan is still a catalogued document (`kind: alp`), not `no_plan_known`. FAA names and systems used in this repo are defined in [`docs/FAA.md`](docs/FAA.md).
 - Summaries and change notes are unofficial. Do not brand a model or call the site an "AI product" on public pages.
 - Keep templates few and CSS thin. Search, map, and document pages are static HTML. Do not add a JavaScript SPA.
 - User-facing crawlers identify as `aptplans.org`.
@@ -52,7 +52,7 @@ Host scripts under `scripts/host/` are idempotent and must be safe to re-run fro
 
 ## Tests
 
-- `make test` must pass. Add tests next to new behavior (schema, builder, later fetch/hash).
+- `make test` must pass. Add tests next to new behavior (schema, builder, fetch/hash, intake).
 - CI must not need the KS-6, PDFs, or model weights.
 - Do not require Docker for unit tests.
 

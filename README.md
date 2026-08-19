@@ -2,7 +2,7 @@
 
 Discover and engage with airport and aviation planning documents.
 
-**[aptplans.org](https://aptplans.org)** is a public library of US airport master plans, Airport Layout Plans (ALPs), and 50-state aviation, land-use, and airport law (every NPIAS airport, every published version we can find). Official sources stay the citation of record. This project also keeps a preservation copy so files survive when sponsor sites go away, and so we can show what changed.
+**[aptplans.org](https://aptplans.org)** is a public library of US airport master plans, Airport Layout Plans (ALPs), and 50-state aviation, land-use, and airport law (public-use NASR airports, every published version we can find). Official sources stay the citation of record. This project also keeps a preservation copy so files survive when sponsor sites go away, and so we can show what changed.
 
 [![Test](https://github.com/alexwitherspoon/aptplans/actions/workflows/test.yml/badge.svg)](https://github.com/alexwitherspoon/aptplans/actions/workflows/test.yml)
 
@@ -25,9 +25,10 @@ The generated site is served at http://127.0.0.1:8080
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — catalog, origin host, pipeline, and site
+- [Architecture](docs/ARCHITECTURE.md) - catalog, origin host, pipeline, and site
+- [FAA terms and systems](docs/FAA.md) - NASR, NPIAS, ALP, AIP, ADIP, and related glossary
 - [Local setup](docs/LOCAL_SETUP.md)
-- [Deployment](docs/DEPLOYMENT.md) — GitHub Actions CD from a bare Debian 13 host
+- [Deployment](docs/DEPLOYMENT.md) - GitHub Actions CD from a bare Debian 13 host
 - [Operations](docs/OPERATIONS.md)
 - [Security](docs/SECURITY.md)
 - [Testing](docs/TESTING.md)
@@ -37,11 +38,11 @@ The generated site is served at http://127.0.0.1:8080
 
 ## What lives in this repository
 
-Code, catalog metadata, statute snapshots, and generated page summaries. Source PDFs and extracted full text live on the origin host, not in git. See [Architecture](docs/ARCHITECTURE.md).
+Code, catalog metadata (reference cases and 50 state hubs), and builder templates. Airport identity is fetched on origin from FAA NASR and NPIAS, not stored in git. Hashed preservation copies and extracted full text live on the origin host. See [Architecture](docs/ARCHITECTURE.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT - see [LICENSE](LICENSE)
 
 ---
 

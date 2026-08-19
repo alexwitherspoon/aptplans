@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ state.name }} - AptPlans{% endblock %}
+{% block description %}Unofficial AptPlans hub for {{ state.name }} airports and aviation law.{% endblock %}
+
+{% block content %}
+  <p class="crumb"><a href="/states/">States</a></p>
+  <h1>{{ state.name }}</h1>
+  <p class="lede">Airports in this state and a slot for aviation and airport land-use statutes. This page is unofficial.</p>
+  {% if state.agency %}
+  <p>State aviation agency: {% if state.agency_url %}<a href="{{ state.agency_url }}">{{ state.agency }}</a>{% else %}{{ state.agency }}{% endif %}</p>
+  {% endif %}
+  {% if state.sasp_url %}
+  <p>State aviation system plan: <a href="{{ state.sasp_url }}">Official source</a></p>
+  {% else %}
+  <p>State aviation system plan: not listed yet.</p>
+  {% endif %}
+  {% if documents %}
+  <h2>Statutes and system plans</h2>
+  <ul>
+    {% for doc in documents %}
+    <li><a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a> <span class="badge">{{ doc.completeness }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <h2>Statutes</h2>
+  <p>Statute snapshots for this state are not in the catalog yet. Hint an official URL with <a href="{{ intake_url }}">a GitHub issue</a>.</p>
+  {% endif %}
+  <h2>Airports</h2>
+  <ul>
+    {% for airport in airports %}
+    <li>
+      <a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a>
+      {{ airport.name }}
+      <span class="badge">{{ completeness_for(airport.lid) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p><a href="/feeds/states/{{ state.code }}.xml">State RSS</a></p>
+{% endblock %}

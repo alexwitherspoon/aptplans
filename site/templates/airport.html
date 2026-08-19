@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ airport.lid }} - {{ airport.name }}{% endblock %}
+{% block description %}Unofficial AptPlans briefing for {{ airport.name }} ({{ airport.lid }}): identity, plans, ALP, and FAA grants.{% endblock %}
+
+{% block content %}
+  <p class="crumb"><a href="/airports/">Airports</a>{% if airport.state %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}</p>
+  <h1>{{ airport.name }}</h1>
+  <p class="lede">
+    {{ airport.lid }}{% if airport.icao %} · {{ airport.icao }}{% endif %}{% if airport.iata %} · {{ airport.iata }}{% endif %}{% if airport.city or airport.state %} · {{ airport.city }}{% if airport.city and airport.state %}, {% endif %}{{ airport.state }}{% endif %}
+    · {% if airport.npias_role %}NPIAS {{ airport.npias_role|role_label }}{% elif airport.in_npias %}NPIAS{% else %}not in NPIAS{% endif %}
+  </p>
+  <p>{{ completeness|completeness_phrase }}</p>
+  {% if airport.facility_use or airport.ownership or airport.service_level or airport.nasr_effective or (airport.latitude is not none and airport.longitude is not none) %}
+  <p class="meta">
+    {% if airport.facility_use == "PU" %}public-use{% elif airport.facility_use == "PR" %}private-use{% endif %}
+    {% if airport.ownership %}{% if airport.facility_use %} · {% endif %}{{ airport.ownership|ownership_label }} ownership{% endif %}
+    {% if airport.service_level %} · {{ airport.service_level|service_label }}{% endif %}
+    {% if airport.latitude is not none and airport.longitude is not none %}
+    · <a href="geo:{{ airport.latitude }},{{ airport.longitude }}">{{ "%.4f"|format(airport.latitude) }}, {{ "%.4f"|format(airport.longitude) }}</a>
+    {% endif %}
+    {% if airport.nasr_effective %} · NASR {{ airport.nasr_effective }}{% endif %}
+  </p>
+  {% endif %}
+  {% if airport.admitted and "nasr" not in airport.sources %}
+  <p class="meta">Listed because a plan or issue admitted it. It is not in the current public-use NASR set.</p>
+  {% endif %}
+
+  <h2>Master plans and Airport Layout Plans</h2>
+  {% if documents %}
+  <ul class="doc-list">
+    {% for doc in documents %}
+    <li>
+      <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
+      <span class="badge">{{ doc.kind|kind_label }}</span>
+      {% if doc.edition %}<span class="meta">{{ doc.edition }}</span>{% endif %}
+      <span class="badge">{{ doc.completeness }}</span>
+      <p class="meta">
+        <a href="{{ doc.source_url }}">Official source</a>
+        {% if doc.preserved_url %} · <a href="{{ doc.preserved_url }}">preserved copy</a>{% endif %}
+      </p>
+      {% if doc.summary %}<p>{{ doc.summary }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No master plan or Airport Layout Plan is listed yet. That does not mean none exists.</p>
+  {% endif %}
+
+  <h2>Federal funding</h2>
+  {% if grants %}
+  <p class="totals">
+    {% if grant_stats.total %}{{ grant_stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
+    in {{ grant_stats.count }} grant{% if grant_stats.count != 1 %}s{% endif %}{% if grant_stats.year_min %}
+    (FY {{ grant_stats.year_min }}{% if grant_stats.year_max and grant_stats.year_max != grant_stats.year_min %}-{{ grant_stats.year_max }}{% endif %}){% endif %}.
+  </p>
+  {% if grant_stats.spent is not none or grant_stats.remaining is not none %}
+  <p class="totals">
+    {% if grant_stats.spent is not none %}{{ grant_stats.spent|usd }} spent{% endif %}
+    {% if grant_stats.spent is not none and grant_stats.remaining is not none %} · {% endif %}
+    {% if grant_stats.remaining is not none %}{{ grant_stats.remaining|usd }} still obligated{% endif %}
+  </p>
+  {% endif %}
+  {% if grant_stats.by_year %}
+  <p class="meta">{% for year, total in grant_stats.by_year %}FY {{ year }} {{ total|usd }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  <ul class="grant-list">
+    {% for grant in grants %}
+    <li>
+      <p class="grant-when">{{ grant|grant_date }}{% if grant.amount %} · {{ grant.amount|usd }} awarded{% endif %}</p>
+      {% if grant.outlayed is not none and grant|grant_remaining is not none %}
+      <p class="meta">{{ grant.outlayed|usd }} spent · {{ grant|grant_remaining|usd }} still obligated</p>
+      {% endif %}
+      <p class="grant-title">{{ grant.description|grant_title }}</p>
+      {% if grant.description|grant_brief %}
+      <p class="grant-brief">{{ grant.description|grant_brief }}</p>
+      {% endif %}
+      <p class="meta">
+        {% if grant.programs %}{{ grant.programs|join(", ") }}{% endif %}
+        {% if grant.grant_number %}{% if grant.programs %} · {% endif %}{{ grant.grant_number }}{% endif %}
+        {% if grant.is_planning %} · planning{% endif %}
+        {% if grant.fiscal_year and grant.award_date %} · FY {{ grant.fiscal_year }}{% endif %}
+      </p>
+      {% if grant.grant_number|usaspending_url or grant.fiscal_year|faa_year_url or grant.source_url %}
+      <p class="meta">
+        {% if grant.grant_number|usaspending_url %}<a href="{{ grant.grant_number|usaspending_url }}">USAspending award</a>{% endif %}
+        {% if grant.fiscal_year|faa_year_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.fiscal_year|faa_year_url }}">FAA FY {{ grant.fiscal_year }} summary</a>
+        {% elif grant.source_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.source_url }}">FAA workbook</a>{% endif %}
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No FAA grants are listed yet for this LocID.</p>
+  {% endif %}
+
+  <aside class="page-notes">
+    <p>Unofficial. Not an FAA or airport publication, not legal advice, and not for flight planning. Identity from FAA <a href="https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/">NASR</a> and <a href="https://www.faa.gov/airports/planning_capacity/npias">NPIAS</a>. Awarded amounts from <a href="https://www.faa.gov/airports/aip/grant_histories">AIP grant histories</a>. Spent and still obligated from <a href="https://www.usaspending.gov/">USAspending</a> outlays (Award Amount minus Total Outlays). Each grant number links to the USAspending award record. Official sources remain the citation of record.</p>
+    <p>
+      Something stale or missing?
+      <a href="{{ intake_url }}">Open an issue</a>
+      or email contact@aptplans.org
+      {% if documents %} · <a href="/feeds/airports/{{ airport.lid }}.xml">Airport RSS</a>{% endif %}
+    </p>
+  </aside>
+{% endblock %}
+
+{% block footer_notice %}{% endblock %}

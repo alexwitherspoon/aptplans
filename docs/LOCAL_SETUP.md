@@ -43,4 +43,4 @@ cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
 
 ## What not to put in this clone
 
-PDFs, model weights, and extracted full text stay out of git. Local crawls, if you run them, should write under a directory that `.gitignore` already covers (`data/files/` or `*.pdf`). Compose defines `site`, `worker`, and `ollama`. `make up` starts only `site`. Origin CD starts the full stack.
+PDFs, model weights, and extracted full text stay out of git. Local crawls, if you run them, should write under a directory that `.gitignore` already covers (`data/files/`, `data/queue/`, `data/catalog/`, or `*.pdf`). Airport identity from FAA lives in `data/catalog/airports.jsonl` when you refresh locally (`python3 -m pipeline.refresh_airports`); do not commit it. Compose defines `site`, `worker`, and `ollama`. `make up` starts only `site`. Origin CD starts the full stack.

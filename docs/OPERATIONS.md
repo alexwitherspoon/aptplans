@@ -1,6 +1,6 @@
 # Operations
 
-Steady state should be boring: unattended-upgrades, a Monday reboot, a weekly pipeline timer that usually finds nothing, and an occasional GitHub issue or PR.
+Steady state should be boring: unattended-upgrades, a Monday reboot, a weekly document pipeline timer, a monthly NASR/NPIAS/grant refresh, and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
 
 ## Deploy
 
@@ -20,11 +20,13 @@ cat /var/log/unattended-upgrades/unattended-upgrades.log
 
 ```bash
 systemctl status aptplans-pipeline.timer
-systemctl list-timers aptplans-pipeline.timer
+systemctl status aptplans-airports.timer
+systemctl list-timers aptplans-pipeline.timer aptplans-airports.timer
 journalctl -u aptplans-pipeline.service -n 100
+journalctl -u aptplans-airports.service -n 100
 ```
 
-Run one job by hand:
+Run one document job by hand:
 
 ```bash
 cd /opt/aptplans
@@ -32,6 +34,15 @@ docker compose --env-file /home/aptplans/.env.production \
   --env-file /home/aptplans/.env.secrets \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
   exec -T worker python3 pipeline/run_once.py
+```
+
+Refresh the airport list by hand (NASR + NPIAS into overlay; does not live-fetch in CI). Terms: [FAA terms and systems](FAA.md).
+
+```bash
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec -T worker python3 -m pipeline.refresh_airports --force
 ```
 
 Jobs are serial on purpose. Do not scale the worker count to go faster. Backfill is allowed to take months.
@@ -65,9 +76,26 @@ docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 
 ## Site rebuild
 
-CD rebuilds HTML on the GitHub runner and rsyncs `dist/` to `/var/lib/aptplans/site`. A push to `main` (after tests) is the usual publish path. Caddy bind-mounts that directory, so most deploys do not need a container rebuild.
+CD rebuilds HTML on the GitHub runner from the git catalog and rsyncs `dist/` to `/var/lib/aptplans/site`. Origin then rebuilds again from git plus `/var/lib/aptplans/catalog` overlay so hashed completeness from the worker is not wiped. Caddy bind-mounts that directory.
 
 If HTML looks stale at the edge, purge Cloudflare for HTML/RSS only. Leave hashed `/files/` objects cached.
+
+Worker overlay and queue:
+
+| Path | Contents |
+| --- | --- |
+| `/var/lib/aptplans/files` | hashed PDFs |
+| `/var/lib/aptplans/catalog` | overlay JSONL (`airports.jsonl` from NASR+NPIAS, `grants.jsonl` from AIP histories, plus document completeness and hashes) |
+| `/var/lib/aptplans/queue` | serial job JSON |
+
+Seed known official PDFs onto the queue (does not fetch):
+
+```bash
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec -T worker python3 -m pipeline.discover
+```
 
 ## Completeness and freshness
 
@@ -81,7 +109,7 @@ User-Agent is `aptplans.org`. One request at a time per host. Honor robots.txt. 
 
 ## Disk
 
-PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files`. Expected corpus is on the order of 0.25–1 TB, with headroom on an 8 TB mirror. There is no offsite replica of the bytes in the first deployment.
+PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files`. Expected corpus is on the order of 0.25-1 TB, with headroom on an 8 TB mirror. There is no offsite replica of the bytes in the first deployment.
 
 ## Failures
 

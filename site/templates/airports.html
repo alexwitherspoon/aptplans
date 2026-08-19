@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Airports - AptPlans{% endblock %}
+{% block description %}Airport pages for master plans and Airport Layout Plans.{% endblock %}
+
+{% block content %}
+  <h1>Airports</h1>
+  <p class="lede">Public-use NASR airports get a page. NPIAS role marks the airports more likely to publish a master plan or Airport Layout Plan. Completeness starts at missing until we find an official file.</p>
+  <p><a href="/search/">Search</a> · <a href="/data/catalog.json">Bulk JSON</a> · <a href="/data/catalog.csv">CSV</a></p>
+  <table class="index-table">
+    <thead>
+      <tr><th>LID</th><th>Airport</th><th>State</th><th>Role</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for airport in airports %}
+      <tr>
+        <td><a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a></td>
+        <td>{{ airport.name }}</td>
+        <td><a href="/states/{{ airport.state }}/">{{ airport.state }}</a></td>
+        <td>{{ airport.npias_role|role_label }}</td>
+        <td><span class="badge">{{ completeness_for(airport.lid) }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

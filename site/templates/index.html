@@ -10,9 +10,37 @@
     sources remain the citation of record. Preservation copies live here
     so the files survive, and so we can show what changed.
   </p>
+  <form class="search-form" action="/search/" method="get" role="search">
+    <label for="q">Search airports and documents</label>
+    <input id="q" name="q" type="search" placeholder="PDX, Mulino, ALP">
+    <button type="submit">Search</button>
+  </form>
+  <ul class="counts">
+    <li><strong>{{ counts.airports }}</strong> airports</li>
+    <li><strong>{{ counts.complete }}</strong> with a complete plan or ALP</li>
+    <li><strong>{{ counts.link_only }}</strong> official URL only</li>
+    <li><strong>{{ counts.missing }}</strong> still missing</li>
+  </ul>
   <p>
-    Search, airport pages, and coverage maps will land here as the catalog
-    fills in. Until then, the project lives at
-    <a href="https://github.com/alexwitherspoon/aptplans">github.com/alexwitherspoon/aptplans</a>.
+    Most airports have no published master plan or ALP located yet. That is
+    expected. Pages cover public-use airports in FAA NASR. Airports in the
+    National Plan of Integrated Airport Systems (NPIAS) are more likely to
+    publish a plan. A plan at an airport not in NPIAS is still in scope.
+    Hint a URL with
+    <a href="{{ intake_url }}">a GitHub issue</a>.
   </p>
+  {% if recently %}
+  <h2>Recently recorded</h2>
+  <ul>
+    {% for doc in recently %}
+    <li><a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a> <span class="badge">{{ doc.completeness }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <h2>States</h2>
+  <ul class="state-index">
+    {% for state in states %}
+    <li><a href="/states/{{ state.code }}/">{{ state.code }}</a></li>
+    {% endfor %}
+  </ul>
 {% endblock %}

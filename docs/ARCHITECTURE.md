@@ -6,7 +6,8 @@ Official sources remain the citation of record. This service also keeps a preser
 
 ## What we cover
 
-- Every airport in the current NPIAS (about 3,287 public-use facilities), not only primary hubs.
+- Public-use airports and seaplane bases in current FAA NASR APT (the identity superset we would consider), not only primary hubs.
+- NPIAS Appendix A as a likelihood overlay: those airports are more likely to publish a master plan or ALP. An airport not in NPIAS can still have a plan; a GitHub issue or a found official URL is enough to admit it.
 - Every published **airport master plan** and **Airport Layout Plan (ALP)** we can find for those airports. An ALP is first-class even when no narrative master plan is published.
 - Aviation, airport, and airport land-use statutes in all 50 states. Municipal zoning of every city is out of scope.
 
@@ -14,7 +15,7 @@ An ALP is the FAA drawing set that depicts existing facilities and planned devel
 
 Related studies (Part 150, NEPA, minimum standards, CIP standalones) may be named on an airport page later. They are not ingested in the first catalog.
 
-There is no federal repository of these PDFs. Master plans and ALPs live on airport sites, city and county portals, consultant microsites, and state aviation offices.
+There is no federal repository of these PDFs. Master plans and ALPs live on airport sites, city and county portals, consultant microsites, and state aviation offices. Glossary: [FAA terms and systems](FAA.md).
 
 ## System shape
 
@@ -34,14 +35,22 @@ Visitors hit Cloudflare, then Caddy on the origin. The public site is static HTM
 discover -> fetch/hash -> store on disk -> parse -> summary/diff -> review -> publish catalog + HTML + RSS
 ```
 
-Jobs are a single serial queue. Compose runs three services: `site` (Caddy), `worker`, and `ollama`. A systemd timer execs into `worker` for one document (or one statute snapshot) at a time.
+Jobs are a single serial on-disk queue. Compose runs three services: `site` (Caddy), `worker`, and `ollama`. When the worker container starts, it checks FAA overlays and fetches only if a file is missing, empty, or from a prior month (one request at a time, pause between hosts). A weekly systemd timer execs into `worker` for one document (or one statute snapshot) at a time. A monthly timer refreshes NASR, NPIAS, and AIP grants if that month's overlay is not already on disk.
+
+## Publish path
+
+Git is the public index: 50 state hubs, reference official URLs, and builder templates. Airport identity is fetched on origin (NASR + NPIAS) into `/var/lib/aptplans/catalog/airports.jsonl` and is not committed. CD builds HTML on the GitHub runner from the git catalog (reference airports plus 50 states) and rsyncs `dist/` to `/var/lib/aptplans/site`. Origin then rebuilds from git plus overlay so the full NASR list and worker hashes are not wiped.
+
+The worker runs on the origin. After a fetch it writes completeness and hashes to `/var/lib/aptplans/catalog` (overlay JSONL) and stores bytes at `/var/lib/aptplans/files/{sha256}.pdf`. It does not commit catalog JSON to git. After each successful preserve, and again at the end of deploy, the origin rebuilds HTML from git plus overlay into `/var/lib/aptplans/site`.
+
+Do not also have the worker push catalog commits. PDFs stay off git.
 
 ## Repository layout
 
 ```
 aptplans/
 ├── site/                 # Jinja templates, CSS, static builder
-├── catalog/              # metadata schema and (later) records
+├── catalog/              # schema, reference cases, statute slots
 ├── pipeline/             # fetch / parse / publish job
 ├── docker/               # Caddy, worker, and Ollama Compose stack
 ├── scripts/host/         # idempotent Debian 13 bootstrap used by CD
@@ -52,7 +61,7 @@ aptplans/
 └── dist/                 # generated HTML (not committed)
 ```
 
-**In git:** builder, Compose files, systemd units, pipeline, catalog metadata, reference-case official URLs, a small set of hashed reference PDFs under `catalog/references/files/`, statute snapshots, reviewed summaries, RSS source data.
+**In git:** builder, Compose files, systemd units, pipeline, 50 state hubs, reference-case official URLs, hashed reference PDFs under `catalog/references/files/`. Overlay airport identity, completeness, and unofficial notes after a fetch live on origin disk until the next HTML rebuild.
 
 **Not in git:** the origin corpus (PDFs, WARCs), model weights, extracted full text. Those stay on the origin disk under `/var/lib/aptplans/files`.
 
@@ -91,9 +100,10 @@ Same official URL with a new hash is a new version.
 
 Seed, in order:
 
-1. NPIAS airport list (role, hub, development need)
-2. FAA NASR APT data and ADIP 5010 fields
-3. [OurAirports](https://ourairports.com/data/) public-domain identifiers (ICAO / IATA / FAA LID / coordinates)
+1. FAA NASR APT (28-day) public-use airports and seaplane bases: LID, name, ICAO, coordinates, status. This is the full superset we would consider.
+2. NPIAS Appendix A (role, hub). Merge onto NASR. NPIAS is not a gate; it marks airports more likely to have a published master plan or ALP.
+3. FAA AIP grant histories (LocID, amount, project description) plus USAspending spent and remaining obligation when origin can match the grant number. Shown on the airport page. Planning-worded rows are a hint that a study was funded, not the PDF.
+4. [OurAirports](https://ourairports.com/data/) public-domain identifiers (ICAO / IATA / FAA LID / coordinates)
 
 Find documents, in order:
 
@@ -101,8 +111,12 @@ Find documents, in order:
 2. Airport, city, and county document centers and planning or ALP microsites
 3. Targeted search for master plan and Airport Layout Plan / ALP PDFs
 4. Wayback CDX for vanished official URLs
-5. Community intake via GitHub issues
+5. Community intake via GitHub issues (form fields are hints: add, stale, wrong, outdated, or other)
 6. Public-records requests for the remainder
+
+An issue is a hint for the serial queue, not a publish switch. The worker parses form fields only. A well-formed FAA LID plus official URL is enough to queue even when the LID is not in NPIAS; the worker admits that airport into the overlay. If it fetched and preserved the file, confirmed a dead URL, classified the file as not a plan, or skipped an SSI-shaped filename, it comments and closes the issue. If a human is needed (no LID, no URL, hash mismatch, or a URL it never fetched), it comments, mentions @alexwitherspoon, and leaves the issue open. Suggested kind on the issue is a note the classifier can reject.
+
+Origin fetches NASR, NPIAS, and AIP grant histories when those overlay files are missing or have not been written this calendar month. Grant refresh then POSTs award IDs to USAspending for obligated and outlayed amounts. That check runs when the worker starts, before a `run_once` job, and on the monthly timer (1st, Pacific). Restarts with current files skip the download. CI must not live-fetch FAA or USAspending.
 
 Crawlers send an identifiable User-Agent of `aptplans.org`, honor robots.txt, and request one host at a time with backoff.
 
@@ -112,24 +126,23 @@ Known-good official URLs used as development fixtures live in [`catalog/referenc
 
 A small Python/Jinja builder (`site/build.py`) writes HTML, CSS, RSS, and a sitemap into `dist/`. Templates stay few. CSS stays thin. The coverage map can use Leaflet later; this is not a JavaScript application.
 
-Intended pages:
+The builder writes:
 
-- Home: search first, coverage map, recently changed, corpus counts
-- Airport: identity, NPIAS role, master plan and ALP versions, unofficial summary, Official + Archived, RSS
-- State: agency, SASP, statute guide, that state’s airports, RSS
-- Document: permalink, dates, version timeline, unofficial summary, PDFs
+- Home: search, coverage counts, recently recorded, state index
+- Airport: identity (LID, ICAO, location, NPIAS, ownership), master plan and ALP with official and preserved links, unofficial FAA grant briefing and history, state aviation hub, RSS
+- State: agency, SASP, statute guide, that state's airports, RSS
+- Document: permalink, dates, version pointers, unofficial summary, Official + Archived
 
 Feeds (static, generated at build):
 
 - `/feeds/all.xml`
 - `/feeds/laws.xml`
 - `/feeds/states/{st}.xml`
-- `/feeds/airports/{lid}.xml`
-- `/feeds/topics/{slug}.xml`
+- `/feeds/airports/{lid}.xml` (airports that have documents)
 
 Email is not a product. People who want mail can point IFTTT at a feed.
 
-Summaries and change notes are unofficial. They are produced by this project to help someone find the right chapter in a long PDF. Document pages do not brand a model or an “AI product.” The About page states the unofficial status.
+Summaries and change notes are unofficial. They are produced by this project to help someone find the right chapter in a long PDF. Document pages do not brand a model or an "AI product." The About page states the unofficial status.
 
 ## Origin host
 
@@ -153,7 +166,7 @@ The local model is **1-bit Bonsai 27B** (`prism-ml/Bonsai-27B-gguf`, Apache-2.0)
 
 A job may take hours. The public site does not wait. After the first national backfill, steady state is a weekly URL/hash poll. Success is the count of `complete` records over months, not documents per hour.
 
-What we do not run: Kubernetes, Swarm, Redis, Postgres, Prometheus, a public chatbot, or a second box “for scale.”
+What we do not run: Kubernetes, Swarm, Redis, Postgres, Prometheus, a public chatbot, or a second box "for scale."
 
 ## Cloudflare
 
