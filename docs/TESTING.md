@@ -14,6 +14,8 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 ## What is covered now
 
 - Catalog schema loads and includes the completeness states
+- Reference master plans and ALPs (PDX, TTD, Mulino, plus other regions) validate as `link_only` fixtures against AC 150/5070-6B elements
+- Embedded reference PDFs under `catalog/references/files/` match committed SHA-256 values (no network)
 - Builder writes `index.html`, `about/index.html`, and CSS into an output directory
 - Compose stack is `site`, `worker`, and `ollama`, with Ollama off the host network
 - sshd drop-in allows only `aptplans` and disables remote root
@@ -22,7 +24,7 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 
 ## What is not covered yet
 
-Crawlers, hash-verify, RSS, and origin disk I/O. Add tests next to those modules when they exist. Do not require the KS-6, PDFs, or model weights for CI. Ollama config is checked as JSON and Compose isolation only.
+Crawlers, hash-verify of the origin corpus, RSS, and origin disk I/O. Add tests next to those modules when they exist. Do not require the KS-6, origin PDFs, or model weights for CI. Ollama config is checked as JSON and Compose isolation only. A few official reference PDFs are committed for deterministic tests.
 
 ## Manual check
 

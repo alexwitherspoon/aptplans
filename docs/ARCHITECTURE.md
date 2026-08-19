@@ -52,9 +52,9 @@ aptplans/
 └── dist/                 # generated HTML (not committed)
 ```
 
-**In git:** builder, Compose files, systemd units, pipeline, catalog metadata, statute snapshots, reviewed summaries, RSS source data.
+**In git:** builder, Compose files, systemd units, pipeline, catalog metadata, reference-case official URLs, a small set of hashed reference PDFs under `catalog/references/files/`, statute snapshots, reviewed summaries, RSS source data.
 
-**Not in git:** PDFs, WARCs, model weights, extracted full text. Those stay on the origin disk under `/var/lib/aptplans/files`.
+**Not in git:** the origin corpus (PDFs, WARCs), model weights, extracted full text. Those stay on the origin disk under `/var/lib/aptplans/files`.
 
 ## Dual-source records
 
@@ -105,6 +105,8 @@ Find documents, in order:
 6. Public-records requests for the remainder
 
 Crawlers send an identifiable User-Agent of `aptplans.org`, honor robots.txt, and request one host at a time with backoff.
+
+Known-good official URLs used as development fixtures live in [`catalog/references/`](../catalog/references/). A subset of those files is committed under `catalog/references/files/` so tests can hash bytes without a network fetch. Completeness stays `link_only` until the worker stores an origin copy. Classification uses the AC 150/5070-6B shape card in that directory.
 
 ## Site
 
