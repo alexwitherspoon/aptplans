@@ -43,6 +43,7 @@ extracted/
 .env
 .env.local
 .env.*.local
+.env.secrets
 
 # Docker Compose local overrides (user-specific paths)
 docker/docker-compose.override.yml

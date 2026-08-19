@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="/home/${APP_USER}/.env.production"
+ENV_SECRETS="/home/${APP_USER}/.env.secrets"
 
 "${SCRIPT_DIR}/bootstrap.sh"
 
@@ -22,6 +23,11 @@ cd "${REPO_ROOT}"
 COMPOSE=(
     docker compose
     --env-file "${ENV_FILE}"
+)
+if [ -f "${ENV_SECRETS}" ]; then
+    COMPOSE+=(--env-file "${ENV_SECRETS}")
+fi
+COMPOSE+=(
     -f docker/docker-compose.yml
     -f docker/docker-compose.prod.yml
 )

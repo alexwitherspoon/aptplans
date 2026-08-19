@@ -7,11 +7,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="${ENV_FILE:-/home/${APP_USER}/.env.production}"
+ENV_SECRETS="${ENV_SECRETS:-/home/${APP_USER}/.env.secrets}"
 CONFIG="${REPO_ROOT}/config/ollama.json"
 
 COMPOSE=(
     docker compose
     --env-file "${ENV_FILE}"
+)
+if [ -f "${ENV_SECRETS}" ]; then
+    COMPOSE+=(--env-file "${ENV_SECRETS}")
+fi
+COMPOSE+=(
     -f "${REPO_ROOT}/docker/docker-compose.yml"
     -f "${REPO_ROOT}/docker/docker-compose.prod.yml"
 )

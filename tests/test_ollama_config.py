@@ -32,6 +32,8 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "11434:11434" not in text
     assert "11434:11434" not in prod
     assert "OLLAMA_HOST=http://ollama:11434" in text
+    assert "APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}" in text
+    assert "INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}" in prod
     assert "OLLAMA_NO_CLOUD=1" in text
     assert "OLLAMA_KEEP_ALIVE=-1" in text
     assert "OLLAMA_MAX_LOADED_MODELS=1" in text

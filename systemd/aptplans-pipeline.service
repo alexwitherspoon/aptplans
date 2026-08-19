@@ -8,5 +8,6 @@ Requires=docker.service
 Type=oneshot
 WorkingDirectory=/opt/aptplans
 EnvironmentFile=-/home/aptplans/.env.production
-ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T worker python3 pipeline/run_once.py
+EnvironmentFile=-/home/aptplans/.env.secrets
+ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T worker python3 pipeline/run_once.py
 Nice=10

@@ -237,6 +237,21 @@ EOF
     as_root chmod 600 "${env_file}"
 }
 
+ensure_secrets_file() {
+    # CD writes PIA and intake tokens here. Do not clobber an existing file.
+    local secrets_file="/home/${APP_USER}/.env.secrets"
+    if [ -f "${secrets_file}" ]; then
+        as_root chmod 600 "${secrets_file}"
+        as_root chown "${APP_USER}:${APP_USER}" "${secrets_file}"
+        return
+    fi
+    as_root tee "${secrets_file}" >/dev/null <<EOF
+# Written by GitHub Actions Deploy (PIA SOCKS + intake token). Do not commit.
+EOF
+    as_root chown "${APP_USER}:${APP_USER}" "${secrets_file}"
+    as_root chmod 600 "${secrets_file}"
+}
+
 main() {
     require_debian_trixie
     install_base_packages
@@ -252,6 +267,7 @@ main() {
     configure_firewall
     install_systemd_units
     write_env_file
+    ensure_secrets_file
     log "bootstrap complete"
 }
 

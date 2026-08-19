@@ -50,6 +50,9 @@ services:
       - APTPLANS_USER_AGENT=${APTPLANS_USER_AGENT:-aptplans.org}
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-bonsai-27b}
+      - APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}
+      - INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}
+      - INTAKE_GITHUB_REPO=${INTAKE_GITHUB_REPO:-}
     logging: *default-logging
 
   ollama:
