@@ -17,13 +17,16 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+worker = [
+    "pysocks>=1.7",
+]
 
 [project.urls]
 Homepage = "https://aptplans.org"
 Repository = "https://github.com/alexwitherspoon/aptplans"
 
 [tool.setuptools.packages.find]
-include = ["catalog*"]
+include = ["catalog*", "pipeline*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

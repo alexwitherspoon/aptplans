@@ -1,0 +1,109 @@
+{
+  "description": "Sample AIP grant rows for git-only site builds. Origin overlay grants.jsonl replaces this when present.",
+  "grants": [
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2025,
+      "amount": 15336604,
+      "description": "Improve Terminal",
+      "grant_number": "3-41-0048-099-2025",
+      "award_date": "2025-07-24",
+      "obligated": 15336604,
+      "outlayed": 1199309,
+      "programs": ["AIG"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2025-11/FY_2025_AIP_Grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2025,
+      "amount": 7493866,
+      "description": "Reconstruct Taxiway",
+      "grant_number": "3-41-0048-098-2025",
+      "award_date": "2025-06-10",
+      "obligated": 7493866,
+      "outlayed": 5935487,
+      "programs": ["AIG"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2025-11/FY_2025_AIP_Grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2025,
+      "amount": 5269478,
+      "description": "Reconstruct Terminal",
+      "grant_number": "3-41-0048-102-2025",
+      "award_date": "2025-07-23",
+      "obligated": 5269478,
+      "outlayed": 266775,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2025-11/FY_2025_AIP_Grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2025,
+      "amount": 3000000,
+      "description": "Improve Terminal",
+      "grant_number": "3-41-0048-101-2025",
+      "award_date": "2025-08-18",
+      "obligated": 3000000,
+      "outlayed": 111144,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2025-11/FY_2025_AIP_Grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2025,
+      "amount": 696721,
+      "description": "Reconstruct Terminal",
+      "grant_number": "3-41-0048-100-2025",
+      "award_date": "2025-08-18",
+      "obligated": 696721,
+      "outlayed": 0,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2025-11/FY_2025_AIP_Grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2024,
+      "amount": 14098755,
+      "description": "Zero Emissions Infrastructure",
+      "grant_number": "3-41-0048-096-2024",
+      "award_date": "2024-07-31",
+      "obligated": 14098755,
+      "outlayed": 10916520,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2024-10/FY2024-AIP-grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2024,
+      "amount": 8214286,
+      "description": "Reconstruct Terminal",
+      "grant_number": "3-41-0048-097-2024",
+      "award_date": "2024-08-13",
+      "obligated": 8214286,
+      "outlayed": 5698877,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2024-10/FY2024-AIP-grants.xlsx"
+    },
+    {
+      "airport_lid": "PDX",
+      "fiscal_year": 2024,
+      "amount": 7766449,
+      "description": "Reconstruct Taxiway, Rehabilitate Taxiway, Rehabilitate Taxiway",
+      "grant_number": "3-41-0048-094-2024",
+      "award_date": "2024-08-13",
+      "obligated": 7820543,
+      "outlayed": 6711334,
+      "programs": ["AIP"],
+      "is_planning": false,
+      "source_url": "https://www.faa.gov/sites/faa.gov/files/2024-10/FY2024-AIP-grants.xlsx"
+    }
+  ]
+}

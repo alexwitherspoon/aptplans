@@ -28,6 +28,9 @@ htmlcov/
 *.warc
 *.warc.gz
 data/files/
+data/queue/
+data/catalog/
+catalog/data/*.jsonl
 /files/
 extracted/
 

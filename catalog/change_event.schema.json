@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aptplans.org/schema/change-event.json",
+  "title": "AptPlans change event",
+  "description": "A detected version change on a catalog entity. Notes are unofficial.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "entity_type", "entity_id", "detected_at", "review_status"],
+  "properties": {
+    "id": { "type": "string" },
+    "entity_type": {
+      "type": "string",
+      "enum": ["document", "airport", "state", "statute"]
+    },
+    "entity_id": { "type": "string" },
+    "detected_at": { "type": "string" },
+    "review_status": {
+      "type": "string",
+      "enum": ["pending", "auto_pass", "needs_human", "published"]
+    },
+    "from_sha256": { "type": ["string", "null"] },
+    "to_sha256": { "type": ["string", "null"] },
+    "unofficial_note": { "type": ["string", "null"] },
+    "added_bytes": { "type": ["integer", "null"] },
+    "removed_bytes": { "type": ["integer", "null"] }
+  }
+}
