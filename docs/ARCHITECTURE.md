@@ -7,12 +7,14 @@ Official sources remain the citation of record. This service also keeps a preser
 ## What we cover
 
 - Every airport in the current NPIAS (about 3,287 public-use facilities), not only primary hubs.
-- Every published master-plan version we can find, plus the airport layout plan (ALP) when it travels with the plan.
+- Every published **airport master plan** and **Airport Layout Plan (ALP)** we can find for those airports. An ALP is first-class even when no narrative master plan is published.
 - Aviation, airport, and airport land-use statutes in all 50 states. Municipal zoning of every city is out of scope.
+
+An ALP is the FAA drawing set that depicts existing facilities and planned development. FAA approval of an ALP indicates that depicted existing and proposed development conforms to airport design standards (or an approved modification to standards). For federally obligated airports, keeping a current ALP is a grant-assurance requirement. Proposed development must appear on an FAA-approved ALP to be eligible for Airport Improvement Program (AIP) funding. FAA strongly recommends airport master plans ([AC 150/5070-6B](https://www.faa.gov/airports/resources/advisory_circulars/index.cfm/go/document.current/documentnumber/150_5070-6)); an ALP update is normally an element of that study, and a narrative report often accompanies the drawing set.
 
 Related studies (Part 150, NEPA, minimum standards, CIP standalones) may be named on an airport page later. They are not ingested in the first catalog.
 
-There is no federal repository of master-plan PDFs. FAA recommends master plans (AC 150/5070-6B) and requires an approved ALP for AIP eligibility. Plans live on airport sites, city and county portals, consultant microsites, and state aviation offices.
+There is no federal repository of these PDFs. Master plans and ALPs live on airport sites, city and county portals, consultant microsites, and state aviation offices.
 
 ## System shape
 
@@ -42,7 +44,9 @@ aptplans/
 ├── catalog/              # metadata schema and (later) records
 ├── pipeline/             # fetch / parse / publish job
 ├── docker/               # Caddy + pipeline images, compose files
-├── systemd/              # timer and oneshot service
+├── scripts/host/         # idempotent Debian 13 bootstrap used by CD
+├── config/host/          # sshd, sysctl, UFW helpers, unattended-upgrades
+├── systemd/              # pipeline timer and Monday reboot
 ├── docs/
 ├── tests/
 └── dist/                 # generated HTML (not committed)
@@ -71,11 +75,13 @@ Minimum fields (see [`catalog/schema.json`](../catalog/schema.json)):
 
 Completeness:
 
-- `complete` — official URL recorded **and** preserved copy stored and hash-verified
-- `link_only` — official file found, copy not ingested yet (incomplete)
-- `preserved_only` — official URL is dead or replaced; our copy remains
-- `missing` — nothing located yet
-- `no_plan_known` — sponsor or state confirms none exists (or only an ALP)
+- `complete` - official URL recorded **and** preserved copy stored and hash-verified
+- `link_only` - official file found, copy not ingested yet (incomplete)
+- `preserved_only` - official URL is dead or replaced; our copy remains
+- `missing` - nothing located yet
+- `no_plan_known` - sponsor or state confirms neither a master plan nor an ALP is known
+
+An ALP on its own is a complete kind of record (`kind: alp`). Do not file that case as `no_plan_known`.
 
 `ia_item` is reserved. This project does not upload to the Internet Archive in the first deployment. Wayback CDX is used only as a discovery source for historical official PDFs; any bytes we keep are copied onto origin disk.
 
@@ -92,8 +98,8 @@ Seed, in order:
 Find documents, in order:
 
 1. State aviation / DOT aeronautics sites
-2. Airport, city, and county document centers and master-plan microsites
-3. Targeted search for `master plan` / ALP PDFs
+2. Airport, city, and county document centers and planning or ALP microsites
+3. Targeted search for master plan and Airport Layout Plan / ALP PDFs
 4. Wayback CDX for vanished official URLs
 5. Community intake via GitHub issues
 6. Public-records requests for the remainder
@@ -107,7 +113,7 @@ A small Python/Jinja builder (`site/build.py`) writes HTML, CSS, RSS, and a site
 Intended pages:
 
 - Home: search first, coverage map, recently changed, corpus counts
-- Airport: identity, NPIAS role, versions, unofficial summary, Official + Archived, RSS
+- Airport: identity, NPIAS role, master plan and ALP versions, unofficial summary, Official + Archived, RSS
 - State: agency, SASP, statute guide, that state’s airports, RSS
 - Document: permalink, dates, version timeline, unofficial summary, PDFs
 
@@ -125,7 +131,7 @@ Summaries and change notes are unofficial. They are produced by this project to 
 
 ## Origin host
 
-Debian stable on an OVH Eco KS-6 (US East). Docker Compose runs Caddy (static tree) and the pipeline image. One systemd timer runs the pipeline. Unattended-upgrades plus the provider’s DDoS protection is the ops surface.
+Debian 13 (trixie) on an OVH Eco KS-6 (US East). GitHub Actions CD bootstraps the box from a bare install and keeps it there: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy and the pipeline are Compose services, not host packages. Timezone is `America/Los_Angeles`. The host reboots Monday at noon Pacific.
 
 Disk is the two host spindles in software RAID1. HTML, the catalog checkout, model weights, and PDFs share that mirror. Expected corpus is well under the usable capacity.
 
@@ -143,8 +149,8 @@ Hashed PDFs under `/files/{sha256}.pdf` get long immutable cache headers. HTML a
 
 ## Legal posture
 
-This is not legal advice. State statutes are generally public domain as government edicts. Master plans are usually public records of a sponsor; consultant copyright lines still appear. We cite the source, keep copies for preservation, access, and diffing, publish a takedown path, never present the site as official, and skip SSI/security-looking appendices.
+This is not legal advice. State statutes are generally public domain as government edicts. Airport master plans and Airport Layout Plans are usually public records of a sponsor; consultant copyright lines still appear. We cite the source, keep copies for preservation, access, and diffing, publish a takedown path, never present the site as official, and skip SSI/security-looking appendices.
 
 ## Replaceable origin
 
-Rebuild: install Debian and Docker, clone this repo, compose up Caddy, enable the timer, place model weights on disk. The catalog in git is the index. The origin disk is the file store. There is no offsite document replica in the first deployment.
+Rebuild: Debian 13 plus an SSH key, then GitHub Actions CD (or `scripts/host/remote-deploy.sh`). The catalog in git is the index. The origin disk is the file store. There is no offsite document replica in the first deployment.

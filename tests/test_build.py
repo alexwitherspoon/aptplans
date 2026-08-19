@@ -23,8 +23,8 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     about = (out / "about" / "index.html").read_text(encoding="utf-8")
     css = out / "css" / "styles.css"
 
-    assert "aptplans.org" in index
-    assert "Unofficial" in index
+    assert "Airport Layout Plan" in index
+    assert "Airport Layout Plan" in about
     assert "not legal advice" in about.lower()
     assert css.is_file()
     assert "canonical" in index.lower() or 'rel="canonical"' in index

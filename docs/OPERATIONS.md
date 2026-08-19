@@ -1,6 +1,20 @@
 # Operations
 
-Steady state should be boring: unattended-upgrades, a weekly timer that usually finds nothing, and an occasional GitHub issue or PR.
+Steady state should be boring: unattended-upgrades, a Monday reboot, a weekly pipeline timer that usually finds nothing, and an occasional GitHub issue or PR.
+
+## Deploy
+
+Pushes to `main` that pass [Test](../.github/workflows/test.yml) trigger [Deploy](../.github/workflows/deploy.yml). Manual runs are **Actions → Deploy**. Secrets are listed in [`.github/SETUP.md`](../.github/SETUP.md).
+
+## Host updates and reboot
+
+Unattended-upgrades install Debian and Docker packages as they appear. They do not reboot on their own. `aptplans-reboot.timer` reboots **Monday at 12:00 Pacific**.
+
+```bash
+systemctl list-timers aptplans-reboot.timer
+journalctl -u aptplans-reboot.service -n 20
+cat /var/log/unattended-upgrades/unattended-upgrades.log
+```
 
 ## Timer
 
@@ -14,21 +28,16 @@ Run one job by hand:
 
 ```bash
 cd /opt/aptplans
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml --profile jobs run --rm --no-deps pipeline
+docker compose --env-file /home/aptplans/.env.production \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  --profile jobs run --rm --no-deps pipeline
 ```
 
 Jobs are serial on purpose. Do not scale the worker count to go faster. Backfill is allowed to take months.
 
 ## Site rebuild
 
-After a catalog change that should go live:
-
-```bash
-cd /opt/aptplans
-git pull
-make site
-# publish dist/ to the Caddy docroot (SITE_PATH)
-```
+CD rebuilds HTML on the GitHub runner and rsyncs `dist/` to `/var/lib/aptplans/site`. A push to `main` (after tests) is the usual publish path. Caddy bind-mounts that directory, so most deploys do not need a container rebuild.
 
 If HTML looks stale at the edge, purge Cloudflare for HTML/RSS only. Leave hashed `/files/` objects cached.
 
@@ -48,7 +57,7 @@ PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files`. Expect
 
 ## Failures
 
-Low-confidence parses, hash mismatches, or documents that do not look like a master plan / ALP / statute should not go live. Open or update a GitHub PR / issue and leave `review_status` as `needs_human`.
+Low-confidence parses, hash mismatches, or documents that do not look like a master plan, Airport Layout Plan (ALP), or statute should not go live. Open or update a GitHub PR / issue and leave `review_status` as `needs_human`.
 
 Skip filenames and appendices that look like SSI or security-restricted drawings.
 

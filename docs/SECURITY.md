@@ -25,11 +25,24 @@ Cloudflare is a cache. It is not an access-control layer for private files. If a
 
 ## Takedown and copyright
 
-Master plans often carry consultant copyright lines even when they are public records. Cite the official source. Provide a contact (`contact@aptplans.org` and GitHub issues) for takedown requests. Do not present the site as an official FAA or airport publication.
+Master plans and Airport Layout Plans often carry consultant copyright lines even when they are public records. Cite the official source. Provide a contact (`contact@aptplans.org` and GitHub issues) for takedown requests. Do not present the site as an official FAA or airport publication.
 
 ## HTTP
 
-Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. Prefer HTTPS at the edge. Hashed file URLs may be cached for a long time; a takedown therefore needs an origin delete plus a Cloudflare purge of that object.
+Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. Visitors use HTTPS at Cloudflare. Origin Caddy also listens on 443 with either a Cloudflare Origin CA cert or a self-signed cert. Use Cloudflare **Full (strict)** once Origin CA material is in GitHub secrets.
+
+Hashed file URLs may be cached for a long time; a takedown needs an origin delete plus a Cloudflare purge of that object.
+
+## Origin host
+
+CD keeps the Debian 13 box minimal and reapplies this on every deploy:
+
+- UFW default-deny, 22/80/443 only
+- sshd: no passwords, `PermitRootLogin prohibit-password`
+- fail2ban on sshd (5 tries / 10 minutes → 7 day ban)
+- unattended-upgrades for Debian and Docker
+- Weekly reboot Monday 12:00 Pacific so kernel updates actually apply
+- No public model endpoint; the pipeline is a local oneshot container
 
 ## Pipeline
 

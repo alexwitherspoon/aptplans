@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aptplans.org/schema/document.json",
   "title": "AptPlans document",
-  "description": "A master plan, ALP, statute snapshot, or related record. A document is complete only when both the official URL and a preserved copy exist.",
+  "description": "An airport master plan, Airport Layout Plan (ALP), statute snapshot, or related record. A document is complete only when both the official URL and a preserved copy exist.",
   "type": "object",
   "additionalProperties": false,
   "required": [
