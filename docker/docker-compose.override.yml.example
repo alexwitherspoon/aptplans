@@ -7,7 +7,7 @@ services:
       - /var/lib/aptplans/site:/srv/site:ro
       - /var/lib/aptplans/files:/srv/files:ro
 
-  pipeline:
+  worker:
     volumes:
       - /opt/aptplans:/app
       - /var/lib/aptplans/files:/var/lib/aptplans/files

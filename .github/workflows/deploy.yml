@@ -41,7 +41,7 @@ jobs:
         (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
         (github.event_name == 'workflow_dispatch' && needs.verify.result == 'success')
       )
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       DEPLOY_USER: ${{ secrets.USER }}
       DEPLOY_HOST: ${{ secrets.HOST }}

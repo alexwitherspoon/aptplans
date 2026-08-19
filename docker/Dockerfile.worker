@@ -8,8 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY pyproject.toml LICENSE README.md /app/
 COPY site /app/site
 COPY catalog /app/catalog
+COPY pipeline /app/pipeline
 
 RUN pip install --no-cache-dir .
 
-# Serial jobs only. The timer starts this container; it should exit when done.
-CMD ["python3", "site/build.py", "--out", "dist"]
+# Long-running serial worker. One-shot jobs are `compose exec worker`.
+CMD ["python3", "pipeline/worker.py"]

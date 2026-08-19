@@ -1,5 +1,24 @@
 name: aptplans
 
+# One stack: static site (Caddy), serial worker, CPU Ollama.
+# Ollama has no host ports. It is only on the internal `llm` network.
+# Local `make up` starts `site` only. Origin CD starts the full stack.
+
+networks:
+  llm:
+    name: aptplans_llm
+    internal: true
+
+volumes:
+  ollama_data:
+  models_data:
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   site:
     build:
@@ -7,27 +26,54 @@ services:
       dockerfile: docker/Dockerfile
     image: aptplans-site
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+    logging: *default-logging
 
-  pipeline:
+  worker:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.pipeline
-    image: aptplans-pipeline
-    profiles: ["jobs"]
+      dockerfile: docker/Dockerfile.worker
+    image: aptplans-worker
+    restart: unless-stopped
     working_dir: /app
+    networks:
+      - default
+      - llm
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: false
     volumes:
       - ..:/app
       - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
     environment:
       - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_USER_AGENT=${APTPLANS_USER_AGENT:-aptplans.org}
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-bonsai-27b}
+    logging: *default-logging
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    networks:
+      - llm
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NO_CLOUD=1
+      - OLLAMA_GPU_DRIVER=cpu
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_QUEUE=8
+      - OLLAMA_CONTEXT_LENGTH=32768
+      - OLLAMA_LOAD_TIMEOUT=20m
+      - OLLAMA_KEEP_ALIVE=-1
+    volumes:
+      - ollama_data:/root/.ollama
+      - models_data:/models:ro
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging

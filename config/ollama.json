@@ -1,0 +1,16 @@
+{
+  "model": "bonsai-27b",
+  "repo_id": "prism-ml/Bonsai-27B-gguf",
+  "filename": "Bonsai-27B-Q1_0.gguf",
+  "num_ctx": 32768,
+  "temperature": 0.5,
+  "top_p": 0.85,
+  "top_k": 20,
+  "min_p": 0,
+  "repeat_penalty": 1.05,
+  "num_thread": 12,
+  "num_gpu": 0,
+  "num_batch": 256,
+  "keep_alive": -1,
+  "system": "You write unofficial summaries and extract facts from airport master plans, Airport Layout Plans, and state aviation law. Stay grounded in the provided text. Be concise. Do not name models or call this an AI product. This is not legal advice and not an official FAA or airport publication."
+}

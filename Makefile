@@ -2,7 +2,7 @@
 #
 # See docs/LOCAL_SETUP.md and docs/TESTING.md
 
-.PHONY: help site test test-unit dev up down build clean pipeline
+.PHONY: help site test test-unit dev up down build clean pipeline worker
 
 COMPOSE := docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml
 COMPOSE_PROD := docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml
@@ -16,7 +16,7 @@ help: ## Show this help message
 	@echo '========'
 	@echo ''
 	@echo 'Development:'
-	@grep -E '^(site|dev|up|down|pipeline):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^(site|dev|up|down|pipeline|worker):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Testing:'
 	@grep -E '^(test|test-unit):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -39,7 +39,7 @@ dev: site ## Build and serve dist/ at http://127.0.0.1:8080
 	$(PY) -m http.server $(PORT) --bind $(HOST) --directory dist
 
 up: site ## Build the site and start local Caddy (Docker)
-	$(COMPOSE) up --build
+	$(COMPOSE) up --build site
 
 down: ## Stop local Docker services
 	$(COMPOSE) down
@@ -47,8 +47,10 @@ down: ## Stop local Docker services
 build: ## Build Docker images
 	$(COMPOSE) build
 
-pipeline: ## Run the pipeline container once (serial job)
-	$(COMPOSE) --profile jobs run --rm pipeline
+pipeline: worker ## Run one serial worker job
+
+worker: ## Run one serial worker job (does not start Ollama)
+	$(COMPOSE) run --rm --no-deps worker python3 pipeline/run_once.py
 
 clean: ## Remove generated site output
 	rm -rf dist

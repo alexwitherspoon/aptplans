@@ -1,0 +1,14 @@
+[Unit]
+Description=Load AptPlans Ollama model and keep it warm
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=30min
+WorkingDirectory=/opt/aptplans
+EnvironmentFile=-/home/aptplans/.env.production
+ExecStart=/opt/aptplans/scripts/host/warmup-ollama.sh
+
+[Install]
+WantedBy=multi-user.target

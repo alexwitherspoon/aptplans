@@ -2,7 +2,7 @@
 
 Canonical URL: **https://aptplans.org**. `aptplans.com` 301s there.
 
-CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** install. The host stays thin: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy and the pipeline run in Compose.
+CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** install. The host stays thin: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy, the worker, and Ollama run as one Compose stack.
 
 ## One-time: DNS and SSH
 
@@ -39,7 +39,8 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - weekly Docker prune (Sunday 02:00 Pacific)
    - pipeline timer
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
-   - `docker compose` up for Caddy on 80/443
+   - `docker compose` up for the full stack: Caddy on 80/443, worker, CPU Ollama
+   - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
 
 Host layout:
 
@@ -49,6 +50,8 @@ Host layout:
 | `/var/lib/aptplans/site` | generated HTML |
 | `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
 | `/var/lib/aptplans/tls` | origin certificate |
+| `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
+| `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
 | `/home/aptplans/.env.production` | Compose paths |
 
 ## Manual deploy
@@ -61,7 +64,7 @@ sudo /opt/aptplans/scripts/host/remote-deploy.sh
 
 ## Reboots
 
-Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). Caddy has `restart: unless-stopped`. The pipeline is a oneshot timer and will run again on schedule.
+Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The pipeline timer execs one job into the running worker.
 
 ```bash
 systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer
@@ -69,4 +72,4 @@ systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer
 
 ## What not to install on the host
 
-Python, Caddy, nginx, certbot, Redis, Postgres, Kubernetes. If it is not Docker, UFW, fail2ban, or unattended-upgrades, it does not belong on the base OS.
+Python, Caddy, nginx, certbot, Redis, Postgres, Kubernetes, or a host-level Ollama package. Inference is the `ollama` Compose service. If it is not Docker, UFW, fail2ban, or unattended-upgrades, it does not belong on the base OS.

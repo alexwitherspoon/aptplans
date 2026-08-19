@@ -1,7 +1,7 @@
 #!/bin/bash
 # Idempotent host bootstrap for a bare Debian 13 (trixie) origin.
 # Keeps the OS thin: Docker Engine, firewall, fail2ban, unattended-upgrades.
-# Caddy, the site builder, and the pipeline run in Compose — not on the host.
+# Caddy, the worker, and Ollama run in Compose - not on the host.
 #
 # Run as root (first deploy) or as a user with passwordless sudo.
 set -euo pipefail
@@ -15,6 +15,8 @@ REPO_DIR="${REPO_DIR:-/opt/aptplans}"
 SITE_DIR="${SITE_DIR:-/var/lib/aptplans/site}"
 FILES_DIR="${FILES_DIR:-/var/lib/aptplans/files}"
 TLS_DIR="${TLS_DIR:-/var/lib/aptplans/tls}"
+OLLAMA_DIR="${OLLAMA_DIR:-/var/lib/aptplans/ollama}"
+MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -123,7 +125,9 @@ ensure_directories() {
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SITE_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${FILES_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${TLS_DIR}"
-    as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${OLLAMA_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${MODELS_DIR}"
+    as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
     as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}"
 }
 
@@ -185,22 +189,30 @@ install_systemd_units() {
     as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.service" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.timer" /etc/systemd/system/
+    as_root cp "${REPO_ROOT}/systemd/aptplans-ollama-warmup.service" /etc/systemd/system/
     as_root cp "${HOST_CONFIG}/docker-cleanup.cron" /etc/cron.d/aptplans-docker-cleanup
     as_root cp "${HOST_CONFIG}/docker-cleanup.logrotate" /etc/logrotate.d/aptplans-docker-cleanup
     as_root chmod 644 /etc/cron.d/aptplans-docker-cleanup /etc/logrotate.d/aptplans-docker-cleanup
     as_root systemctl daemon-reload
     as_root systemctl enable --now aptplans-pipeline.timer
     as_root systemctl enable --now aptplans-reboot.timer
+    as_root systemctl enable aptplans-ollama-warmup.service
 }
 
 write_env_file() {
     local env_file="/home/${APP_USER}/.env.production"
     as_root tee "${env_file}" >/dev/null <<EOF
-# Written by scripts/host/bootstrap.sh — do not commit.
+# Written by scripts/host/bootstrap.sh - do not commit.
 SITE_PATH=${SITE_DIR}
 FILES_PATH=${FILES_DIR}
 REPO_PATH=${REPO_DIR}
 TLS_PATH=${TLS_DIR}
+OLLAMA_PATH=${OLLAMA_DIR}
+MODELS_PATH=${MODELS_DIR}
+# EPYC 7351P: node 0 for site/worker/host, nodes 1-3 for Ollama.
+SITE_CPUSET=0-3,16-19
+WORKER_CPUSET=0-3,16-19
+OLLAMA_CPUSET=4-15,20-31
 APTPLANS_USER_AGENT=aptplans.org
 EOF
     as_root chown "${APP_USER}:${APP_USER}" "${env_file}"

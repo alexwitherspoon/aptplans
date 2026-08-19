@@ -15,10 +15,12 @@ CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pu
 
 - Catalog schema loads and includes the completeness states
 - Builder writes `index.html`, `about/index.html`, and CSS into an output directory
+- Compose stack is `site`, `worker`, and `ollama`, with Ollama off the host network
+- Worker one-shot entry returns success while the catalog is empty
 
 ## What is not covered yet
 
-Crawlers, hash-verify, RSS, and origin disk I/O. Add tests next to those modules when they exist. Do not require the KS-6, PDFs, or model weights for CI.
+Crawlers, hash-verify, RSS, and origin disk I/O. Add tests next to those modules when they exist. Do not require the KS-6, PDFs, or model weights for CI. Ollama config is checked as JSON and Compose isolation only.
 
 ## Manual check
 

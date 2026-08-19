@@ -25,7 +25,7 @@ Useful targets:
 | `make dev` | Build and serve with Python |
 | `make up` | Build, then local Caddy in Docker on port 8080 |
 | `make down` | Stop local Compose services |
-| `make pipeline` | Run the pipeline image once |
+| `make pipeline` | Run one worker job (no Ollama) |
 | `make clean` | Delete `dist/` |
 
 ## Docker (optional)
@@ -43,4 +43,4 @@ cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
 
 ## What not to put in this clone
 
-PDFs, model weights, and extracted full text stay out of git. Local crawls, if you run them, should write under a directory that `.gitignore` already covers (`data/files/` or `*.pdf`).
+PDFs, model weights, and extracted full text stay out of git. Local crawls, if you run them, should write under a directory that `.gitignore` already covers (`data/files/` or `*.pdf`). Compose defines `site`, `worker`, and `ollama`. `make up` starts only `site`. Origin CD starts the full stack.

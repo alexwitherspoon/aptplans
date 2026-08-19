@@ -42,11 +42,11 @@ CD keeps the Debian 13 box minimal and reapplies this on every deploy:
 - fail2ban on sshd (5 tries / 10 minutes → 7 day ban)
 - unattended-upgrades for Debian and Docker
 - Weekly reboot Monday 12:00 Pacific so kernel updates actually apply
-- No public model endpoint; the pipeline is a local oneshot container
+- No public model endpoint. Ollama listens only on the internal Compose `llm` network. Caddy does not proxy it. UFW does not open 11434.
 
 ## Pipeline
 
-The document pipeline is not exposed to the internet. It runs as a oneshot container from systemd. Do not publish a prompt box or an HTTP API in front of the local model.
+The document worker is not exposed to the internet. It is a Compose service on the same stack as Caddy, with no published ports, and it calls Ollama by Compose DNS name. Do not publish a prompt box, a host port, or a Cloudflare route in front of the local model.
 
 Crawlers identify as `aptplans.org`. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository.
 

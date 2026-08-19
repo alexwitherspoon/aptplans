@@ -25,7 +25,7 @@ builder, compose,           hashed PDFs / WARCs          cache in front
 systemd unit, crawlers      extracted text               of Caddy
 catalog JSON                local CPU parse jobs
 statute snapshots           generated HTML/RSS
-summaries after review      GGUF weights
+summaries after review      Ollama GGUF (internal net)
 ```
 
 Visitors hit Cloudflare, then Caddy on the origin. The public site is static HTML, RSS, and PDF downloads. There is no app server with sessions, no accounts, and no public chat.
@@ -34,7 +34,7 @@ Visitors hit Cloudflare, then Caddy on the origin. The public site is static HTM
 discover -> fetch/hash -> store on disk -> parse -> summary/diff -> review -> publish catalog + HTML + RSS
 ```
 
-Jobs are a single serial queue. A systemd timer starts `docker compose ... run --rm pipeline`. One document (or one statute snapshot) at a time.
+Jobs are a single serial queue. Compose runs three services: `site` (Caddy), `worker`, and `ollama`. A systemd timer execs into `worker` for one document (or one statute snapshot) at a time.
 
 ## Repository layout
 
@@ -43,7 +43,7 @@ aptplans/
 ├── site/                 # Jinja templates, CSS, static builder
 ├── catalog/              # metadata schema and (later) records
 ├── pipeline/             # fetch / parse / publish job
-├── docker/               # Caddy + pipeline images, compose files
+├── docker/               # Caddy, worker, and Ollama Compose stack
 ├── scripts/host/         # idempotent Debian 13 bootstrap used by CD
 ├── config/host/          # sshd, sysctl, UFW helpers, unattended-upgrades
 ├── systemd/              # pipeline timer and Monday reboot
@@ -131,11 +131,23 @@ Summaries and change notes are unofficial. They are produced by this project to 
 
 ## Origin host
 
-Debian 13 (trixie) on an OVH Eco KS-6 (US East). GitHub Actions CD bootstraps the box from a bare install and keeps it there: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy and the pipeline are Compose services, not host packages. Timezone is `America/Los_Angeles`. The host reboots Monday at noon Pacific.
+Debian 13 (trixie) on an OVH Eco KS-6 (US East). GitHub Actions CD bootstraps the box from a bare install and keeps it there: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy, the worker, and Ollama are Compose services, not host packages. Timezone is `America/Los_Angeles`. The host reboots Monday at noon Pacific.
 
 Disk is the two host spindles in software RAID1. HTML, the catalog checkout, model weights, and PDFs share that mirror. Expected corpus is well under the usable capacity.
 
 Parse and summary jobs run locally on CPU, one at a time, from the preserved copy. Native text is preferred; otherwise layout/OCR on CPU, then a local document pass for TOC, facts, and a one-page unofficial summary. Pairwise change notes run when a prior version exists. Thinking-heavy passes are reserved for hard diffs, not bulk pages. Large PDFs are not fed whole into a vision stack; selected page or ALP sheet images may be captioned after render.
+
+### Model calls
+
+Gated logic runs the pipeline. The local model does not search, browse, or decide what to fetch. The worker calls it only for specific questions after outer gates pass (known airport or state, allowed host, fetched bytes, size cap, not SSI-shaped). Each call uses a fixed prompt, a 32k context window, and must return schema JSON. A failed gate is never overridden by the model.
+
+Useful calls include: classifying a file against a frozen plan/ALP shape card (and example TOCs from `complete` records); pulling draft-plan or public-comment links already present in fetched HTML; unofficial section summaries and a one-page reduce.
+
+The worker extracts a TOC when the PDF outline, a contents page, or numbered chapter headings exist. The first model call gets title page plus TOC. The model may request at most one extra round of slices, and only ids or page ranges already in that TOC, still inside 32k. If no TOC or other high-signal structure is found, the worker still sends a viable chunk (the next unused window of extracted text that fits 32k) and continues chunk-then-reduce across the document. Missing a TOC is not a reason for `needs_human`.
+
+`needs_human` is rare: SSI-shaped files, hash mismatch, or a URL the worker never fetched. Low-confidence wording still yields an unofficial note when the gates passed. Newsletters and news articles fail *kind* gates (`newsletter` / `news`); they are not ingested as the plan.
+
+The local model is **1-bit Bonsai 27B** (`prism-ml/Bonsai-27B-gguf`, Apache-2.0) served by a single CPU Ollama container. CD downloads the GGUF and runs `ollama create` when the model is missing. Stock Ollama cannot load ternary (`Q2_0`) Bonsai, so this host does not use that family. Ollama has no published ports: it joins an internal Compose network (`aptplans_llm`) that only the `worker` service can reach. The public `site` service does not join that network. On the KS-6, Ollama is cpuset-pinned to NUMA nodes 1-3 (12 physical cores / 24 threads; llama.cpp uses 12 threads). Caddy, the worker, and the host keep NUMA node 0. `OLLAMA_KEEP_ALIVE=-1` keeps Bonsai resident after the first load.
 
 A job may take hours. The public site does not wait. After the first national backfill, steady state is a weekly URL/hash poll. Success is the count of `complete` records over months, not documents per hour.
 

@@ -30,10 +30,35 @@ Run one job by hand:
 cd /opt/aptplans
 docker compose --env-file /home/aptplans/.env.production \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
-  --profile jobs run --rm --no-deps pipeline
+  exec -T worker python3 pipeline/run_once.py
 ```
 
 Jobs are serial on purpose. Do not scale the worker count to go faster. Backfill is allowed to take months.
+
+The stack is `site`, `worker`, and `ollama`. The worker reaches Ollama at `http://ollama:11434` on the internal `llm` network. Ollama is not published on the host. Check it with Compose exec, not curl to localhost:
+
+```bash
+docker compose --env-file /home/aptplans/.env.production \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec ollama ollama list
+```
+
+Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after import; after a Monday reboot, `aptplans-ollama-warmup.service` loads it again. First load on CPU can take several minutes.
+
+```bash
+systemctl status aptplans-ollama-warmup.service
+docker compose --env-file /home/aptplans/.env.production \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec ollama ollama ps
+```
+
+On the KS-6 (EPYC 7351P, 4 NUMA nodes), production pins **NUMA 0** (`0-3,16-19`) to `site` and `worker`, and **NUMA 1-3** (`4-15,20-31`) to Ollama. Confirm after deploy:
+
+```bash
+docker inspect aptplans-ollama-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
+docker inspect aptplans-site-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
+docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
+```
 
 ## Site rebuild
 
@@ -57,7 +82,7 @@ PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files`. Expect
 
 ## Failures
 
-Low-confidence parses, hash mismatches, or documents that do not look like a master plan, Airport Layout Plan (ALP), or statute should not go live. Open or update a GitHub PR / issue and leave `review_status` as `needs_human`.
+Low-confidence unofficial wording can still go live when outer gates passed. Hash mismatches and SSI-looking files must not. Open or update a GitHub issue and leave `review_status` as `needs_human` only for those integrity or safety cases.
 
 Skip filenames and appendices that look like SSI or security-restricted drawings.
 

@@ -11,6 +11,7 @@ This is an **unofficial document library**, not flight-planning weather and not 
 - Summaries and change notes are unofficial. Do not brand a model or call the site an "AI product" on public pages.
 - Keep templates few and CSS thin. Search, map, and document pages are static HTML. Do not add a JavaScript SPA.
 - User-facing crawlers identify as `aptplans.org`.
+- The pipeline is gated logic. The local model is a subroutine the worker may call for a typed question after those gates pass. It does not run the pipeline, browse, or override a failed check. If a TOC is missing, the worker still sends a viable 32k text chunk rather than stopping for a human.
 - In prose, headings, and table cells, do not use the Unicode em dash. Use a single ASCII hyphen (`-`) for a break or aside. Keep `--` only where Markdown or a CLI example needs it.
 
 `docs/` describes required behavior in the present tense (what the system does and why). Track gaps in GitHub issues, not in architecture docs.
