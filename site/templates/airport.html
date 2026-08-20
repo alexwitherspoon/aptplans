@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ airport.lid }} - {{ airport.name }}{% endblock %}
-{% block description %}Unofficial AptPlans briefing for {{ airport.name }} ({{ airport.lid }}): identity, plans, ALP, and FAA grants.{% endblock %}
+{% block title %}{{ airport.name }} ({{ airport.lid }}) | AptPlans{% endblock %}
+{% block description %}{{ airport.name }} ({{ airport.lid }}): master plans, Airport Layout Plans, and grants.{% endblock %}
 
 {% macro plan_item(doc, show_kind=false) %}
     <li>
@@ -11,7 +11,7 @@
       <span class="badge">{{ doc.completeness }}</span>
       <p class="meta">
         <a href="{{ doc.source_url }}">Official source</a>
-        {% if doc.preserved_url %} · <a href="{{ doc.preserved_url }}">preserved copy</a>{% endif %}
+        {% if doc.preserved_url %} · <a href="{{ doc.preserved_url }}">saved copy</a>{% endif %}
       </p>
       {% if doc.summary %}<p>{{ doc.summary }}</p>{% endif %}
     </li>
@@ -22,9 +22,14 @@
   <h1>{{ airport.name }}</h1>
   <p class="lede">
     {{ airport.lid }}{% if airport.icao %} · {{ airport.icao }}{% endif %}{% if airport.iata %} · {{ airport.iata }}{% endif %}{% if airport.city or airport.state %} · {{ airport.city }}{% if airport.city and airport.state %}, {% endif %}{{ airport.state }}{% endif %}
-    · {% if airport.npias_role %}NPIAS {{ airport.npias_role|role_label }}{% elif airport.in_npias %}NPIAS{% else %}not in NPIAS{% endif %}
+    {% if airport.npias_role %} · {{ airport.npias_role|role_label }}{% endif %}
   </p>
-  <p>{{ completeness|completeness_phrase }}</p>
+  <p class="meta">{{ completeness|completeness_phrase }}</p>
+  <p class="meta">
+    {% if documents %}<a href="/feeds/airports/{{ airport.lid }}.xml">RSS for this airport</a> · {% endif %}
+    {% if airport.state %}<a href="/feeds/states/{{ airport.state }}.xml">{{ airport.state }} RSS</a> · {% endif %}
+    <a href="/feeds/">All feeds</a>
+  </p>
   {% if airport.facility_use or airport.ownership or airport.service_level or airport.nasr_effective or airport.website or (airport.latitude is not none and airport.longitude is not none) %}
   <p class="meta">
     {% if airport.facility_use == "PU" %}public-use{% elif airport.facility_use == "PR" %}private-use{% endif %}
@@ -33,18 +38,31 @@
     {% if airport.latitude is not none and airport.longitude is not none %}
     · <a href="geo:{{ airport.latitude }},{{ airport.longitude }}">{{ "%.4f"|format(airport.latitude) }}, {{ "%.4f"|format(airport.longitude) }}</a>
     {% endif %}
-    {% if airport.nasr_effective %} · NASR {{ airport.nasr_effective }}{% endif %}
+    {% if airport.nasr_effective %} · FAA data {{ airport.nasr_effective }}{% endif %}
     {% if airport.website %} · <a href="{{ airport.website }}">Airport website</a>{% endif %}
   </p>
   {% endif %}
   {% if airport.admitted and "nasr" not in airport.sources %}
-  <p class="meta">Listed because a plan or issue admitted it. It is not in the current public-use NASR set.</p>
+  <p class="meta">Listed from a plan or a report, not from the current public airport list.</p>
   {% endif %}
+  {% if brief %}
+  <ul class="brief">
+    {% for line in brief %}
+    <li>{{ line }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <p class="on-page">
+    <a href="#plans">Plans</a>
+    · <a href="#funding">Funding</a>
+    {% if airport.state %}· <a href="#law">Law</a>{% endif %}
+  </p>
 
   {% set alps = documents | selectattr("kind", "equalto", "alp") | list %}
   {% set plans = documents | selectattr("kind", "equalto", "master_plan") | list %}
-  {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan"]) | list %}
-  <h2>Airport Layout Plans</h2>
+  {% set notices = documents | selectattr("kind", "equalto", "notice") | list %}
+  {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan", "notice"]) | list %}
+  <h2 id="plans">Airport Layout Plans</h2>
   {% if alps %}
   <ul class="doc-list">
     {% for doc in alps %}{{ plan_item(doc) }}{% endfor %}
@@ -59,7 +77,7 @@
     {% for doc in plans %}{{ plan_item(doc) }}{% endfor %}
   </ul>
   {% else %}
-  <p>No narrative master plan is listed yet.{% if alps %} An ALP can stand on its own.{% endif %}</p>
+  <p>No master plan is listed yet.{% if alps %} An ALP can stand on its own.{% endif %}</p>
   {% endif %}
   {% if other_docs %}
   <h2>Other planning records</h2>
@@ -68,68 +86,73 @@
   </ul>
   {% endif %}
 
-  <h2>Federal funding</h2>
-  {% if grants %}
+  <h2 id="funding">Funding</h2>
+  <p class="meta">Federal, state, local, and other grants when an official record is found. A grant is not a plan.</p>
+  {% for section in funding %}
+  <h3>{{ section.label }}</h3>
+  {% if section.grants %}
   <p class="totals">
-    {% if grant_stats.total %}{{ grant_stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
-    in {{ grant_stats.count }} grant{% if grant_stats.count != 1 %}s{% endif %}{% if grant_stats.year_min %}
-    (FY {{ grant_stats.year_min }}{% if grant_stats.year_max and grant_stats.year_max != grant_stats.year_min %}-{{ grant_stats.year_max }}{% endif %}){% endif %}.
+    {% if section.stats.total %}{{ section.stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
+    in {{ section.stats.count }} grant{% if section.stats.count != 1 %}s{% endif %}{% if section.stats.year_min %}
+    (FY {{ section.stats.year_min }}{% if section.stats.year_max and section.stats.year_max != section.stats.year_min %}-{{ section.stats.year_max }}{% endif %}){% endif %}.
   </p>
-  {% if grant_stats.spent is not none or grant_stats.remaining is not none %}
+  {% if section.stats.spent is not none or section.stats.remaining is not none %}
   <p class="totals">
-    {% if grant_stats.spent is not none %}{{ grant_stats.spent|usd }} spent{% endif %}
-    {% if grant_stats.spent is not none and grant_stats.remaining is not none %} · {% endif %}
-    {% if grant_stats.remaining is not none %}{{ grant_stats.remaining|usd }} still obligated{% endif %}
+    {% if section.stats.spent is not none %}{{ section.stats.spent|usd }} spent{% endif %}
+    {% if section.stats.spent is not none and section.stats.remaining is not none %} · {% endif %}
+    {% if section.stats.remaining is not none %}{{ section.stats.remaining|usd }} not yet spent{% endif %}
   </p>
   {% endif %}
-  {% if grant_stats.by_year %}
-  <p class="meta">{% for year, total in grant_stats.by_year %}FY {{ year }} {{ total|usd }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% if section.stats.by_year %}
+  <p class="meta">{% for year, total in section.stats.by_year %}FY {{ year }} {{ total|usd }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% endif %}
-  {% if grant_stats.planning_count %}
-  <p class="meta">{{ grant_stats.planning_count }} planning grant{% if grant_stats.planning_count != 1 %}s{% endif %} in this list{% if grant_stats.planning %} - {{ grant_stats.planning[0].description|grant_title }}{% if grant_stats.planning[0].fiscal_year %} (FY {{ grant_stats.planning[0].fiscal_year }}){% endif %}{% endif %}.</p>
+  {% if section.stats.planning_count %}
+  <p class="meta">{{ section.stats.planning_count }} planning grant{% if section.stats.planning_count != 1 %}s{% endif %} in this list{% if section.stats.planning %} - {{ section.stats.planning[0].description|grant_title }}{% if section.stats.planning[0].fiscal_year %} (FY {{ section.stats.planning[0].fiscal_year }}){% endif %}{% endif %}.</p>
   {% endif %}
   <ul class="grant-list">
-    {% for grant in grants %}
+    {% for grant in section.grants %}
     <li>
       <p class="grant-when">{{ grant|grant_date }}{% if grant.amount %} · {{ grant.amount|usd }} awarded{% endif %}</p>
       {% if grant.outlayed is not none and grant|grant_remaining is not none %}
-      <p class="meta">{{ grant.outlayed|usd }} spent · {{ grant|grant_remaining|usd }} still obligated</p>
+      <p class="meta">{{ grant.outlayed|usd }} spent · {{ grant|grant_remaining|usd }} not yet spent</p>
       {% endif %}
       <p class="grant-title">{{ grant.description|grant_title }}</p>
       {% if grant.description|grant_brief %}
       <p class="grant-brief">{{ grant.description|grant_brief }}</p>
       {% endif %}
       <p class="meta">
-        {% if grant.programs %}{{ grant.programs|join(", ") }}{% endif %}
-        {% if grant.grant_number %}{% if grant.programs %} · {% endif %}{{ grant.grant_number }}{% endif %}
+        {% if grant.entity %}{{ grant.entity }}{% endif %}
+        {% if grant.programs %}{% if grant.entity %} · {% endif %}{{ grant.programs|join(", ") }}{% endif %}
+        {% if grant.grant_number %}{% if grant.entity or grant.programs %} · {% endif %}{{ grant.grant_number }}{% endif %}
         {% if grant.is_planning %} · planning{% endif %}
         {% if grant.fiscal_year and grant.award_date %} · FY {{ grant.fiscal_year }}{% endif %}
       </p>
       {% if grant.grant_number|usaspending_url or grant.fiscal_year|faa_year_url or grant.source_url %}
       <p class="meta">
         {% if grant.grant_number|usaspending_url %}<a href="{{ grant.grant_number|usaspending_url }}">USAspending award</a>{% endif %}
-        {% if grant.fiscal_year|faa_year_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.fiscal_year|faa_year_url }}">FAA FY {{ grant.fiscal_year }} summary</a>
-        {% elif grant.source_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.source_url }}">FAA workbook</a>{% endif %}
+        {% if grant.level == "federal" and grant.fiscal_year|faa_year_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.fiscal_year|faa_year_url }}">FAA FY {{ grant.fiscal_year }} summary</a>
+        {% elif grant.source_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.source_url }}">Official source</a>{% endif %}
       </p>
       {% endif %}
     </li>
     {% endfor %}
   </ul>
   {% else %}
-  <p>No FAA grants are listed yet for this LocID.</p>
+  <p>{{ section.empty }}</p>
   {% endif %}
+  {% endfor %}
 
   {% if airport.state %}
-  <h2>State aviation law</h2>
+  <h2 id="law">State aviation law</h2>
   <p>
     {% if state and state.agency %}
       {% if state.agency_url %}<a href="{{ state.agency_url }}">{{ state.agency }}</a>{% else %}{{ state.agency }}{% endif %}
     {% else %}
-      <a href="/states/{{ airport.state }}/">{{ airport.state }} hub</a>
+      <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>
     {% endif %}
-    {% if state and state.sasp_url %} · <a href="{{ state.sasp_url }}">Statewide system plan</a>{% endif %}
+    {% if state and state.sasp_url %} · <a href="{{ state.sasp_url }}">State aviation plan</a>{% endif %}
     {% if state and state.statute_guide_url %} · <a href="{{ state.statute_guide_url }}">Airport statute</a>{% endif %}
-    {% if state and state.agency %} · <a href="/states/{{ airport.state }}/">{{ airport.state }} hub</a>{% endif %}
+    {% if state and state.agency %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}
   </p>
   {% if state_documents %}
   <ul class="doc-list">
@@ -144,15 +167,26 @@
   {% endif %}
   {% endif %}
 
+  {% if notices %}
+  <h2>Notices</h2>
+  <p class="meta">Publisher, date, and URL only. Article text is not stored.</p>
+  <ul class="doc-list">
+    {% for doc in notices %}
+    <li>
+      <a href="{{ doc.source_url }}">{{ doc.title or doc.publisher or doc.source_url }}</a>
+      {% if doc.published_at %}<span class="meta">{{ doc.published_at }}</span>{% endif %}
+      {% if doc.publisher %}<span class="meta">{{ doc.publisher }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
   <aside class="page-notes">
-    <p>Unofficial. Not an FAA or airport publication, not legal advice, and not for flight planning. Identity from FAA <a href="https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/">NASR</a> and <a href="https://www.faa.gov/airports/planning_capacity/npias">NPIAS</a>. Awarded amounts from <a href="https://www.faa.gov/airports/aip/grant_histories">AIP grant histories</a>. Spent and still obligated from <a href="https://www.usaspending.gov/">USAspending</a> outlays (Award Amount minus Total Outlays). Each grant number links to the USAspending award record. Official sources remain the citation of record.</p>
+    <p>Airport identity from the <a href="https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/">FAA</a>. Federal grants from <a href="https://www.faa.gov/airports/aip/grant_histories">AIP grant histories</a> and <a href="https://www.usaspending.gov/">USAspending</a>.</p>
     <p>
-      Something stale or missing?
-      <a href="{{ intake_url }}">Open an issue</a>
+      Something missing?
+      <a href="{{ intake_url }}">Tell us</a>
       or email contact@aptplans.org
-      {% if documents %} · <a href="/feeds/airports/{{ airport.lid }}.xml">Airport RSS</a>{% endif %}
     </p>
   </aside>
 {% endblock %}
-
-{% block footer_notice %}{% endblock %}

@@ -9,7 +9,7 @@ This is an **unofficial document library**, not flight-planning weather and not 
 - Official sources are the citation of record. A document is `complete` only with both an official URL and a hash-verified preserved copy.
 - Name **airport master plans** and **Airport Layout Plans (ALPs)** as coequal works. Use the FAA term Airport Layout Plan on first mention, then ALP. An ALP without a narrative master plan is still a catalogued document (`kind: alp`), not `no_plan_known`. FAA names and systems used in this repo are defined in [`docs/FAA.md`](docs/FAA.md).
 - Summaries and change notes are unofficial. Do not brand a model or call the site an "AI product" on public pages.
-- Keep templates few and CSS thin. Search, map, and document pages are static HTML. Do not add a JavaScript SPA.
+- Keep templates few and CSS thin. Search and document pages are static HTML. Do not add a map library or a JavaScript SPA.
 - User-facing crawlers identify as `aptplans.org`.
 - The pipeline is gated logic. The local model is a subroutine the worker may call for a typed question after those gates pass. It does not run the pipeline, browse, or override a failed check. If a TOC is missing, the worker still sends a viable 32k text chunk rather than stopping for a human.
 - In prose, headings, and table cells, do not use the Unicode em dash. Use a single ASCII hyphen (`-`) for a break or aside. Keep `--` only where Markdown or a CLI example needs it.
@@ -31,7 +31,7 @@ Python 3.12+. New modules live under `site/`, `catalog/`, `pipeline/`, or `tests
 - Templates extend a small base. One accent color, readable measure, no card grids or stock heroes.
 - Class names are ordinary English (`site-header`, `lede`). No utility-class frameworks.
 - CSS in `site/static/css/`. 2-space indent. Prefer a few custom properties over a design-token pile.
-- Every document page states that the site is unofficial. About copy stays short.
+- The unofficial disclaimer lives once in the site footer. Do not repeat it on page bodies. About copy stays short.
 
 ## Shell, Make, and host scripts
 
@@ -47,8 +47,8 @@ Host scripts under `scripts/host/` are idempotent and must be safe to re-run fro
 
 - Schema changes go in `catalog/schema.json` and tests.
 - Completeness states stay `complete`, `link_only`, `preserved_only`, `missing`, `no_plan_known`. `no_plan_known` means neither a master plan nor an ALP is known.
-- Same official URL plus a new SHA-256 is a new version.
-- Do not commit corpus PDFs, WARCs, `.gguf` weights, extracted full text, or `.env` files. The exception is hashed reference fixtures under `catalog/references/files/`.
+- Same official URL plus a new SHA-256 stores the new file. Text or image fingerprints decide whether the content version changed.
+- Do not commit corpus PDFs, WARCs, `.gguf` weights, extracted full text, overlay JSONL, or `.env` files. The exception is hashed reference fixtures under `catalog/references/files/`.
 
 ## Tests
 

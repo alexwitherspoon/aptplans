@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}States - AptPlans{% endblock %}
-{% block description %}Fifty-state aviation and airport land-use statute hubs.{% endblock %}
+{% block title %}States | AptPlans{% endblock %}
+{% block description %}Fifty-state aviation and airport law, plus that state's airports.{% endblock %}
 
 {% block content %}
   <h1>States</h1>
-  <p class="lede">Aviation, airport, and airport land-use law, plus that state's airports in this catalog.</p>
+  <p class="lede">Aviation and airport law, plus that state's airports.</p>
+  <p class="meta"><a href="/feeds/laws.xml">Law RSS</a> · <a href="/feeds/">All feeds</a></p>
   <ul>
     {% for state in states %}
     <li>

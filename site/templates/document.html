@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ document.title or document.id }} - AptPlans{% endblock %}
-{% block description %}Unofficial AptPlans record for {{ document.title or document.id }}. Official sources remain the citation of record.{% endblock %}
+{% block title %}{{ document.title or document.id }} | AptPlans{% endblock %}
+{% block description %}{{ document.title or document.id }}{% endblock %}
 
 {% block content %}
   <p class="crumb">
@@ -10,17 +10,28 @@
   </p>
   <h1>{{ document.title or document.id }}</h1>
   <p class="lede">{{ kind_label }}{% if document.edition %} · {{ document.edition }}{% endif %} · <span class="badge">{{ document.completeness }}</span></p>
-  <p>This record is unofficial. It is not an FAA, state, or airport publication, and it is not legal advice.</p>
+  <p class="meta">
+    {% if airport %}<a href="/feeds/airports/{{ airport.lid }}.xml">{{ airport.lid }} RSS</a> · {% endif %}
+    {% if document.state %}<a href="/feeds/states/{{ document.state }}.xml">{{ document.state }} RSS</a> · {% endif %}
+    {% if document.kind in ["statute", "sasp"] %}<a href="/feeds/laws.xml">Law RSS</a> · {% endif %}
+    <a href="/feeds/">All feeds</a>
+  </p>
 
   <h2>Official source</h2>
   <p><a href="{{ document.source_url }}">{{ document.source_url }}</a></p>
-  <p>Source status: {{ document.source_status }}{% if document.source_retrieved_at %} · retrieved {{ document.source_retrieved_at }}{% endif %}</p>
+  {% if document.publisher or document.published_at %}
+  <p>Published{% if document.published_at %} {{ document.published_at }}{% endif %}{% if document.publisher %} by {{ document.publisher }}{% endif %}.</p>
+  {% endif %}
+  {% if document.source_status or document.source_retrieved_at %}
+  <p class="meta">{% if document.source_status %}Source: {{ document.source_status }}{% endif %}{% if document.source_retrieved_at %}{% if document.source_status %} · {% endif %}last checked {{ document.source_retrieved_at }}{% endif %}</p>
+  {% endif %}
 
-  <h2>Archived copy</h2>
+  <h2>Saved copy</h2>
   {% if document.preserved_url %}
-  <p><a href="{{ document.preserved_url }}">Preservation copy</a> (SHA-256 {{ document.content_sha256 }})</p>
+  <p><a href="{{ document.preserved_url }}">Open the saved copy</a></p>
+  {% if document.content_sha256 %}<p class="meta">File hash: {{ document.content_sha256 }}</p>{% endif %}
   {% else %}
-  <p>No preservation copy yet. Completeness stays {{ document.completeness }} until the worker stores a hash-verified file.</p>
+  <p>No saved copy yet.</p>
   {% endif %}
 
   {% if document.supersedes %}
@@ -28,7 +39,7 @@
   {% endif %}
 
   {% if document.summary %}
-  <h2>Unofficial note</h2>
+  <h2>Summary</h2>
   <p>{{ document.summary }}</p>
   {% endif %}
 
@@ -36,7 +47,7 @@
   <h2>What changed</h2>
   <ul>
     {% for change in changes %}
-    <li>{{ change.detected_at }} · {{ change.unofficial_note or "Preserved bytes changed." }}</li>
+    <li>{{ change.detected_at }} · {{ change.unofficial_note or "Saved file changed." }}</li>
     {% endfor %}
   </ul>
   {% endif %}

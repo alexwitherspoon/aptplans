@@ -1,14 +1,24 @@
 {% extends "base.html" %}
 
 {% block title %}Search - AptPlans{% endblock %}
+{% block description %}Search airport master plans, Airport Layout Plans, and grants.{% endblock %}
 
 {% block content %}
   <h1>Search</h1>
-  <p class="lede">Filter the airport list and catalogued documents. This is not a legal research tool.</p>
+  <p class="lede">Search an airport ID, a name, or words from a plan. Try <em>remove building</em> or <em>modify runway</em>.</p>
   <form class="search-form" action="/search/" method="get" role="search">
     <label for="q">Query</label>
-    <input id="q" name="q" type="search" placeholder="PDX, Hood River, ALP">
+    <div class="search-suggest-wrap">
+      <input id="q" name="q" type="search" placeholder="PDX, remove building, modify runway" autocomplete="off" aria-autocomplete="list" aria-controls="search-suggest">
+      <ul id="search-suggest" class="search-suggest" hidden role="listbox"></ul>
+    </div>
     <button type="submit">Search</button>
+    <fieldset class="search-scope">
+      <legend>Show</legend>
+      <label><input type="radio" name="scope" value="all" checked> All</label>
+      <label><input type="radio" name="scope" value="plans"> Plans and ALPs</label>
+      <label><input type="radio" name="scope" value="projects"> Grants</label>
+    </fieldset>
   </form>
   <p id="status"></p>
   <ul id="results" class="doc-list"></ul>
@@ -17,10 +27,26 @@
   </noscript>
   <script>
     (function () {
+      var labels = {
+        airport: "Airport",
+        state: "State",
+        document: "Document",
+        page: "Plan page",
+        funding: "Grant",
+        master_plan: "Airport master plan",
+        alp: "Airport Layout Plan",
+        statute: "Statute",
+        sasp: "State aviation plan",
+        notice: "Notice",
+        other: "Planning document"
+      };
       var params = new URLSearchParams(window.location.search);
-      var q = (params.get("q") || "").trim().toLowerCase();
+      var q = (params.get("q") || "").trim();
+      var scope = params.get("scope") || "all";
       var input = document.getElementById("q");
       if (input) input.value = params.get("q") || "";
+      var scopeInput = document.querySelector("input[name=scope][value=\"" + scope + "\"]");
+      if (scopeInput) scopeInput.checked = true;
       var results = document.getElementById("results");
       var status = document.getElementById("status");
       function esc(value) {
@@ -28,23 +54,93 @@
           return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char];
         });
       }
-      fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
-        var hits = items;
-        if (q) {
-          hits = items.filter(function (item) {
-            return (item.title || "").toLowerCase().indexOf(q) !== -1 ||
-              (item.text || "").toLowerCase().indexOf(q) !== -1 ||
-              (item.state || "").toLowerCase() === q;
-          }).slice(0, 100);
-        } else {
-          hits = items.slice(0, 25);
-        }
-        status.textContent = q ? (hits.length + " matches") : "Type a LID, airport, or state.";
-        results.innerHTML = hits.map(function (item) {
-          return "<li><a href=\"" + esc(item.url) + "\">" + esc(item.title) + "</a> <span class=\"badge\">" + esc(item.type) + "</span></li>";
+      function snippetHtml(value) {
+        return String(value).split(/(<\/?mark>)/).map(function (part) {
+          if (part === "<mark>" || part === "</mark>") return part;
+          return esc(part);
         }).join("");
+      }
+      function badge(item) {
+        var label = labels[item.kind] || labels[item.type] || item.type;
+        if (item.page) label += " · p. " + item.page;
+        return label;
+      }
+      function words() {
+        return q.toLowerCase().split(/\s+/).filter(Boolean);
+      }
+      function render(hits, label) {
+        status.textContent = hits.length + " matches" + (label ? " (" + label + ")" : "");
+        results.innerHTML = hits.map(function (item) {
+          var extra = item.snippet ? "<p class=\"meta search-snippet\">" + snippetHtml(item.snippet) + "</p>" : "";
+          return "<li><a href=\"" + esc(item.url) + "\">" + esc(item.title) + "</a> <span class=\"badge\">" + esc(badge(item)) + "</span>" + extra + "</li>";
+        }).join("");
+      }
+      function inScope(item) {
+        var kind = item.kind || item.type;
+        if (scope === "plans") return kind === "master_plan" || kind === "alp" || kind === "other";
+        if (scope === "projects") return kind === "funding" || item.type === "funding";
+        return true;
+      }
+      function catalogSearch() {
+        return fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
+          var needles = words();
+          if (!needles.length) return [];
+          return items.filter(inScope).filter(function (item) {
+            var hay = ((item.title || "") + " " + (item.text || "") + " " + (item.state || "")).toLowerCase();
+            return needles.every(function (word) { return hay.indexOf(word) !== -1; });
+          }).slice(0, 100).map(function (item) {
+            return { title: item.title, url: item.url, type: item.type, kind: item.type, snippet: "" };
+          });
+        });
+      }
+      function daemonFilter() {
+        if (scope === "plans") return "kind IN [master_plan, alp, other]";
+        if (scope === "projects") return "type = funding";
+        return null;
+      }
+      function daemonSearch() {
+        var body = {
+          q: q,
+          limit: 25,
+          matchingStrategy: words().length >= 2 ? "all" : "last",
+          attributesToRetrieve: ["title", "url", "type", "kind", "state", "lid", "page", "document_id", "summary"],
+          attributesToCrop: ["text", "summary"],
+          cropLength: 40,
+          attributesToHighlight: ["title", "text"],
+          highlightPreTag: "<mark>",
+          highlightPostTag: "</mark>"
+        };
+        var filter = daemonFilter();
+        if (filter) body.filter = filter;
+        return fetch("/search/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          if (!res.ok) throw new Error("query");
+          return res.json();
+        }).then(function (payload) {
+          return (payload.hits || []).map(function (hit) {
+            var formatted = hit._formatted || {};
+            var snippet = formatted.text || formatted.summary || hit.summary || "";
+            return {
+              title: hit.title,
+              url: hit.url,
+              type: hit.type,
+              kind: hit.kind,
+              page: hit.page,
+              snippet: snippet
+            };
+          });
+        });
+      }
+      if (!q) return;
+      daemonSearch().then(function (hits) {
+        render(hits, "");
       }).catch(function () {
-        status.textContent = "Search index failed to load.";
+        catalogSearch().then(function (hits) { render(hits, "catalog"); }).catch(function () {
+          status.textContent = "Search index failed to load.";
+        });
       });
     })();
   </script>

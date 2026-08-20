@@ -1,23 +1,114 @@
 {% extends "base.html" %}
 
-{% block title %}{{ state.name }} - AptPlans{% endblock %}
-{% block description %}Unofficial AptPlans hub for {{ state.name }} airports and aviation law.{% endblock %}
+{% block title %}{{ state.name }} aviation | AptPlans{% endblock %}
+{% block description %}{{ state.name }} airports, aviation law, budget, and grants.{% endblock %}
 
 {% block content %}
   <p class="crumb"><a href="/states/">States</a></p>
   <h1>{{ state.name }}</h1>
-  <p class="lede">Airports in this state, plus official aviation and airport land-use law when we have a citation. This page is unofficial.</p>
+  <p class="lede">Airports, aviation law, the state aviation budget, and grants we can cite.</p>
+  <p class="on-page">
+    <a href="#budget">Budget</a>
+    · <a href="#projects">Projects</a>
+    · <a href="#law">Law</a>
+    · <a href="#airports">Airports</a>
+    · <a href="/feeds/states/{{ state.code }}.xml">RSS</a>
+    · <a href="/feeds/">All feeds</a>
+  </p>
   {% if state.agency %}
   <p>State aviation agency: {% if state.agency_url %}<a href="{{ state.agency_url }}">{{ state.agency }}</a>{% else %}{{ state.agency }}{% endif %}</p>
   {% endif %}
   {% if state.sasp_url %}
-  <p>Statewide aviation system plan: <a href="{{ state.sasp_url }}">Official source</a></p>
+  <p>State aviation plan: <a href="{{ state.sasp_url }}">Official source</a></p>
   {% endif %}
   {% if state.statute_guide_url %}
   <p>Airport statute: <a href="{{ state.statute_guide_url }}">Official source</a></p>
   {% endif %}
+  <h2 id="budget">Aviation budget</h2>
+  {% if budgets %}
+  <p class="meta">State aviation office budget. Federal rows here are in the state budget, not airport grants.</p>
+  {% for budget in budgets %}
+  <h3>{{ budget.title or (budget.biennium ~ " budget") }}</h3>
+  <p class="totals">
+    {% if budget.total %}{{ budget.total|usd }} total{% endif %}
+    {% if budget.biennium %}{% if budget.total %} · {% endif %}{{ budget.biennium }} biennium{% elif budget.fiscal_year %}{% if budget.total %} · {% endif %}FY {{ budget.fiscal_year }}{% endif %}
+    {% if budget.fte %} · {{ budget.fte }} staff{% endif %}
+  </p>
+  {% if budget.publisher %}<p class="meta">{{ budget.publisher }}</p>{% endif %}
+  {% for heading, lines in budget|budget_groups %}
+  <p class="totals">{{ heading }}</p>
+  <ul class="grant-list">
+    {% for line in lines %}
+    <li>
+      <p class="grant-title">{{ line.category }}{% if line.amount %} · {{ line.amount|usd }}{% endif %}{% if line.airport_lid %} · <a href="/airports/{{ line.airport_lid }}/">{{ line.airport_lid }}</a>{% endif %}</p>
+      {% if line.note %}<p class="meta">{{ line.note }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+  <p class="meta"><a href="{{ budget.source_url }}">Official source</a></p>
+  {% endfor %}
+  {% elif state.budget_url %}
+  <p>Official aviation budget: <a href="{{ state.budget_url }}">Official source</a>. A breakdown is not listed yet.</p>
+  {% else %}
+  <p>No statewide aviation budget is listed yet. Know of an official one? <a href="{{ intake_url }}">Send a link</a>.</p>
+  {% endif %}
+  <h2 id="projects">Projects and allocations</h2>
+  <p class="meta">Airport grants, usually federal. Not the budget totals above. Full lists are on each airport page.</p>
+  {% if projects %}
+  <p class="totals">
+    {% if project_stats.total %}{{ project_stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
+    in {{ project_stats.count }} grant{% if project_stats.count != 1 %}s{% endif %}
+    at {{ projects|length }} airport{% if projects|length != 1 %}s{% endif %}{% if project_stats.year_min %}
+    (FY {{ project_stats.year_min }}{% if project_stats.year_max and project_stats.year_max != project_stats.year_min %}-{{ project_stats.year_max }}{% endif %}){% endif %}.
+  </p>
+  {% if project_stats.spent is not none or project_stats.remaining is not none %}
+  <p class="totals">
+    {% if project_stats.spent is not none %}{{ project_stats.spent|usd }} spent{% endif %}
+    {% if project_stats.spent is not none and project_stats.remaining is not none %} · {% endif %}
+    {% if project_stats.remaining is not none %}{{ project_stats.remaining|usd }} not yet spent{% endif %}
+  </p>
+  {% endif %}
+  {% for group in projects %}
+  <h3><a href="/airports/{{ group.lid }}/">{{ group.lid }}</a> {{ group.name }}</h3>
+  <p class="meta">{% if group.stats.total %}{{ group.stats.total|usd }} awarded{% endif %}{% if group.stats.count %} · {{ group.stats.count }} grant{% if group.stats.count != 1 %}s{% endif %}{% endif %}</p>
+  <ul class="grant-list">
+    {% for grant in group.grants %}
+    <li>
+      <p class="grant-when">{{ grant|grant_date }}{% if grant.amount %} · {{ grant.amount|usd }} awarded{% endif %}</p>
+      {% if grant.outlayed is not none and grant|grant_remaining is not none %}
+      <p class="meta">{{ grant.outlayed|usd }} spent · {{ grant|grant_remaining|usd }} not yet spent</p>
+      {% endif %}
+      <p class="grant-title">{{ grant.description|grant_title }}</p>
+      {% if grant.description|grant_brief %}
+      <p class="grant-brief">{{ grant.description|grant_brief }}</p>
+      {% endif %}
+      <p class="meta">
+        {% if grant.entity %}{{ grant.entity }}{% endif %}
+        {% if grant.programs %}{% if grant.entity %} · {% endif %}{{ grant.programs|join(", ") }}{% endif %}
+        {% if grant.grant_number %}{% if grant.entity or grant.programs %} · {% endif %}{{ grant.grant_number }}{% endif %}
+        {% if grant.is_planning %} · planning{% endif %}
+        {% if grant.fiscal_year and grant.award_date %} · FY {{ grant.fiscal_year }}{% endif %}
+      </p>
+      {% if grant.grant_number|usaspending_url or grant.fiscal_year|faa_year_url or grant.source_url %}
+      <p class="meta">
+        {% if grant.grant_number|usaspending_url %}<a href="{{ grant.grant_number|usaspending_url }}">USAspending award</a>{% endif %}
+        {% if grant.level == "federal" and grant.fiscal_year|faa_year_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.fiscal_year|faa_year_url }}">FAA FY {{ grant.fiscal_year }} summary</a>
+        {% elif grant.source_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.source_url }}">Official source</a>{% endif %}
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if group.more %}
+  <p class="meta"><a href="/airports/{{ group.lid }}/#funding">{{ group.more }} more award{% if group.more != 1 %}s{% endif %} on the {{ group.lid }} page</a></p>
+  {% endif %}
+  {% endfor %}
+  {% else %}
+  <p>No grants listed yet for this state. Know of an official list? <a href="{{ intake_url }}">Send a link</a>.</p>
+  {% endif %}
   {% if documents %}
-  <h2>Statutes and system plans</h2>
+  <h2 id="law">Aviation law</h2>
   <ul class="doc-list">
     {% for doc in documents %}
     <li>
@@ -29,10 +120,10 @@
     {% endfor %}
   </ul>
   {% else %}
-  <h2>Statutes</h2>
-  <p>No compiled statute snapshot is in the catalog yet for this state. The agency link above is the usual starting point. Hint an official URL with <a href="{{ intake_url }}">a GitHub issue</a>.</p>
+  <h2 id="law">Aviation law</h2>
+  <p>No state law snapshot yet. The agency link above is a starting point. Know of an official file? <a href="{{ intake_url }}">Send a link</a>.</p>
   {% endif %}
-  <h2>Airports</h2>
+  <h2 id="airports">Airports</h2>
   <ul>
     {% for airport in airports %}
     <li>
@@ -44,6 +135,8 @@
   </ul>
   <p class="meta">
     <a href="/feeds/states/{{ state.code }}.xml">State RSS</a>
+    · <a href="/feeds/laws.xml">Law RSS</a>
+    · <a href="/feeds/">All feeds</a>
     · <a href="https://nasao.org/page/members">NASAO member directory</a>
   </p>
 {% endblock %}

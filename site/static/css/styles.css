@@ -31,8 +31,10 @@ a {
 
 .site-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
+  gap: 0.5rem 1rem;
   border-bottom: 1px solid var(--rule);
   padding-bottom: 0.75rem;
   margin-bottom: 2rem;
@@ -45,8 +47,13 @@ a {
   letter-spacing: 0.02em;
 }
 
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
 nav a {
-  margin-left: 1rem;
   text-decoration: none;
 }
 
@@ -68,6 +75,7 @@ h1 {
   border-top: 1px solid var(--rule);
   color: var(--muted);
   font-size: 0.9rem;
+  text-align: center;
 }
 
 .site-footer p {
@@ -80,6 +88,7 @@ h1 {
   gap: 0.5rem;
   align-items: end;
   margin: 1.25rem 0 1.5rem;
+  overflow: visible;
 }
 
 .search-form label {
@@ -88,8 +97,8 @@ h1 {
   font-size: 0.9rem;
 }
 
-.search-form input {
-  flex: 1 1 12rem;
+.search-form input[type="search"] {
+  width: 100%;
   font: inherit;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--rule);
@@ -104,18 +113,91 @@ h1 {
   color: #fff;
 }
 
-.counts,
-.state-index {
-  padding-left: 1.2rem;
+.search-suggest-wrap {
+  position: relative;
+  flex: 1 1 12rem;
 }
 
-.counts {
+.search-suggest {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 0;
+  padding: 0.2rem 0;
   list-style: none;
-  padding-left: 0;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-top: 0;
 }
 
-.counts li {
-  margin: 0.25rem 0;
+.search-suggest a {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.search-suggest a:hover,
+.search-suggest a[aria-selected="true"] {
+  background: #efe6c8;
+}
+
+.search-suggest .meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.search-scope {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.search-scope legend {
+  padding: 0;
+}
+
+.search-scope label {
+  display: inline;
+  flex: none;
+  margin-right: 0.9rem;
+}
+
+.about-hero {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 1.2rem 1.25rem 1.25rem;
+  margin: 1.75rem -1.25rem 0;
+}
+
+.about-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.about-stats li {
+  flex: 1 1 28%;
+  color: #d4cec4;
+  font-size: 0.85rem;
+}
+
+.about-stats strong {
+  display: block;
+  color: var(--bg);
+  font-size: 1.85rem;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .badge {
@@ -130,6 +212,26 @@ h1 {
 .crumb {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.on-page {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.on-page a {
+  text-decoration: none;
+}
+
+.brief {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+
+.brief li {
+  margin: 0.35rem 0;
 }
 
 .index-table {
@@ -195,6 +297,29 @@ h1 {
 
 .doc-list .meta {
   margin: 0.2rem 0 0;
+}
+
+.search-snippet {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.search-snippet mark {
+  background: #efe6c8;
+  color: inherit;
+  padding: 0 0.1em;
+}
+
+.feed-tree {
+  padding-left: 1.2rem;
+}
+
+.feed-tree li {
+  margin: 0.85rem 0;
+}
+
+code {
+  font-size: 0.9em;
 }
 
 .state-index {

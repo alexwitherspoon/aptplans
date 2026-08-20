@@ -5,9 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AptPlans{% endblock %}</title>
   <meta name="description" content="{% block description %}US airport master plans, Airport Layout Plans, and state aviation law.{% endblock %}">
+  <meta name="robots" content="index,follow">
   <link rel="canonical" href="{{ canonical }}{{ canonical_path|default('/') }}">
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
+  <meta property="og:site_name" content="AptPlans">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="{{ self.title() }}">
+  <meta property="og:description" content="{{ self.description() }}">
+  <meta property="og:url" content="{{ canonical }}{{ canonical_path|default('/') }}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ self.title() }}">
+  <meta name="twitter:description" content="{{ self.description() }}">
   <link rel="stylesheet" href="/css/styles.css">
-  <link rel="alternate" type="application/rss+xml" title="AptPlans" href="/feeds/all.xml">
+  {% for feed in rss_links %}
+  <link rel="alternate" type="application/rss+xml" title="{{ feed.title }}" href="{{ feed.href }}">
+  {% endfor %}
+  {% for blob in json_ld %}
+  <script type="application/ld+json">{{ blob|safe }}</script>
+  {% endfor %}
 </head>
 <body>
   <header class="site-header">
@@ -16,6 +32,7 @@
       <a href="/search/">Search</a>
       <a href="/airports/">Airports</a>
       <a href="/states/">States</a>
+      <a href="/feeds/">Feeds</a>
       <a href="/about/">About</a>
     </nav>
   </header>
@@ -23,10 +40,9 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="site-footer">
-    {% block footer_notice %}
-    <p>Unofficial. Not an FAA, state, or airport publication. Not legal advice.</p>
-    {% endblock %}
-    <p><a href="{{ canonical }}">aptplans.org</a> · © {{ year }} · <a href="https://github.com/alexwitherspoon/aptplans">Source</a> · <a href="/feeds/all.xml">RSS</a></p>
+    <p>Unofficial. Not an FAA, state, or airport site. Not legal advice and not for flight planning. Follow the official source.</p>
+    <p><a href="{{ canonical }}">aptplans.org</a> · © {{ year }} · <a href="https://github.com/alexwitherspoon/aptplans">Source</a> · <a href="/feeds/">RSS</a></p>
   </footer>
+  <script src="/js/suggest.js" defer></script>
 </body>
 </html>
