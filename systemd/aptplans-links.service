@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily AptPlans official URL check
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aptplans
+EnvironmentFile=-/home/aptplans/.env.production
+EnvironmentFile=-/home/aptplans/.env.secrets
+ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets --env-file /home/aptplans/.env.search -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T -e APTPLANS_WAYBACK=1 worker python3 -m pipeline.check
+Nice=10
