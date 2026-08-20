@@ -30,7 +30,8 @@ htmlcov/
 data/files/
 data/queue/
 data/catalog/
-data/models/
+data/models/*
+!data/models/Modelfile.bonsai-27b
 data/text/
 data/search/
 catalog/data/*.jsonl

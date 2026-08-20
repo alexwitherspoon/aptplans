@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="${ENV_FILE:-/home/${APP_USER}/.env.production}"
 ENV_SECRETS="${ENV_SECRETS:-/home/${APP_USER}/.env.secrets}"
+ENV_SEARCH="${ENV_SEARCH:-/home/${APP_USER}/.env.search}"
 CONFIG="${REPO_ROOT}/config/ollama.json"
 
 COMPOSE=(
@@ -16,6 +17,9 @@ COMPOSE=(
 )
 if [ -f "${ENV_SECRETS}" ]; then
     COMPOSE+=(--env-file "${ENV_SECRETS}")
+fi
+if [ -f "${ENV_SEARCH}" ]; then
+    COMPOSE+=(--env-file "${ENV_SEARCH}")
 fi
 COMPOSE+=(
     -f "${REPO_ROOT}/docker/docker-compose.yml"
