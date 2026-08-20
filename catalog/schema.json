@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aptplans.org/schema/document.json",
   "title": "AptPlans document",
-  "description": "An airport master plan, Airport Layout Plan (ALP), statute snapshot, or related record. A document is complete only when both the official URL and a preserved copy exist.",
+  "description": "An airport master plan, Airport Layout Plan (ALP), statute citation, notice citation, or related record. A document is complete only when both the official URL and a preserved copy exist. Notices are citation-only (publisher, published date, URL).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,7 +15,7 @@
     "id": { "type": "string" },
     "kind": {
       "type": "string",
-      "enum": ["master_plan", "alp", "statute", "sasp", "other"]
+      "enum": ["master_plan", "alp", "statute", "sasp", "notice", "other"]
     },
     "airport_lid": { "type": ["string", "null"] },
     "state": { "type": ["string", "null"] },
@@ -28,6 +28,8 @@
       "enum": ["live", "moved", "dead", "replaced", "unknown"]
     },
     "content_sha256": { "type": ["string", "null"] },
+    "text_sha256": { "type": ["string", "null"] },
+    "images_sha256": { "type": ["string", "null"] },
     "preserved_url": { "type": ["string", "null"] },
     "ia_item": { "type": ["string", "null"] },
     "mirrors": {
@@ -47,6 +49,8 @@
       "type": "string",
       "enum": ["complete", "link_only", "preserved_only", "missing", "no_plan_known"]
     },
-    "summary": { "type": ["string", "null"] }
+    "summary": { "type": ["string", "null"] },
+    "publisher": { "type": ["string", "null"] },
+    "published_at": { "type": ["string", "null"] }
   }
 }

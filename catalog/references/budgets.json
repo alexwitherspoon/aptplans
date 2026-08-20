@@ -1,0 +1,64 @@
+{
+  "description": "Sample statewide aviation budgets for git-only site builds. Origin overlay budgets.jsonl replaces this when present. Amounts are transcribed from the cited official source.",
+  "budgets": [
+    {
+      "id": "or-odav-lab-2025-27",
+      "state": "OR",
+      "title": "Oregon Department of Aviation 2025-27 Legislatively Adopted Budget",
+      "publisher": "Oregon Department of Aviation",
+      "biennium": "2025-27",
+      "total": 45874157,
+      "fte": 15,
+      "source_url": "https://www.oregon.gov/aviation/state-aviation-board/Documents/2025/10_02/Staff%20Report%2025-27%20LAB%20Vote.pdf",
+      "lines": [
+        {
+          "group": "program",
+          "category": "Operations",
+          "amount": 10445142,
+          "note": "Other funds $7,320,894 · Federal funds $3,124,248"
+        },
+        {
+          "group": "program",
+          "category": "General Aviation Entitlement",
+          "amount": 10461786,
+          "note": "Other funds $1,007,966 · Federal funds $9,453,820"
+        },
+        {
+          "group": "program",
+          "category": "Pavement Maintenance",
+          "amount": 2420565,
+          "note": "Other funds $2,420,565"
+        },
+        {
+          "group": "program",
+          "category": "Aircraft Registration",
+          "amount": 245804,
+          "note": "Other funds $245,804"
+        },
+        {
+          "group": "program",
+          "category": "Aviation System Action Program",
+          "amount": 15409728,
+          "note": "Other funds $15,409,728"
+        },
+        {
+          "group": "program",
+          "category": "Capital Construction",
+          "amount": 6891132,
+          "note": "Other funds $2,630,000 · Federal funds $4,261,132"
+        },
+        {
+          "group": "fund",
+          "category": "Other funds",
+          "amount": 29034957
+        },
+        {
+          "group": "fund",
+          "category": "Federal funds",
+          "amount": 16839200,
+          "note": "Federal dollars in the state aviation agency budget, not AIP awards to a LocID"
+        }
+      ]
+    }
+  ]
+}

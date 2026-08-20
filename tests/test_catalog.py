@@ -9,6 +9,15 @@ def test_schema_lists_completeness_states() -> None:
     assert values == set(COMPLETENESS)
 
 
+def test_schema_has_notice_and_content_fingerprints() -> None:
+    schema = load_schema()
+    assert "notice" in schema["properties"]["kind"]["enum"]
+    assert "text_sha256" in schema["properties"]
+    assert "images_sha256" in schema["properties"]
+    assert "publisher" in schema["properties"]
+    assert "published_at" in schema["properties"]
+
+
 def test_complete_requires_official_and_preserved_copy() -> None:
     schema = load_schema()
     assert "source_url" in schema["required"]

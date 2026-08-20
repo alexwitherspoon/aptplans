@@ -4,4 +4,4 @@ Origin writes `/var/lib/aptplans/catalog/airports.jsonl` from FAA NASR APT (publ
 
 Refresh on the origin when an overlay is missing, empty, or not written this calendar month (`python3 -m pipeline.refresh_airports`). GitHub Actions must not live-fetch FAA; CI and `make site` without an overlay use the reference cases only.
 
-Do not add origin airport JSONL or corpus files here.
+Do not add origin airport JSONL or corpus files here. This GitHub path is documentation only.

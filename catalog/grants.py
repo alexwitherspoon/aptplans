@@ -212,6 +212,8 @@ def parse_aip_grants_bytes(
                 programs=_programs(entitlement, discretionary, aig, cares),
                 is_planning=is_planning(description),
                 source_url=source_url,
+                level="federal",
+                entity="FAA",
             )
         )
     return grants

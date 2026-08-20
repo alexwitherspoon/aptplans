@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from catalog.models import Airport, ChangeEvent, Document, Grant, State
+from catalog.models import Airport, Budget, ChangeEvent, Document, Grant, State
 
 COMPLETENESS_RANK = {
     "complete": 4,
@@ -41,11 +41,13 @@ class Catalog:
     documents: list[Document] = field(default_factory=list)
     changes: list[ChangeEvent] = field(default_factory=list)
     grants: list[Grant] = field(default_factory=list)
+    budgets: list[Budget] = field(default_factory=list)
     _airports_by_lid: dict[str, Airport] = field(init=False, repr=False, compare=False)
     _states_by_code: dict[str, State] = field(init=False, repr=False, compare=False)
     _documents_by_id: dict[str, Document] = field(init=False, repr=False, compare=False)
     _documents_by_lid: dict[str, list[Document]] = field(init=False, repr=False, compare=False)
     _grants_by_lid: dict[str, list[Grant]] = field(init=False, repr=False, compare=False)
+    _budgets_by_state: dict[str, list[Budget]] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self._airports_by_lid = {airport.lid: airport for airport in self.airports}
@@ -59,6 +61,8 @@ class Catalog:
         self._documents_by_lid = by_lid
         grants_by_lid: dict[str, list[Grant]] = {}
         for grant in self.grants:
+            if not grant.airport_lid:
+                continue
             grants_by_lid.setdefault(grant.airport_lid, []).append(grant)
         for lid in grants_by_lid:
             grants_by_lid[lid].sort(
@@ -70,6 +74,15 @@ class Catalog:
                 reverse=True,
             )
         self._grants_by_lid = grants_by_lid
+        budgets_by_state: dict[str, list[Budget]] = {}
+        for budget in self.budgets:
+            budgets_by_state.setdefault(budget.state, []).append(budget)
+        for code in budgets_by_state:
+            budgets_by_state[code].sort(
+                key=lambda item: (item.biennium or "", item.fiscal_year or 0, item.id),
+                reverse=True,
+            )
+        self._budgets_by_state = budgets_by_state
 
     @property
     def airports_by_lid(self) -> dict[str, Airport]:
@@ -92,6 +105,30 @@ class Catalog:
     def grants_for_airport(self, lid: str) -> list[Grant]:
         return list(self._grants_by_lid.get(lid, []))
 
+    def grants_for_state(self, code: str) -> list[Grant]:
+        lids = {airport.lid for airport in self.airports_for_state(code)}
+        by_lid: dict[str, list[Grant]] = {}
+        for grant in self.grants:
+            if grant.state != code and grant.airport_lid not in lids:
+                continue
+            by_lid.setdefault(grant.airport_lid, []).append(grant)
+        rows: list[Grant] = []
+        for lid in sorted(by_lid):
+            chunk = by_lid[lid]
+            chunk.sort(
+                key=lambda item: (
+                    item.award_date or "",
+                    item.fiscal_year or 0,
+                    item.grant_number or "",
+                ),
+                reverse=True,
+            )
+            rows.extend(chunk)
+        return rows
+
+    def budgets_for_state(self, code: str) -> list[Budget]:
+        return list(self._budgets_by_state.get(code, []))
+
     def documents_for_state(self, code: str) -> list[Document]:
         return [document for document in self.documents if document.state == code]
 
@@ -108,6 +145,7 @@ class Catalog:
         _write_jsonl(dest / "documents.jsonl", [item.to_dict() for item in self.documents])
         _write_jsonl(dest / "changes.jsonl", [item.to_dict() for item in self.changes])
         _write_jsonl(dest / "grants.jsonl", [item.to_dict() for item in self.grants])
+        _write_jsonl(dest / "budgets.jsonl", [item.to_dict() for item in self.budgets])
 
     @classmethod
     def load(cls, source: Path) -> Catalog:
@@ -120,7 +158,15 @@ class Catalog:
         documents = [Document.from_dict(row) for row in _read_jsonl(source / "documents.jsonl")]
         changes = [ChangeEvent.from_dict(row) for row in _read_jsonl(source / "changes.jsonl")]
         grants = [Grant.from_dict(row) for row in _read_jsonl(source / "grants.jsonl")]
-        return cls(airports=airports, states=states, documents=documents, changes=changes, grants=grants)
+        budgets = [Budget.from_dict(row) for row in _read_jsonl(source / "budgets.jsonl")]
+        return cls(
+            airports=airports,
+            states=states,
+            documents=documents,
+            changes=changes,
+            grants=grants,
+            budgets=budgets,
+        )
 
     @classmethod
     def empty(cls) -> Catalog:
@@ -143,6 +189,7 @@ def merge_overlay(catalog: Catalog, overlay: dict[str, dict]) -> Catalog:
         documents=list(by_id.values()),
         changes=list(catalog.changes),
         grants=list(catalog.grants),
+        budgets=list(catalog.budgets),
     )
 
 
@@ -172,6 +219,20 @@ def write_airports_overlay(overlay_dir: Path, airports: list[Airport]) -> None:
     _write_jsonl(overlay_dir / "airports.jsonl", rows)
 
 
+def load_budgets_overlay(overlay_dir: Path | None) -> list[Budget]:
+    if overlay_dir is None:
+        return []
+    return [Budget.from_dict(row) for row in _read_jsonl(overlay_dir / "budgets.jsonl")]
+
+
+def write_budgets_overlay(overlay_dir: Path, budgets: list[Budget]) -> None:
+    rows = [
+        budget.to_dict()
+        for budget in sorted(budgets, key=lambda item: (item.state, item.biennium or "", item.id))
+    ]
+    _write_jsonl(overlay_dir / "budgets.jsonl", rows)
+
+
 def load_grants_overlay(overlay_dir: Path | None) -> list[Grant]:
     if overlay_dir is None:
         return []
@@ -183,7 +244,7 @@ def write_grants_overlay(overlay_dir: Path, grants: list[Grant]) -> None:
         grant.to_dict()
         for grant in sorted(
             grants,
-            key=lambda item: (item.airport_lid, item.fiscal_year or 0, item.grant_number or ""),
+            key=lambda item: (item.airport_lid or "", item.fiscal_year or 0, item.grant_number or ""),
         )
     ]
     _write_jsonl(overlay_dir / "grants.jsonl", rows)
@@ -241,5 +302,7 @@ def counts(catalog: Catalog) -> dict[str, int]:
         "no_plan_known": sum(1 for status in airport_status if status == "no_plan_known"),
         "documents_complete": sum(1 for doc in catalog.documents if doc.completeness == "complete"),
         "documents_link_only": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
+        "waiting": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
+        "grants": len(catalog.grants),
         "statutes": sum(1 for doc in catalog.documents if doc.kind in {"statute", "sasp"}),
     }

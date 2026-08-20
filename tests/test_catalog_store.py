@@ -28,6 +28,13 @@ def test_seed_catalog_includes_reference_airports_and_states() -> None:
     assert oregon.agency_url == "https://www.oregon.gov/aviation"
     assert any(doc.id == "or-ors-836" for doc in catalog.documents)
     assert catalog.document("or-ors-836").kind == "statute"
+    assert oregon.budget_url
+    assert catalog.budgets_for_state("OR")
+    assert catalog.budgets_for_state("OR")[0].total == 45874157
+    oregon_grants = catalog.grants_for_state("OR")
+    assert oregon_grants
+    assert {grant.airport_lid for grant in oregon_grants} == {"PDX"}
+    assert not catalog.grants_for_state("CO")
 
 
 def test_seed_without_overlay_is_reference_airports_only() -> None:
@@ -118,6 +125,7 @@ def test_load_and_write_roundtrip(tmp_path: Path) -> None:
     loaded = Catalog.load(out)
     assert len(loaded.airports) == len(catalog.airports)
     assert loaded.document("4s2-2018-alp-sheet").kind == "alp"
+    assert loaded.budgets_for_state("OR")[0].id == "or-odav-lab-2025-27"
 
 
 def test_change_event_schema_exists() -> None:
