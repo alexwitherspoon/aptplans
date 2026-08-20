@@ -1,6 +1,6 @@
 # Operations
 
-Steady state should be boring: unattended-upgrades, a Monday reboot, a weekly document pipeline timer, a monthly NASR/NPIAS/grant refresh, and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
+Steady state should be boring: unattended-upgrades, a Monday reboot, a worker that drains the document queue continuously (one job at a time), a daily official-URL check, a monthly NASR/NPIAS/grant refresh, and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
 
 ## Deploy
 
@@ -19,19 +19,25 @@ cat /var/log/unattended-upgrades/unattended-upgrades.log
 ## Timer
 
 ```bash
-systemctl status aptplans-pipeline.timer
 systemctl status aptplans-airports.timer
-systemctl list-timers aptplans-pipeline.timer aptplans-airports.timer
-journalctl -u aptplans-pipeline.service -n 100
+systemctl status aptplans-links.timer
+systemctl list-timers aptplans-airports.timer aptplans-links.timer
 journalctl -u aptplans-airports.service -n 100
+journalctl -u aptplans-links.service -n 100
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  logs --tail 100 worker
 ```
 
-Run one document job by hand:
+The document queue is drained by the Compose `worker` process, not a weekly timer. `aptplans-pipeline.timer` should be disabled. Origin Compose uses `.env.production`, `.env.secrets`, and `.env.search` (Meilisearch master key, written once by bootstrap). The worker polls `pending/` about once a minute when idle and lists GitHub intake issues at most hourly. Uncaught errors retry with backoff and stop after three attempts. One extra job by hand (waits if the worker is in a job):
 
 ```bash
 cd /opt/aptplans
 docker compose --env-file /home/aptplans/.env.production \
   --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
   exec -T worker python3 pipeline/run_once.py
 ```
@@ -47,7 +53,7 @@ docker compose --env-file /home/aptplans/.env.production \
 
 Jobs are serial on purpose. Do not scale the worker count to go faster. Backfill is allowed to take months.
 
-The stack is `site`, `worker`, and `ollama`. The worker reaches Ollama at `http://ollama:11434` on the internal `llm` network. Ollama is not published on the host. Check it with Compose exec, not curl to localhost:
+The worker reaches Ollama at `http://ollama:11434` on the internal `llm` network. On origin, Ollama is not published on the host; check it with Compose exec, not curl to localhost. Local Compose binds `127.0.0.1:11434` for diagnostics.
 
 ```bash
 docker compose --env-file /home/aptplans/.env.production \
@@ -56,7 +62,19 @@ docker compose --env-file /home/aptplans/.env.production \
   exec ollama ollama list
 ```
 
-Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after import; after a Monday reboot, `aptplans-ollama-warmup.service` loads it again. First load on CPU can take several minutes.
+Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after import; after a Monday reboot, `aptplans-ollama-warmup.service` loads it again. First load on CPU can take several minutes. Worker generate calls keep thinking off so unofficial notes are the paragraph, not chain-of-thought.
+
+Throughput is a KS-6 measurement, not a laptop one. Do it by hand: one Compose exec, no CI. Ollama is serial (`OLLAMA_NUM_PARALLEL=1`). The document worker may be in a generate; the flock will wait, or run this when logs show idle. Then:
+
+```bash
+cd /opt/aptplans
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec -T worker python3 -m pipeline.benchmark
+```
+
+Default is a short ping, then the same worker-shaped unofficial-note prompt twice: `think: false` then `think: true`, both uncapped. Read `prompt_tok_s`, `eval_tok_s`, `wall_s`, and the two responses. Thinking-on can run a long time. Wrapper: `scripts/host/benchmark-ollama.sh`. That module has to be on the origin checkout; until deploy, run the same logic with `exec -T worker python3 -` and a stdin script.
 
 ```bash
 systemctl status aptplans-ollama-warmup.service
@@ -66,11 +84,12 @@ docker compose --env-file /home/aptplans/.env.production \
   exec ollama ollama ps
 ```
 
-On the KS-6 (EPYC 7351P, 4 NUMA nodes), production pins **NUMA 0** (`0-3,16-19`) to `site` and `worker`, and **NUMA 1-3** (`4-15,20-31`) to Ollama. Confirm after deploy:
+On the KS-6 (EPYC 7351P, 4 NUMA nodes), production pins **NUMA 0** (`0-3,16-19`) to `site`, `search`, and `worker`, and **NUMA 1-3** (`4-15,20-31`) to Ollama. Local Docker on a laptop does not use those cpusets. Same weights, different hardware: laptop `make llm` duration is not an origin estimate. Confirm after deploy:
 
 ```bash
 docker inspect aptplans-ollama-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 docker inspect aptplans-site-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
+docker inspect aptplans-search-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 ```
 
@@ -80,11 +99,23 @@ CD rebuilds HTML on the GitHub runner from the git catalog and rsyncs `dist/` to
 
 If HTML looks stale at the edge, purge Cloudflare for HTML/RSS only. Leave hashed `/files/` objects cached.
 
+Rebuild the public search index after a bulk text restore or a Meilisearch volume wipe. `--reindex` extracts missing page JSONL from hashed PDFs, then replaces the daemon index from overlay plus those sidecars. A worker boot does the same page backfill when the index has no page hits:
+
+```bash
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec -T worker python3 -m pipeline.search --reindex
+```
+
 Worker overlay and queue:
 
 | Path | Contents |
 | --- | --- |
 | `/var/lib/aptplans/files` | hashed PDFs |
+| `/var/lib/aptplans/text` | gated page JSONL (not served) |
+| `/var/lib/aptplans/search` | Meilisearch data (no host port) |
 | `/var/lib/aptplans/catalog` | overlay JSONL (`airports.jsonl` from NASR+NPIAS, `grants.jsonl` from AIP histories, plus document completeness and hashes) |
 | `/var/lib/aptplans/queue` | serial job JSON |
 
@@ -101,7 +132,16 @@ docker compose --env-file /home/aptplans/.env.production \
 
 The public site should expose corpus counts and coverage status (`complete` / `link_only` / `missing`, and so on). Treat `complete` count over months as the success metric. Queue depth should sit near zero once backfill is done.
 
-Official URL health belongs in the weekly poll: live, moved, dead, or replaced. Same URL plus a new SHA-256 is a new version.
+Official URL health is a daily pass (`python3 -m pipeline.check`): live, moved, or dead. Live URLs are rechecked after 7 days; dead after 30. 5xx and robots denials are errors, not dead. A dead official URL with a preserved copy becomes `preserved_only`. Without a copy it becomes `missing` and the worker tries listed mirrors, then Wayback CDX when `APTPLANS_WAYBACK=1`. A moved URL queues a fetch of the new location. Same URL plus a new SHA-256 is a content version on the next fetch.
+
+Run one link-check pass by hand:
+
+```bash
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  exec -T -e APTPLANS_WAYBACK=1 worker python3 -m pipeline.check
+```
 
 ## Crawler manners
 

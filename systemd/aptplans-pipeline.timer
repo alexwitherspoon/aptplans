@@ -1,5 +1,5 @@
 [Unit]
-Description=Weekly AptPlans pipeline poll
+Description=Unused weekly poll; the worker container drains the queue
 
 [Timer]
 OnCalendar=weekly

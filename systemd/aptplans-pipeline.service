@@ -1,13 +1,13 @@
 [Unit]
-Description=AptPlans serial document pipeline
+Description=Manual AptPlans document job (worker loop is the scheduler)
 After=docker.service network-online.target
 Requires=docker.service
-# Worker must already be up from CD (`compose up`).
+# Optional extra run_once. The Compose worker already drains pending/.
 
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/aptplans
 EnvironmentFile=-/home/aptplans/.env.production
 EnvironmentFile=-/home/aptplans/.env.secrets
-ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T worker python3 pipeline/run_once.py
+ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets --env-file /home/aptplans/.env.search -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T worker python3 pipeline/run_once.py
 Nice=10

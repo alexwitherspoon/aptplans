@@ -21,3 +21,5 @@ def test_cd_requires_aptplans_user() -> None:
     assert "sudo /opt/aptplans/scripts/host/remote-deploy.sh" in text
     assert "/opt/aptplans/scripts/host/remote-deploy.sh" in text
     assert 'if [ "$(id -u)" -eq 0 ]' not in text
+    assert "MEILI_MASTER_KEY" not in text
+    assert ".env.search" not in text

@@ -12,7 +12,7 @@ How this project uses each source is in [Architecture](ARCHITECTURE.md). Airport
 | NPIAS | Biennial national airport system plan | Likelihood flag (more likely to have a published plan) |
 | Airport master plan | Sponsor planning study (recommended) | Catalog document `kind: master_plan` |
 | ALP | FAA-approved layout drawing set (required if federally obligated) | Catalog document `kind: alp` |
-| AIP grant histories | Annual Excel of issued grants by LocID (AIP, and AIG/COVID when included) | Airport page Federal funding section |
+| AIP grant histories | Annual Excel of issued grants by LocID (AIP, and AIG/COVID when included) | Airport Funding / Federal, and state Projects and allocations |
 | AIG / IIJA | Formula BIL allocations and grant status by LocID | Issued AIG dollars appear in recent AIP workbooks |
 | ADIP / 5010 / AMR | Facility data and internal ALP file store | Not a public master-plan library |
 | SOAR | Internal NPIAS and AIP database | Not fetched |
@@ -115,7 +115,7 @@ Airport Improvement Program. Federal grants for eligible airport development and
 
 The public **dataset of issued grants** is the annual All Grants workbook on [AIP grant histories](https://www.faa.gov/airports/aip/grant_histories) (Excel from about FY 2005 onward; PDFs go back further). Rows are keyed by **LocID** plus fiscal year, grant sequence, entitlement versus discretionary amounts, and a brief project description. Descriptions often include `Update Airport Master Plan Study` or `Conduct Airport Master Plan Study`. That is evidence a study was funded, not the PDF. FAA also publishes a Tableau [Grant History Visualization (FY 2005-2025)](https://www.faa.gov/airports/aip/grant_histories) covering AIP, COVID relief, and IIJA by airport. That dashboard is interactive, not a bulk API.
 
-These workbooks are fetched on origin into overlay `grants.jsonl` (monthly, or if the file is missing or empty) and listed on each airport page. The FAA amount is the announced award. Each grant number links to the USAspending award (`ASST_NON_{FAIN}_069`, hyphens stripped from the FAA grant sequence) and to that fiscal year's AIP summary page. CI must not live-fetch them. A grant row must not be treated as a complete master plan or ALP.
+These workbooks are fetched on origin into overlay `grants.jsonl` (monthly, or if the file is missing or empty) and listed on each airport page and on the state Projects and allocations list. The FAA amount is the announced award. Each grant number links to the USAspending award (`ASST_NON_{FAIN}_069`, hyphens stripped from the FAA grant sequence) and to that fiscal year's AIP summary page. CI must not live-fetch them. A grant row must not be treated as a complete master plan or ALP.
 
 ### AIG (IIJA / BIL)
 
@@ -131,7 +131,7 @@ An airport that has accepted AIP (or certain other federal) grants and remains b
 
 ### CIP / ACIP
 
-Capital Improvement Plan (sponsor) and Airport Capital Improvement Program (FAA programming). Project lists that feed NPIAS and AIP. Not ingested as master plans.
+Capital Improvement Plan (sponsor) and Airport Capital Improvement Program (FAA programming). Project lists that feed NPIAS and AIP. Not ingested as master plans. Sponsor CIP rows are not in the FAA All Grants workbook until they become issued awards.
 
 ## Related studies (not ingested yet)
 

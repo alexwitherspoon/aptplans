@@ -21,7 +21,7 @@ make test
 make dev
 ```
 
-The generated site is served at http://127.0.0.1:8080
+The generated site is served at http://127.0.0.1:8080. `make dev` rebuilds when `site/` or `catalog/` files change; reload the browser.
 
 ## Documentation
 

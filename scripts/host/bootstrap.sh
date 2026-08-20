@@ -1,7 +1,7 @@
 #!/bin/bash
 # Idempotent host bootstrap for a bare Debian 13 (trixie) origin.
 # Keeps the OS thin: Docker Engine, firewall, fail2ban, unattended-upgrades.
-# Caddy, the worker, and Ollama run in Compose - not on the host.
+# Caddy, Meilisearch, the worker, and Ollama run in Compose - not on the host.
 #
 # Run as aptplans (CD) or from console as root. Remote root SSH is disabled.
 set -euo pipefail
@@ -18,7 +18,8 @@ QUEUE_DIR="${QUEUE_DIR:-/var/lib/aptplans/queue}"
 CATALOG_OVERLAY_DIR="${CATALOG_OVERLAY_DIR:-/var/lib/aptplans/catalog}"
 TLS_DIR="${TLS_DIR:-/var/lib/aptplans/tls}"
 OLLAMA_DIR="${OLLAMA_DIR:-/var/lib/aptplans/ollama}"
-MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"
+TEXT_DIR="${TEXT_DIR:-/var/lib/aptplans/text}"
+SEARCH_DIR="${SEARCH_DIR:-/var/lib/aptplans/search}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -149,8 +150,10 @@ ensure_directories() {
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${TLS_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${OLLAMA_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${MODELS_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${TEXT_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SEARCH_DIR}"
     as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
-    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}"
+    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}"
 }
 
 ensure_origin_tls() {
@@ -211,6 +214,8 @@ install_systemd_units() {
     as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-airports.service" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-airports.timer" /etc/systemd/system/
+    as_root cp "${REPO_ROOT}/systemd/aptplans-links.service" /etc/systemd/system/
+    as_root cp "${REPO_ROOT}/systemd/aptplans-links.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.service" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.timer" /etc/systemd/system/
     as_root cp "${REPO_ROOT}/systemd/aptplans-ollama-warmup.service" /etc/systemd/system/
@@ -218,8 +223,9 @@ install_systemd_units() {
     as_root cp "${HOST_CONFIG}/docker-cleanup.logrotate" /etc/logrotate.d/aptplans-docker-cleanup
     as_root chmod 644 /etc/cron.d/aptplans-docker-cleanup /etc/logrotate.d/aptplans-docker-cleanup
     as_root systemctl daemon-reload
-    as_root systemctl enable --now aptplans-pipeline.timer
+    as_root systemctl disable --now aptplans-pipeline.timer || true
     as_root systemctl enable --now aptplans-airports.timer
+    as_root systemctl enable --now aptplans-links.timer
     as_root systemctl enable --now aptplans-reboot.timer
     as_root systemctl enable aptplans-ollama-warmup.service
 }
@@ -236,14 +242,35 @@ REPO_PATH=${REPO_DIR}
 TLS_PATH=${TLS_DIR}
 OLLAMA_PATH=${OLLAMA_DIR}
 MODELS_PATH=${MODELS_DIR}
-# EPYC 7351P: node 0 for site/worker/host, nodes 1-3 for Ollama.
+TEXT_PATH=${TEXT_DIR}
+SEARCH_PATH=${SEARCH_DIR}
+# EPYC 7351P: node 0 for site/worker/search/host, nodes 1-3 for Ollama.
 SITE_CPUSET=0-3,16-19
 WORKER_CPUSET=0-3,16-19
+SEARCH_CPUSET=0-3,16-19
 OLLAMA_CPUSET=4-15,20-31
 APTPLANS_USER_AGENT=aptplans.org
 EOF
     as_root chown "${APP_USER}:${APP_USER}" "${env_file}"
     as_root chmod 600 "${env_file}"
+}
+
+ensure_search_env() {
+    # Written once. CD overwrites .env.secrets and must not rotate this key.
+    local search_file="/home/${APP_USER}/.env.search"
+    if [ -f "${search_file}" ]; then
+        as_root chmod 600 "${search_file}"
+        as_root chown "${APP_USER}:${APP_USER}" "${search_file}"
+        return
+    fi
+    local key
+    key="$(openssl rand -hex 24)"
+    as_root tee "${search_file}" >/dev/null <<EOF
+# Origin Meilisearch master key. Written once by bootstrap. Do not commit.
+MEILI_MASTER_KEY=${key}
+EOF
+    as_root chown "${APP_USER}:${APP_USER}" "${search_file}"
+    as_root chmod 600 "${search_file}"
 }
 
 ensure_secrets_file() {
@@ -277,6 +304,7 @@ main() {
     install_systemd_units
     write_env_file
     ensure_secrets_file
+    ensure_search_env
     log "bootstrap complete"
 }
 

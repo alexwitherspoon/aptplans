@@ -19,6 +19,7 @@ AptPlans serves public planning documents. It still must not become a dumping gr
 | Catalog metadata | Hashed PDFs |
 | Statute snapshots | WARCs |
 | Reviewed summaries | Extracted text |
+| Search snippets via Caddy | Meilisearch volume, master key |
 | Builder and Compose files | Model weights |
 
 Cloudflare is a cache. It is not an access-control layer for private files. If a file should not be on the public internet, do not store it under the Caddy docroot.
@@ -42,11 +43,13 @@ CD keeps the Debian 13 box minimal and reapplies this on every deploy:
 - fail2ban on sshd (5 tries / 10 minutes → 7 day ban)
 - unattended-upgrades for Debian and Docker
 - Weekly reboot Monday 12:00 Pacific so kernel updates actually apply
-- No public model endpoint. Ollama listens only on the internal Compose `llm` network. Caddy does not proxy it. UFW does not open 11434.
+- No public model endpoint. Origin Ollama listens only on the internal Compose `llm` network. Caddy does not proxy it. UFW does not open 11434. Local Compose binds `127.0.0.1:11434` for diagnostics only.
 
 ## Pipeline
 
 The document worker is not exposed to the internet. It is a Compose service on the same stack as Caddy, with no published ports, and it calls Ollama by Compose DNS name. Do not publish a prompt box, a host port, or a Cloudflare route in front of the local model.
+
+Caddy may proxy `POST /search/query` to Meilisearch on the Compose network. That path is search-only: no host port, 8 KB body cap, no dumps or settings API. Extracted full text is not under the Caddy docroot. Do not bind 7700 on the host.
 
 Crawlers identify as `aptplans.org`. Fetch egress may use Private Internet Access SOCKS5 via `APTPLANS_FETCH_PROXY` on the worker only. That value is assembled from GitHub Actions secrets and written to `/home/aptplans/.env.secrets`. Do not install a host VPN. GitHub issue comments use `INTAKE_GITHUB_TOKEN` on the origin IP, not through the proxy. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository. Do not log `APTPLANS_FETCH_PROXY` or `INTAKE_GITHUB_TOKEN`.
 

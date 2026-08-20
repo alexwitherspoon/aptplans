@@ -2,7 +2,7 @@
 
 Canonical URL: **https://aptplans.org**. `aptplans.com` 301s there.
 
-CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** install. The host stays thin: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy, the worker, and Ollama run as one Compose stack.
+CD from GitHub Actions is the supported path from a **bare Debian 13 (trixie)** install. The host stays thin: Docker Engine, UFW, fail2ban, unattended-upgrades. Caddy, Meilisearch, the worker, and Ollama run as one Compose stack.
 
 ## One-time: DNS and SSH
 
@@ -37,11 +37,12 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - unattended-upgrades for Debian and Docker packages (installs automatically; **does not reboot by itself**)
    - systemd timer **Monday 12:00 Pacific** → reboot
    - weekly Docker prune (Sunday 02:00 Pacific)
-   - weekly document pipeline timer
+   - always-on document worker (one job at a time; weekly pipeline timer disabled)
+   - daily official-URL check (dead, moved, or live; Wayback rediscovery on origin)
    - monthly NASR/NPIAS airport refresh (1st of the month, Pacific)
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
    - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS and intake GitHub token if those Actions secrets are set)
-   - `docker compose` up for the full stack: Caddy on 80/443, worker, CPU Ollama
+   - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
    - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
 
 Host layout:
@@ -51,6 +52,8 @@ Host layout:
 | `/opt/aptplans` | rsynced git tree |
 | `/var/lib/aptplans/site` | generated HTML |
 | `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
+| `/var/lib/aptplans/text` | gated native page JSONL (not in git; not on Caddy) |
+| `/var/lib/aptplans/search` | Meilisearch data (not in git; no host port) |
 | `/var/lib/aptplans/catalog` | worker overlay (airport identity, completeness, hashes; not in git) |
 | `/var/lib/aptplans/queue` | serial job JSON |
 | `/var/lib/aptplans/tls` | origin certificate |
@@ -58,6 +61,7 @@ Host layout:
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
 | `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
 | `/home/aptplans/.env.secrets` | PIA SOCKS + intake GitHub token (CD; bootstrap does not overwrite) |
+| `/home/aptplans/.env.search` | Meilisearch master key (bootstrap writes once; CD does not overwrite) |
 
 ## Manual deploy
 
@@ -69,10 +73,10 @@ sudo /opt/aptplans/scripts/host/remote-deploy.sh
 
 ## Reboots
 
-Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The pipeline timer execs one job into the running worker.
+Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The worker process drains `pending/` with concurrency 1.
 
 ```bash
-systemctl list-timers aptplans-reboot.timer aptplans-pipeline.timer aptplans-airports.timer
+systemctl list-timers aptplans-reboot.timer aptplans-airports.timer aptplans-links.timer
 ```
 
 ## What not to install on the host

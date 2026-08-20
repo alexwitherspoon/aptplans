@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="/home/${APP_USER}/.env.production"
 ENV_SECRETS="/home/${APP_USER}/.env.secrets"
+ENV_SEARCH="/home/${APP_USER}/.env.search"
 
 "${SCRIPT_DIR}/bootstrap.sh"
 
@@ -27,12 +28,15 @@ COMPOSE=(
 if [ -f "${ENV_SECRETS}" ]; then
     COMPOSE+=(--env-file "${ENV_SECRETS}")
 fi
+if [ -f "${ENV_SEARCH}" ]; then
+    COMPOSE+=(--env-file "${ENV_SEARCH}")
+fi
 COMPOSE+=(
     -f docker/docker-compose.yml
     -f docker/docker-compose.prod.yml
 )
 
-echo "Building and starting site, worker, and Ollama"
+echo "Building and starting site, search, worker, and Ollama"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
 echo "Waiting for Caddy"

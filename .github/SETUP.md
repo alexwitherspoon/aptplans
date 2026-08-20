@@ -37,3 +37,5 @@ CD copies PIA and intake values to `/home/aptplans/.env.secrets` (mode 600). Boo
 Create `INTAKE_GITHUB_TOKEN` at GitHub → Settings → Developer settings → Personal access tokens → Fine-grained. Resource owner this account, only repository `aptplans`, permission **Issues: Read and write** (Metadata stays read). Leave Contents unset.
 
 Omit any optional secret to skip that feature. An incomplete PIA pair (user without password) is ignored.
+
+The Meilisearch master key is **not** a GitHub secret. Bootstrap writes `/home/aptplans/.env.search` once. CD does not overwrite it.
