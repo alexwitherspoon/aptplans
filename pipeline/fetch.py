@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 from urllib.request import OpenerDirector, Request, build_opener, urlopen
+from urllib.error import HTTPError
 from urllib.robotparser import RobotFileParser
 import os
 
@@ -90,6 +91,43 @@ def fetch_bytes(
     if len(data) > MAX_BYTES:
         raise ValueError(f"payload exceeds {MAX_BYTES} bytes")
     return data, int(status)
+
+
+def fetch_meta(
+    url: str,
+    method: str = "HEAD",
+    timeout: int = 30,
+    proxy_url: str | None = None,
+    honor_robots: bool = True,
+) -> tuple[int, str]:
+    """Status and final URL only. Does not store a body. Used by the link checker."""
+    parsed = urlparse(url)
+    if parsed.scheme == "file":
+        path = Path(unquote(parsed.path))
+        return (200 if path.is_file() else 404), url
+
+    proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    if honor_robots and parsed.scheme in {"http", "https"} and not _robots_ok(url, timeout, proxy or None):
+        raise PermissionError(f"robots.txt disallows {url}")
+    headers = {"User-Agent": _user_agent()}
+    if method == "GET":
+        headers["Range"] = "bytes=0-0"
+    request = Request(url, headers=headers, method=method)
+    try:
+        if proxy:
+            opener = _socks_opener(proxy)
+            response_cm = opener.open(request, timeout=timeout)
+        else:
+            response_cm = urlopen(request, timeout=timeout)
+        with response_cm as response:
+            status = getattr(response, "status", 200) or 200
+            final = response.geturl() or url
+            if method != "HEAD":
+                response.read(64)
+            return int(status), final
+    except HTTPError as exc:
+        final = getattr(exc, "url", None) or url
+        return int(exc.code), final
 
 
 def post_json(

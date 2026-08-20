@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from pipeline.queue import JobQueue, QueueJob
+from pipeline.queue import JobQueue, JobRetry, QueueJob
 
 
 def _job(document_id: str, lid: str) -> QueueJob:
@@ -44,3 +45,35 @@ def test_unfinished_claim_retries_on_next_queue(tmp_path: Path) -> None:
     got = retry.claim()
     assert got is not None
     assert got.document_id == "a"
+    assert got.attempts == 2
+
+
+def test_claim_increments_attempts_and_persists(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path)
+    queue.enqueue(_job("a", "PDX"))
+    first = queue.claim()
+    assert first is not None
+    assert first.attempts == 1
+    active = list((tmp_path / "active").glob("*.json"))
+    assert len(active) == 1
+    stored = json.loads(active[0].read_text(encoding="utf-8"))
+    assert stored["attempts"] == 1
+
+
+def test_job_retry_backoff_caps_at_one_hour() -> None:
+    assert JobRetry(1).delay_seconds() == 60
+    assert JobRetry(2).delay_seconds() == 120
+    assert JobRetry(3).delay_seconds() == 240
+    assert JobRetry(10).delay_seconds() == 3600
+
+
+def test_has_issue_looks_in_done(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path)
+    job = _job("a", "PDX")
+    job.issue_number = 17
+    queue.enqueue(job)
+    claimed = queue.claim()
+    assert claimed is not None
+    queue.complete()
+    assert JobQueue(tmp_path).has_issue(17) is True
+    assert JobQueue(tmp_path).has_issue(99) is False

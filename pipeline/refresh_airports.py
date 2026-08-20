@@ -19,6 +19,7 @@ from catalog.airports import (
 from catalog.npias import NPIAS_SOURCE, parse_appendix_a_bytes
 from catalog.store import load_airports_overlay, load_overlay, write_airports_overlay
 from pipeline.fetch import fetch_bytes, post_json
+from pipeline.lock import worker_lock
 from pipeline.refresh import (
     PAUSE_SECONDS,
     ROOT,
@@ -99,7 +100,9 @@ def main() -> int:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     overlay = Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog"))
-    maybe_refresh(overlay, force=args.force, post_json=post_json)
+    queue = Path(os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue"))
+    with worker_lock(queue):
+        maybe_refresh(overlay, force=args.force, post_json=post_json)
     return 0
 
 

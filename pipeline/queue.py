@@ -9,8 +9,22 @@ from pathlib import Path
 import uuid
 
 
+MAX_ATTEMPTS = 3
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class JobRetry(Exception):
+    """Uncaught job error. Leave the file in active/ and wait before the next claim."""
+
+    def __init__(self, attempts: int) -> None:
+        self.attempts = attempts
+        super().__init__(f"retry after attempt {attempts}")
+
+    def delay_seconds(self) -> float:
+        return min(3600.0, 60.0 * (2 ** max(self.attempts - 1, 0)))
 
 
 @dataclass
@@ -25,6 +39,7 @@ class QueueJob:
     created_at: str = field(default_factory=_utc_now)
     report_type: str | None = None
     suggested_kind: str | None = None
+    attempts: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -42,6 +57,7 @@ class QueueJob:
             created_at=data.get("created_at") or _utc_now(),
             report_type=data.get("report_type"),
             suggested_kind=data.get("suggested_kind"),
+            attempts=int(data.get("attempts") or 0),
         )
 
 
@@ -74,6 +90,17 @@ class JobQueue:
         path.write_text(json.dumps(job.to_dict(), indent=2) + "\n", encoding="utf-8")
         return job
 
+    def has_issue(self, issue_number: int) -> bool:
+        for folder in (self.pending, self.active, self.done):
+            for path in folder.glob("*.json"):
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, TypeError):
+                    continue
+                if data.get("issue_number") == issue_number:
+                    return True
+        return False
+
     def claim(self) -> QueueJob | None:
         """Move one job to active. A crash leaves it there so the next pass retries."""
         if self._claimed is not None:
@@ -88,7 +115,10 @@ class JobQueue:
             path.replace(dest)
             path = dest
         self._claimed = path
-        return QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        job = QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        job.attempts += 1
+        path.write_text(json.dumps(job.to_dict(), indent=2) + "\n", encoding="utf-8")
+        return job
 
     def complete(self) -> None:
         if self._claimed is None:

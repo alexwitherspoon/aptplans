@@ -15,6 +15,25 @@ def looks_like_pdf(url: str) -> bool:
     return path.endswith(".pdf")
 
 
+def seed_link_checks(queue: JobQueue, catalog_root: Path, overlay_dir: Path | None = None) -> int:
+    from pipeline.check import due_documents
+
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    queued = 0
+    for document in due_documents(catalog.documents):
+        queue.enqueue(
+            QueueJob(
+                kind="check",
+                document_id=document.id,
+                source_url=document.source_url,
+                airport_lid=document.airport_lid,
+                state=document.state,
+            )
+        )
+        queued += 1
+    return queued
+
+
 def seed_reference_fetches(queue: JobQueue, catalog_root: Path) -> int:
     catalog = seed_catalog(catalog_root)
     queued = 0
