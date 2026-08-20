@@ -13,6 +13,28 @@
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 }
 
+(search_query) {
+	@search_post {
+		path /search/query
+		method POST
+	}
+	handle @search_post {
+		request_body {
+			max_size 8KB
+		}
+		rewrite * /indexes/aptplans/search
+		reverse_proxy search:7700 {
+			header_up Authorization "Bearer {$MEILI_MASTER_KEY}"
+			header_up Content-Type application/json
+			transport http {
+				dial_timeout 1s
+				response_header_timeout 3s
+			}
+		}
+	}
+}
+
 :80 {
+	import search_query
 	import static
 }

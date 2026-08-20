@@ -12,5 +12,5 @@ COPY pipeline /app/pipeline
 
 RUN pip install --no-cache-dir ".[worker]"
 
-# Long-running serial worker. One-shot jobs are `compose exec worker`.
+# Long-running serial worker. Drains pending/ one job at a time.
 CMD ["python3", "pipeline/worker.py"]

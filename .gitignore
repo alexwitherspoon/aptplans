@@ -30,6 +30,9 @@ htmlcov/
 data/files/
 data/queue/
 data/catalog/
+data/models/
+data/text/
+data/search/
 catalog/data/*.jsonl
 /files/
 extracted/
@@ -49,6 +52,7 @@ extracted/
 .env.local
 .env.*.local
 .env.secrets
+.env.search
 
 # Docker Compose local overrides (user-specific paths)
 docker/docker-compose.override.yml

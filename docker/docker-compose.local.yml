@@ -6,9 +6,31 @@ services:
       - ../dist:/srv/site:ro
     environment:
       - APP_ENV=local
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
+
+  search:
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
+    volumes:
+      - ${SEARCH_PATH:-../data/search}:/meili_data
 
   worker:
     environment:
       - APP_ENV=local
       - APTPLANS_FILES=/var/lib/aptplans/files
+      - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
+      - APTPLANS_TEXT=/var/lib/aptplans/text
       - OLLAMA_HOST=http://ollama:11434
+      - MEILI_URL=http://search:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
+      # Laptop stack: no live FAA refresh, no LLM.
+
+  ollama:
+    ports:
+      - "127.0.0.1:11434:11434"
+    networks:
+      - default
+      - llm
+    volumes:
+      - ${MODELS_PATH:-../data/models}:/models:ro

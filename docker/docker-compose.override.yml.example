@@ -13,3 +13,8 @@ services:
       - /var/lib/aptplans/files:/var/lib/aptplans/files
       - /var/lib/aptplans/queue:/var/lib/aptplans/queue
       - /var/lib/aptplans/catalog:/var/lib/aptplans/catalog
+      - /var/lib/aptplans/text:/var/lib/aptplans/text
+
+  search:
+    volumes:
+      - /var/lib/aptplans/search:/meili_data
