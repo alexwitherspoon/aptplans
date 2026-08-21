@@ -8,23 +8,29 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from xml.sax.saxutils import escape as xml_escape
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup, escape as html_escape
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from catalog.grants import faa_year_summary_url, remaining_obligation, usaspending_award_url
-from catalog.models import FUNDING_LABELS, FUNDING_LEVELS
+from catalog.grants import faa_year_summary_url, grant_title, remaining_obligation, usaspending_award_url
+from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, looks_like_work_edition, visible_on_site
+from catalog.ourairports import http_url
 from catalog.seed import seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts
+from pipeline.brief import airport_overview
+from pipeline.search import airport_record
 
 TEMPLATES = ROOT / "templates"
 STATIC = ROOT / "static"
@@ -45,19 +51,15 @@ KIND_LABELS = {
 RSS_ALL = {"title": "AptPlans - new documents", "href": "/feeds/all.xml"}
 RSS_LAWS = {"title": "AptPlans - state aviation law", "href": "/feeds/laws.xml"}
 OWNERSHIP_LABELS = {
-    "PU": "public",
-    "PR": "private",
+    "PU": "publicly owned",
+    "PR": "privately owned",
     "MA": "Air Force",
     "MN": "Navy",
     "MR": "Army",
     "CG": "Coast Guard",
 }
-SERVICE_LABELS = {
-    "P": "primary",
-    "CS": "commercial service",
-    "R": "reliever",
-    "GA": "general aviation",
-}
+
+
 COMPLETENESS_PHRASE = {
     "complete": "Official link and a saved copy are both on file.",
     "link_only": "Official link listed. No saved copy yet.",
@@ -66,6 +68,133 @@ COMPLETENESS_PHRASE = {
     "no_plan_known": "No master plan or Airport Layout Plan is known.",
 }
 _DOC_KIND_ORDER = {"alp": 0, "master_plan": 1, "other": 2}
+
+
+_HUB_GLOSS = "NPIAS size class, by share of US passenger boardings."
+GLOSSARY = {
+    "lid": (
+        "FAA location identifier. The three- or four-character code used in US "
+        "airport records."
+    ),
+    "icao": (
+        "International Civil Aviation Organization identifier. Shown only when no "
+        "FAA location identifier is on file."
+    ),
+    "npias": (
+        "National Plan of Integrated Airport Systems. The FAA list of airports in "
+        "the national system, generally eligible for federal airport grants."
+    ),
+    "large_hub": f"{_HUB_GLOSS} Large hubs are the busiest commercial airports.",
+    "medium_hub": f"{_HUB_GLOSS} Medium hubs are the next group after large hubs.",
+    "small_hub": f"{_HUB_GLOSS} Small hubs have a smaller share of US passenger boardings.",
+    "nonhub": (
+        f"{_HUB_GLOSS} Nonhub commercial airports have the smallest share of "
+        "passenger boardings among primary airports."
+    ),
+    "reliever": (
+        "NPIAS role. Relievers are general aviation airports meant to take traffic "
+        "away from busy commercial airports."
+    ),
+    "national": "NPIAS role for a general aviation airport with a national role in the system.",
+    "regional": "NPIAS role for a general aviation airport with a regional role in the system.",
+    "local": "NPIAS role for a general aviation airport that mainly serves local flying.",
+    "basic": "NPIAS role for a general aviation airport with a basic role in the system.",
+    "primary": (
+        "NPIAS service level. A primary airport has at least 10,000 passenger "
+        "boardings a year."
+    ),
+    "commercial_service": (
+        "NPIAS service level. A commercial service airport has scheduled passenger service."
+    ),
+    "general_aviation": (
+        "NPIAS service level. A general aviation airport does not have scheduled "
+        "commercial passenger service as its primary role."
+    ),
+    "public-use": (
+        "Open to the public. Private-use airports appear here only when a plan or "
+        "an issue admits them."
+    ),
+    "private-use": (
+        "Not open to the public. Listed here because a plan or an issue admitted "
+        "this airport."
+    ),
+    "alp": "Airport Layout Plan. The drawing set of today's airport and what is planned next.",
+    "faa": (
+        "Federal Aviation Administration. The US agency that catalogs airports and "
+        "reviews layout plans."
+    ),
+    "aip": "Airport Improvement Program. FAA grants for airport planning and development.",
+}
+
+
+def abbr(label: str, term: str | None = None) -> Markup:
+    raw = (term or label or "").strip()
+    title = (
+        GLOSSARY.get(raw)
+        or GLOSSARY.get(raw.replace(" ", "_"))
+        or GLOSSARY.get(raw.replace("_", " "))
+    )
+    text = html_escape(label)
+    if not title:
+        return text
+    return Markup(f'<abbr title="{html_escape(title)}">{text}</abbr>')
+
+
+def public_website(url: str | None) -> str:
+    return http_url(url) or ""
+
+
+def website_label(url: str | None) -> str:
+    if not url:
+        return ""
+    parsed = urlparse(url.strip())
+    host = (parsed.netloc or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = (parsed.path or "").rstrip("/")
+    if path and len(path) <= 32:
+        return f"{host}{path}"
+    return host
+
+
+def county_label(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    if any(
+        token in lower
+        for token in ("county", "parish", "borough", "census area", "municipality", "municipio")
+    ):
+        return text
+    return f"{text} County"
+
+
+def identity_facts(airport) -> list[dict[str, str | None]]:
+    facts: list[dict[str, str | None]] = []
+    if airport.facility_use == "PU":
+        facts.append({"label": "Public-use", "term": "public-use"})
+    elif airport.facility_use == "PR":
+        facts.append({"label": "Private-use", "term": "private-use"})
+    owned = ownership_label(airport.ownership)
+    if owned:
+        facts.append({"label": owned, "term": None})
+    if airport.npias_role:
+        facts.append({"label": role_label(airport.npias_role), "term": airport.npias_role})
+    return facts
+
+
+def place_line(airport, state=None) -> str:
+    parts: list[str] = []
+    if airport.city:
+        parts.append(airport.city)
+    if airport.county:
+        parts.append(county_label(airport.county))
+    if state is not None and getattr(state, "name", None):
+        parts.append(state.name)
+    elif airport.state:
+        parts.append(airport.state)
+    return ", ".join(parts)
 
 
 def role_label(value: str | None) -> str:
@@ -78,21 +207,92 @@ def ownership_label(value: str | None) -> str:
     return OWNERSHIP_LABELS.get(value.upper(), value)
 
 
-def service_label(value: str | None) -> str:
-    if not value:
-        return ""
-    return SERVICE_LABELS.get(value.upper(), value)
+def overview_grant_lines(grants: list) -> list[str]:
+    ranked = sorted(
+        grants,
+        key=lambda grant: (
+            0 if remaining_obligation(grant) else 1,
+            -(grant.fiscal_year or 0),
+            -(grant.amount or 0),
+        ),
+    )
+    lines: list[str] = []
+    for grant in ranked[:4]:
+        title = grant_title(grant.description)
+        if not title:
+            continue
+        line = f"FY {grant.fiscal_year} {title}" if grant.fiscal_year else title
+        rem = remaining_obligation(grant)
+        if rem:
+            line += f" · ${int(rem):,} not yet spent"
+        elif grant.amount:
+            line += f" · ${int(grant.amount):,} awarded"
+        lines.append(line)
+    return lines
+
+
+def page_overview(airport, works: list, grants: list):
+    """Always extract. Do not reuse a current-month overlay row."""
+    return airport_overview(works, overview_grant_lines(grants), airport=airport)
+
+
+def outlook_airport_lists(airports, outlook_by_lid: dict[str, str]):
+    """Airports whose listed plans score growing or declining. Maintaining stays off the home lists."""
+    growing = [airport for airport in airports if outlook_by_lid.get(airport.lid) == "growing"]
+    declining = [airport for airport in airports if outlook_by_lid.get(airport.lid) == "declining"]
+
+    def sort_key(airport):
+        return (airport.state or "", (airport.name or "").lower(), airport.lid)
+
+    growing.sort(key=sort_key)
+    declining.sort(key=sort_key)
+    return growing, declining
 
 
 def completeness_phrase(value: str | None) -> str:
     return COMPLETENESS_PHRASE.get(value or "", "")
 
 
-def grant_title(description: str, entity: str | None = None) -> str:
-    text = " ".join((description or "").split())
-    if not text:
-        return f"{entity} grant" if entity else "Grant"
-    return text.split(",", 1)[0].strip() or text
+def pdf_embed_src(src: str) -> str:
+    """Open letter-style PDFs at page width in the browser viewer."""
+    base = (src or "").split("#", 1)[0]
+    if not base:
+        return src
+    return f"{base}#zoom=page-width"
+
+
+def document_preview(document) -> dict | None:
+    """Inline file for the document page. Prefer a hashed copy.
+
+    Official PDFs usually send X-Frame-Options, so local `make dev` serves a
+    catalog-gated copy at /files/preview/{id}.pdf instead of hotlinking.
+    """
+    if getattr(document, "kind", None) == "notice":
+        return None
+    media = document.inferred_media()
+    if media not in {"pdf", "html"}:
+        return None
+    if document.preserved_url:
+        src = document.preserved_url
+        if media == "pdf":
+            src = pdf_embed_src(src)
+        return {"src": src, "media": media, "origin": "saved"}
+    if media != "pdf":
+        return None
+    if (document.source_status or "") == "dead":
+        return None
+    if not (document.source_url or "").strip():
+        return None
+    if os.environ.get("APTPLANS_DEV_PREVIEW", "").strip() not in {"1", "true", "yes"}:
+        return None
+    doc_id = getattr(document, "id", "") or ""
+    if not doc_id:
+        return None
+    return {
+        "src": pdf_embed_src(f"/files/preview/{doc_id}.pdf"),
+        "media": "pdf",
+        "origin": "official",
+    }
 
 
 def grant_brief(description: str) -> str:
@@ -164,46 +364,269 @@ def project_groups(catalog: Catalog, grants: list, preview: int = PROJECT_PREVIE
     return rows
 
 
-def airport_brief(*, airport, documents, funding, state) -> list[str]:
-    """Short catalog facts for the top of an airport page. Not a model summary."""
-    kinds = {doc.kind for doc in documents}
-    lines = []
-    has_alp = "alp" in kinds
-    has_plan = "master_plan" in kinds
-    if has_alp and has_plan:
-        lines.append("An Airport Layout Plan and a master plan are listed.")
-    elif has_alp:
-        lines.append("An Airport Layout Plan is listed. No master plan is listed yet.")
-    elif has_plan:
-        lines.append("A master plan is listed. No Airport Layout Plan is listed yet.")
-    else:
-        lines.append("No master plan or Airport Layout Plan is listed yet.")
-    funded = [section for section in funding if section["grants"]]
-    if funded:
-        parts = []
-        for section in funded:
-            stats = section["stats"]
-            label = section["label"].lower()
-            count = stats["count"]
-            noun = "grant" if count == 1 else "grants"
-            if stats["total"]:
-                parts.append(f"{count} {label} {noun} totaling ${int(stats['total']):,}")
-            else:
-                parts.append(f"{count} {label} {noun}")
-        lines.append("Funding on file: " + "; ".join(parts) + ". A grant is not a plan.")
-    else:
-        lines.append("No grants listed yet.")
-    if state:
-        lines.append(
-            f"{state.name} aviation law is on the {airport.state} page."
+_VOLUME_MARKERS = (
+    "existing condition",
+    "inventory",
+    "chapter",
+    "sheet",
+    "appendix",
+    "forecast",
+    "alternative",
+    "facility requirement",
+    "implementation",
+    "introduction",
+    "table of contents",
+)
+_CHAPTER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+_CHAPTER_NUM = re.compile(
+    r"chapter\s+(?:(\d+)|(" + "|".join(_CHAPTER_WORDS) + r"))",
+    re.I,
+)
+_APPENDIX_LETTER = re.compile(r"appendix\s+([a-z])", re.I)
+_PART_TAIL = re.compile(
+    r"\s+(?:"
+    r"chapters?\s+\d+(?:\s*-\s*\d+)?\b.*|"
+    r"chapter\s+(?:one|two|three|four|five|six|seven|eight|nine|ten)\b.*|"
+    r"appendix\s+[a-z]\b.*|"
+    r"existing\s+conditions?\b.*|"
+    r"introduction\b.*|"
+    r"inventory\b.*|"
+    r"table\s+of\s+contents\b.*"
+    r")$",
+    re.I,
+)
+
+
+class FeaturedWork:
+    """One study: a whole file, a set of chapters, or both."""
+
+    def __init__(
+        self,
+        kind: str,
+        study_year: int,
+        edition: str | None,
+        title: str,
+        hub,
+        parts: tuple,
+        summary: str | None = None,
+    ) -> None:
+        self.kind = kind
+        self.study_year = study_year
+        self.edition = edition
+        self.title = title
+        self.hub = hub
+        self.parts = parts
+        self.summary = summary
+
+    @property
+    def key(self) -> tuple[str, int]:
+        return (self.kind, self.study_year)
+
+
+def _volume_blob(document) -> str:
+    return f"{document.title or ''} {document.id}".lower().replace("_", " ").replace("-", " ")
+
+
+def _is_volume(document) -> bool:
+    blob = _volume_blob(document)
+    return any(marker in blob for marker in _VOLUME_MARKERS)
+
+
+def _edition_year(value: str | None) -> int:
+    if not value:
+        return 0
+    digits = "".join(ch if ch.isdigit() else " " for ch in value).split()
+    years = [int(part) for part in digits if len(part) == 4]
+    return max(years) if years else 0
+
+
+def _study_year(document) -> int:
+    for part in re.split(r"[-_]", document.id):
+        if part.isdigit() and len(part) == 4:
+            return int(part)
+    return _edition_year(document.edition)
+
+
+def _recency_key(document) -> tuple:
+    return (
+        document.published_at or "",
+        _edition_year(document.edition),
+        document.source_retrieved_at or "",
+        document.edition or "",
+        document.title or document.id,
+    )
+
+
+def _part_sort_key(document) -> tuple:
+    blob = _volume_blob(document)
+    if "table of contents" in blob:
+        return (0, 0, document.title or document.id)
+    match = _CHAPTER_NUM.search(blob)
+    if match:
+        number = int(match.group(1)) if match.group(1) else _CHAPTER_WORDS[match.group(2).lower()]
+        return (1, number, document.title or document.id)
+    if "introduction" in blob:
+        return (0, 1, document.title or document.id)
+    match = _APPENDIX_LETTER.search(blob)
+    if match:
+        return (3, ord(match.group(1)), document.title or document.id)
+    return (2, 50, document.title or document.id)
+
+
+def _work_title(hub, parts: tuple) -> str:
+    if hub is not None and hub.title:
+        return hub.title
+    cleaned = []
+    for doc in parts:
+        title = (doc.title or "").strip()
+        stripped = _PART_TAIL.sub("", title).strip(" -")
+        cleaned.append(stripped or title or doc.id)
+    if not cleaned:
+        return "Listed"
+    return Counter(cleaned).most_common(1)[0][0]
+
+
+def _work_edition(hub, parts: tuple) -> str | None:
+    if hub is not None and hub.edition:
+        return hub.edition
+    editions = [doc.edition for doc in parts if doc.edition]
+    if not editions:
+        return None
+    return Counter(editions).most_common(1)[0][0]
+
+
+def _build_work(kind: str, study_year: int, group: list) -> FeaturedWork:
+    wholes = [doc for doc in group if looks_like_work_edition(doc)]
+    cores = [doc for doc in wholes if not _is_volume(doc)]
+    chosen = cores or wholes
+    hub = max(chosen, key=_recency_key) if chosen else None
+    parts = tuple(
+        sorted(
+            (doc for doc in group if hub is None or doc.id != hub.id),
+            key=_part_sort_key,
         )
-    notices = [doc for doc in documents if doc.kind == "notice"]
-    if notices:
-        lines.append(
-            f"{len(notices)} notice citation{'s' if len(notices) != 1 else ''} "
-            "(publisher, date, and URL only)."
-        )
-    return lines
+    )
+    return FeaturedWork(
+        kind=kind,
+        study_year=study_year,
+        edition=_work_edition(hub, parts),
+        title=_work_title(hub, parts),
+        hub=hub,
+        parts=parts,
+        summary=hub.summary if hub is not None else None,
+    )
+
+
+def _work_recency(work: FeaturedWork) -> tuple:
+    docs = ((work.hub,) if work.hub is not None else ()) + work.parts
+    return max(_recency_key(doc) for doc in docs)
+
+
+def edition_works(documents: list, kind: str) -> list[FeaturedWork]:
+    """Group ALP or master-plan files into studies, newest first.
+
+    Chapters and later section updates share a hub when `part_of` points at it.
+    """
+    by_id = {doc.id: doc for doc in documents}
+    groups: dict[int, list] = {}
+    for doc in documents:
+        if doc.kind != kind:
+            continue
+        root = doc
+        seen: set[str] = set()
+        while getattr(root, "part_of", None) and root.part_of not in seen:
+            seen.add(root.part_of)
+            parent = by_id.get(root.part_of)
+            if parent is None:
+                break
+            root = parent
+        year = _study_year(root) or _study_year(doc)
+        groups.setdefault(year, []).append(doc)
+    works = [_build_work(kind, year, group) for year, group in groups.items()]
+    works.sort(key=_work_recency, reverse=True)
+    return works
+
+
+def featured_work(documents: list, kind: str) -> FeaturedWork | None:
+    """Latest study of this kind: prefer a whole file, else the chapter set."""
+    works = edition_works(documents, kind)
+    return works[0] if works else None
+
+
+def featured_and_earlier(
+    documents: list,
+) -> tuple[FeaturedWork | None, FeaturedWork | None, list[FeaturedWork]]:
+    alps = edition_works(documents, "alp")
+    plans = edition_works(documents, "master_plan")
+    latest_alp = alps[0] if alps else None
+    latest_plan = plans[0] if plans else None
+    featured_keys = {work.key for work in (latest_alp, latest_plan) if work is not None}
+    earlier = [work for work in alps + plans if work.key not in featured_keys]
+    earlier.sort(key=_work_recency, reverse=True)
+    return latest_alp, latest_plan, earlier
+
+
+def year_bars(grants: list) -> list[dict]:
+    counts: dict[int, int] = {}
+    totals: dict[int, int] = {}
+    for grant in grants:
+        if grant.fiscal_year is None:
+            continue
+        counts[grant.fiscal_year] = counts.get(grant.fiscal_year, 0) + 1
+        if grant.amount:
+            totals[grant.fiscal_year] = totals.get(grant.fiscal_year, 0) + grant.amount
+    years = sorted(set(counts) | set(totals), reverse=True)
+    peak = max(totals.values(), default=0) or 1
+    return [
+        {
+            "year": year,
+            "total": totals.get(year),
+            "count": counts.get(year, 0),
+            "pct": round(100 * (totals.get(year) or 0) / peak),
+        }
+        for year in years
+    ]
+
+
+def grants_by_year(grants: list) -> list[dict]:
+    groups: dict[int, list] = {}
+    undated = []
+    for grant in grants:
+        if grant.fiscal_year is None:
+            undated.append(grant)
+            continue
+        groups.setdefault(grant.fiscal_year, []).append(grant)
+    rows = [{"year": year, "grants": groups[year]} for year in sorted(groups, reverse=True)]
+    if undated:
+        rows.append({"year": None, "grants": undated})
+    return rows
+
+
+def money_overview(grants: list) -> dict:
+    stats = grant_briefing(grants)
+    spent = stats["spent"] or 0
+    remaining = stats["remaining"] or 0
+    parts = spent + remaining
+    spent_pct = round(100 * spent / parts) if parts else 0
+    return {
+        **stats,
+        "bars": year_bars(grants),
+        "groups": grants_by_year(grants),
+        "has_split": stats["spent"] is not None or stats["remaining"] is not None,
+        "spent_pct": spent_pct,
+        "remaining_pct": (100 - spent_pct) if parts else 0,
+    }
 
 
 def budget_groups(budget) -> list[tuple[str, list]]:
@@ -248,7 +671,30 @@ def grant_briefing(grants: list) -> dict:
     }
 
 
-def _env() -> Environment:
+def static_asset_versions() -> dict[str, str]:
+    """Content hash of each css/js file. HTML links append ?v= so proxies cannot keep a stale sheet."""
+    versions: dict[str, str] = {}
+    for folder in ("css", "js"):
+        src = STATIC / folder
+        if not src.is_dir():
+            continue
+        for path in src.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = f"/{folder}/{path.relative_to(src).as_posix()}"
+            versions[rel] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    return versions
+
+
+def bust_url(path: str, versions: dict[str, str]) -> str:
+    key = str(path).split("?", 1)[0]
+    ver = versions.get(key)
+    if not ver:
+        return key
+    return f"{key}?v={ver}"
+
+
+def _env(*, asset=None) -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATES),
         autoescape=select_autoescape(["html"]),
@@ -256,9 +702,10 @@ def _env() -> Environment:
     env.filters["kind_label"] = lambda value: KIND_LABELS.get(value, value)
     env.filters["usd"] = lambda value: "" if value is None else f"${int(value):,}"
     env.filters["role_label"] = role_label
-    env.filters["ownership_label"] = ownership_label
-    env.filters["service_label"] = service_label
     env.filters["completeness_phrase"] = completeness_phrase
+    env.filters["abbr"] = abbr
+    env.filters["website_label"] = website_label
+    env.filters["public_website"] = public_website
     env.filters["grant_title"] = grant_title
     env.filters["grant_brief"] = grant_brief
     env.filters["grant_date"] = grant_date
@@ -266,6 +713,7 @@ def _env() -> Environment:
     env.filters["faa_year_url"] = faa_year_summary_url
     env.filters["grant_remaining"] = remaining_obligation
     env.filters["budget_groups"] = budget_groups
+    env.filters["asset"] = asset or (lambda path: str(path).split("?", 1)[0])
     return env
 
 
@@ -399,8 +847,9 @@ def _ld_airport(airport) -> dict:
             "latitude": airport.latitude,
             "longitude": airport.longitude,
         }
-    if airport.website:
-        data["sameAs"] = airport.website
+    site = public_website(airport.website)
+    if site:
+        data["sameAs"] = site
     address = {key: value for key, value in data["address"].items() if value}
     data["address"] = address
     return data
@@ -435,7 +884,7 @@ def _ld_document(document, airport=None) -> dict:
         data["encoding"] = {
             "@type": "MediaObject",
             "contentUrl": f"{CANONICAL}{document.preserved_url}",
-            "encodingFormat": "application/pdf",
+            "encodingFormat": "text/html" if document.inferred_media() == "html" else "application/pdf",
         }
     if airport is not None:
         data["about"] = {
@@ -506,6 +955,10 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
             digest.update(path.relative_to(folder).as_posix().encode("utf-8"))
             digest.update(path.read_bytes())
     digest.update(Path(__file__).read_bytes())
+    brief_mod = REPO / "pipeline" / "brief.py"
+    if brief_mod.is_file():
+        digest.update(brief_mod.read_bytes())
+    digest.update(os.environ.get("APTPLANS_DEV_PREVIEW", "").strip().encode("utf-8"))
     payload = {
         "airports": [item.to_dict() for item in catalog.airports],
         "states": [item.to_dict() for item in catalog.states],
@@ -568,10 +1021,13 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         emitted.add(dst.relative_to(out_dir).as_posix())
         _copy_file(src, dst)
 
-    env = _env()
+    versions = static_asset_versions()
+    versions["/data/search.json"] = source_sha[:12]
+    env = _env(asset=lambda path: bust_url(path, versions))
     stats = counts(catalog)
+    listed = [doc for doc in catalog.documents if visible_on_site(doc)]
     recently = sorted(
-        catalog.documents,
+        listed,
         key=lambda doc: (doc.source_retrieved_at or "", 1 if doc.summary else 0, doc.title or ""),
         reverse=True,
     )[:12]
@@ -583,9 +1039,11 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         "recently": recently,
         "rss_links": [RSS_ALL],
         "json_ld": [],
+        "cache_bust": source_sha[:12],
     }
 
     sitemap_pages: dict[str, str | None] = {}
+    outlook_by_lid: dict[str, str] = {}
 
     def note_page(loc: str, lastmod: str | None = None) -> None:
         sitemap_pages[loc] = lastmod
@@ -602,14 +1060,6 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         emit(dest, html)
         note_page(canonical_path, lastmod)
 
-    render(
-        "index.html",
-        out_dir / "index.html",
-        "/",
-        states=catalog.states,
-        rss_links=[RSS_ALL, RSS_LAWS],
-        json_ld=[_ld_website()],
-    )
     render("about.html", out_dir / "about" / "index.html", "/about/", rss_links=[RSS_ALL, RSS_LAWS])
     render("search.html", out_dir / "search" / "index.html", "/search/")
     render(
@@ -632,11 +1082,17 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
 
     for airport in catalog.airports:
         docs = sorted(
-            catalog.documents_for_airport(airport.lid),
+            [
+                doc
+                for doc in catalog.documents_for_airport(airport.lid)
+                if visible_on_site(doc)
+            ],
             key=lambda doc: (_DOC_KIND_ORDER.get(doc.kind, 9), doc.title or doc.id),
         )
         grants = catalog.grants_for_airport(airport.lid)
         funding = funding_sections(grants)
+        latest_alp, latest_plan, earlier = featured_and_earlier(docs)
+        money = money_overview(grants)
         state_docs = [
             doc
             for doc in catalog.documents
@@ -649,15 +1105,36 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         if state is not None:
             rss_links.append(_rss_state(state))
         rss_links.append(RSS_ALL)
+        if latest_alp:
+            plan_empty = Markup(
+                "No master plan is listed yet. An "
+                f"{abbr('ALP', 'alp')} can stand on its own."
+            )
+        else:
+            plan_empty = "No master plan is listed yet."
+        overview = page_overview(
+            airport,
+            [latest_plan, latest_alp, *earlier],
+            grants,
+        )
+        if overview and overview.trajectory:
+            outlook_by_lid[airport.lid] = overview.trajectory.band
         render(
             "airport.html",
             out_dir / "airports" / airport.lid / "index.html",
             f"/airports/{airport.lid}/",
             airport=airport,
             documents=docs,
+            latest_alp=latest_alp,
+            latest_plan=latest_plan,
+            plan_empty=plan_empty,
+            overview=overview,
+            earlier=earlier,
             funding=funding,
-            brief=airport_brief(airport=airport, documents=docs, funding=funding, state=state),
+            money=money,
             completeness=completeness_for_airport(catalog, airport.lid),
+            facts=identity_facts(airport),
+            place=place_line(airport, state),
             state=state,
             state_documents=state_docs,
             rss_links=rss_links,
@@ -679,6 +1156,18 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
                 ),
             ],
         )
+
+    growing, declining = outlook_airport_lists(catalog.airports, outlook_by_lid)
+    render(
+        "index.html",
+        out_dir / "index.html",
+        "/",
+        states=catalog.states,
+        growing=growing,
+        declining=declining,
+        rss_links=[RSS_ALL, RSS_LAWS],
+        json_ld=[_ld_website()],
+    )
 
     for state in catalog.states:
         airports = catalog.airports_for_state(state.code)
@@ -710,7 +1199,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             ],
         )
 
-    for document in catalog.documents:
+    for document in listed:
         airport = catalog.airports_by_lid.get(document.airport_lid or "")
         rss_links = []
         if airport is not None:
@@ -737,6 +1226,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             document=document,
             airport=airport,
             kind_label=KIND_LABELS.get(document.kind, document.kind),
+            preview=document_preview(document),
             changes=[
                 change
                 for change in catalog.changes
@@ -757,7 +1247,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
 
     emit(
         out_dir / "robots.txt",
-        "User-agent: *\nAllow: /\nDisallow: /data/\nSitemap: https://aptplans.org/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /data/\nDisallow: /review/\nSitemap: https://aptplans.org/sitemap.xml\n",
     )
 
     all_items = [_item_for_document(doc) for doc in recently] or [
@@ -773,7 +1263,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         "/feeds/all.xml",
         _sitemap_day(*[item.get("date") for item in all_items if isinstance(item.get("date"), str)]),
     )
-    law_docs = [doc for doc in catalog.documents if doc.kind in {"statute", "sasp"}]
+    law_docs = [doc for doc in listed if doc.kind in {"statute", "sasp"}]
     emit(
         out_dir / "feeds" / "laws.xml",
         _rss(
@@ -786,7 +1276,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
     airport_feeds_by_state: dict[str, list] = {}
     for state in catalog.states:
-        state_docs = [doc for doc in catalog.documents if doc.state == state.code]
+        state_docs = [doc for doc in listed if doc.state == state.code]
         items = [_item_for_document(doc) for doc in state_docs]
         emit(
             out_dir / "feeds" / "states" / f"{state.code}.xml",
@@ -802,7 +1292,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             _sitemap_day(*[doc.source_retrieved_at for doc in state_docs]),
         )
     for airport in catalog.airports:
-        docs = catalog.documents_for_airport(airport.lid)
+        docs = [doc for doc in catalog.documents_for_airport(airport.lid) if visible_on_site(doc)]
         if not docs:
             continue
         airport_feeds_by_state.setdefault(airport.state, []).append(airport)
@@ -840,20 +1330,18 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
 
     search_index = []
     for airport in catalog.airports:
+        record = airport_record(airport, outlook=outlook_by_lid.get(airport.lid))
         search_index.append(
             {
-                "type": "airport",
-                "title": f"{airport.lid} {airport.name}",
-                "url": f"/airports/{airport.lid}/",
-                "state": airport.state,
-                "text": " ".join(
-                    part
-                    for part in (airport.lid, airport.icao, airport.iata, airport.city, airport.npias_role)
-                    if part
-                ),
+                "type": record["type"],
+                "title": record["title"],
+                "url": record["url"],
+                "state": record["state"],
+                "outlook": record["outlook"],
+                "text": record["text"],
             }
         )
-    for document in catalog.documents:
+    for document in listed:
         search_index.append(
             {
                 "type": document.kind,
@@ -907,7 +1395,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             {
                 "airports": [item.to_dict() for item in catalog.airports],
                 "states": [item.to_dict() for item in catalog.states],
-                "documents": [item.to_dict() for item in catalog.documents],
+                "documents": [item.to_dict() for item in listed],
             }
         )
         + "\n",
@@ -927,7 +1415,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         ],
     )
     writer.writeheader()
-    for document in catalog.documents:
+    for document in listed:
         writer.writerow(
             {
                 "id": document.id,

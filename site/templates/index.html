@@ -29,4 +29,22 @@
     {% endfor %}
   </ul>
   {% endif %}
+  {% if growing %}
+  <h2>Planned growth</h2>
+  <p class="meta">Airports whose listed plans involve growth. They may not come to pass. <a href="/search/?outlook=growing">All growing</a></p>
+  <ul>
+    {% for airport in growing[:8] %}
+    <li><a href="/airports/{{ airport.lid }}/">{{ airport.name }}</a> ({{ airport.lid }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if declining %}
+  <h2>Planned decline</h2>
+  <p class="meta">Airports whose listed plans involve decline. They may not come to pass. <a href="/search/?outlook=declining">All declining</a></p>
+  <ul>
+    {% for airport in declining[:8] %}
+    <li><a href="/airports/{{ airport.lid }}/">{{ airport.name }}</a> ({{ airport.lid }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 {% endblock %}

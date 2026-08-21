@@ -1,0 +1,19 @@
+{% macro outlook_meter(t) %}
+{% if t %}
+<figure class="outlook outlook-{{ t.band }}">
+  <figcaption>Planning Outlook</figcaption>
+  <svg viewBox="0 0 200 122" role="img" aria-label="Planning outlook from listed plans: {{ t.band }} aviation activity. Plans may not be built.">
+    <path class="outlook-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" />
+    <line class="outlook-tick" x1="20" y1="100" x2="28" y2="100" />
+    <line class="outlook-tick" x1="100" y1="20" x2="100" y2="28" />
+    <line class="outlook-tick" x1="180" y1="100" x2="172" y2="100" />
+    <line class="outlook-needle" x1="100" y1="100" x2="{{ t.needle_x }}" y2="{{ t.needle_y }}" />
+    <circle class="outlook-hub" cx="100" cy="100" r="4" />
+    <text class="outlook-label" x="22" y="118" text-anchor="start">Declining</text>
+    <text class="outlook-label" x="100" y="14" text-anchor="middle">Maintaining</text>
+    <text class="outlook-label" x="178" y="118" text-anchor="end">Growing</text>
+  </svg>
+  <span>Whether listed plans involve growth or decline. They may not come to pass.</span>
+</figure>
+{% endif %}
+{% endmacro %}

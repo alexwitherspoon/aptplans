@@ -5,7 +5,7 @@
 
 {% block content %}
   <h1>Search</h1>
-  <p class="lede">Search an airport ID, a name, or words from a plan. Try <em>remove building</em> or <em>modify runway</em>.</p>
+  <p class="lede">Search an airport ID, a name, or words from a plan. Growing and Declining list airports whose listed plans point that way. Those plans may not come to pass. Try <em>remove building</em> or <em>modify runway</em>.</p>
   <form class="search-form" action="/search/" method="get" role="search">
     <label for="q">Query</label>
     <div class="search-suggest-wrap">
@@ -18,6 +18,13 @@
       <label><input type="radio" name="scope" value="all" checked> All</label>
       <label><input type="radio" name="scope" value="plans"> Plans and ALPs</label>
       <label><input type="radio" name="scope" value="projects"> Grants</label>
+    </fieldset>
+    <fieldset class="search-scope">
+      <legend>Planning outlook</legend>
+      <label><input type="radio" name="outlook" value="" checked> Any</label>
+      <label><input type="radio" name="outlook" value="growing"> Growing</label>
+      <label><input type="radio" name="outlook" value="declining"> Declining</label>
+      <label><input type="radio" name="outlook" value="maintaining"> Maintaining</label>
     </fieldset>
   </form>
   <p id="status"></p>
@@ -40,13 +47,21 @@
         notice: "Notice",
         other: "Planning document"
       };
+      function catalogUrl() {
+        var v = document.documentElement.getAttribute("data-cache") || "";
+        return "/data/search.json" + (v ? "?v=" + encodeURIComponent(v) : "");
+      }
       var params = new URLSearchParams(window.location.search);
       var q = (params.get("q") || "").trim();
       var scope = params.get("scope") || "all";
+      var outlook = (params.get("outlook") || "").trim().toLowerCase();
+      if (outlook !== "growing" && outlook !== "declining" && outlook !== "maintaining") outlook = "";
       var input = document.getElementById("q");
       if (input) input.value = params.get("q") || "";
       var scopeInput = document.querySelector("input[name=scope][value=\"" + scope + "\"]");
       if (scopeInput) scopeInput.checked = true;
+      var outlookInput = document.querySelector("input[name=outlook][value=\"" + outlook + "\"]");
+      if (outlookInput) outlookInput.checked = true;
       var results = document.getElementById("results");
       var status = document.getElementById("status");
       function esc(value) {
@@ -63,6 +78,7 @@
       function badge(item) {
         var label = labels[item.kind] || labels[item.type] || item.type;
         if (item.page) label += " · p. " + item.page;
+        if (item.outlook) label += " · " + item.outlook.charAt(0).toUpperCase() + item.outlook.slice(1);
         return label;
       }
       function words() {
@@ -82,18 +98,25 @@
         return true;
       }
       function catalogSearch() {
-        return fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
+        return fetch(catalogUrl()).then(function (res) { return res.json(); }).then(function (items) {
           var needles = words();
-          if (!needles.length) return [];
-          return items.filter(inScope).filter(function (item) {
+          if (!needles.length && !outlook) return [];
+          return items.filter(function (item) {
+            if (outlook) {
+              if (item.type !== "airport" || item.outlook !== outlook) return false;
+            } else if (!inScope(item)) {
+              return false;
+            }
+            if (!needles.length) return true;
             var hay = ((item.title || "") + " " + (item.text || "") + " " + (item.state || "")).toLowerCase();
             return needles.every(function (word) { return hay.indexOf(word) !== -1; });
           }).slice(0, 100).map(function (item) {
-            return { title: item.title, url: item.url, type: item.type, kind: item.type, snippet: "" };
+            return { title: item.title, url: item.url, type: item.type, kind: item.type, outlook: item.outlook || "", snippet: "" };
           });
         });
       }
       function daemonFilter() {
+        if (outlook) return "type = airport AND outlook = \"" + outlook + "\"";
         if (scope === "plans") return "kind IN [master_plan, alp, other]";
         if (scope === "projects") return "type = funding";
         return null;
@@ -101,9 +124,9 @@
       function daemonSearch() {
         var body = {
           q: q,
-          limit: 25,
+          limit: outlook && !q ? 100 : 25,
           matchingStrategy: words().length >= 2 ? "all" : "last",
-          attributesToRetrieve: ["title", "url", "type", "kind", "state", "lid", "page", "document_id", "summary"],
+          attributesToRetrieve: ["title", "url", "type", "kind", "state", "lid", "page", "document_id", "summary", "outlook"],
           attributesToCrop: ["text", "summary"],
           cropLength: 40,
           attributesToHighlight: ["title", "text"],
@@ -129,12 +152,13 @@
               type: hit.type,
               kind: hit.kind,
               page: hit.page,
+              outlook: hit.outlook || "",
               snippet: snippet
             };
           });
         });
       }
-      if (!q) return;
+      if (!q && !outlook) return;
       daemonSearch().then(function (hits) {
         render(hits, "");
       }).catch(function () {

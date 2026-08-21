@@ -1,116 +1,49 @@
 {% extends "base.html" %}
+{% from "outlook.html" import outlook_meter %}
 
 {% block title %}{{ airport.name }} ({{ airport.lid }}) | AptPlans{% endblock %}
 {% block description %}{{ airport.name }} ({{ airport.lid }}): master plans, Airport Layout Plans, and grants.{% endblock %}
+{% block body_class %}airport-page{% endblock %}
 
-{% macro plan_item(doc, show_kind=false) %}
-    <li>
-      <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
-      {% if show_kind %}<span class="badge">{{ doc.kind|kind_label }}</span>{% endif %}
-      {% if doc.edition %}<span class="meta">{{ doc.edition }}</span>{% endif %}
-      <span class="badge">{{ doc.completeness }}</span>
-      <p class="meta">
-        <a href="{{ doc.source_url }}">Official source</a>
-        {% if doc.preserved_url %} · <a href="{{ doc.preserved_url }}">saved copy</a>{% endif %}
-      </p>
-      {% if doc.summary %}<p>{{ doc.summary }}</p>{% endif %}
-    </li>
+{% macro part_list(parts) %}
+    <ul class="edition-parts">
+      {% for doc in parts %}
+      <li>
+        <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
+        {% if doc.source_url %} · <a href="{{ doc.source_url }}">Official source</a>{% endif %}
+        {% if doc.preserved_url %} · <a href="{{ doc.preserved_url }}">Saved copy</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
 {% endmacro %}
 
-{% block content %}
-  <p class="crumb"><a href="/airports/">Airports</a>{% if airport.state %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}</p>
-  <h1>{{ airport.name }}</h1>
-  <p class="lede">
-    {{ airport.lid }}{% if airport.icao %} · {{ airport.icao }}{% endif %}{% if airport.iata %} · {{ airport.iata }}{% endif %}{% if airport.city or airport.state %} · {{ airport.city }}{% if airport.city and airport.state %}, {% endif %}{{ airport.state }}{% endif %}
-    {% if airport.npias_role %} · {{ airport.npias_role|role_label }}{% endif %}
-  </p>
-  <p class="meta">{{ completeness|completeness_phrase }}</p>
-  <p class="meta">
-    {% if documents %}<a href="/feeds/airports/{{ airport.lid }}.xml">RSS for this airport</a> · {% endif %}
-    {% if airport.state %}<a href="/feeds/states/{{ airport.state }}.xml">{{ airport.state }} RSS</a> · {% endif %}
-    <a href="/feeds/">All feeds</a>
-  </p>
-  {% if airport.facility_use or airport.ownership or airport.service_level or airport.nasr_effective or airport.website or (airport.latitude is not none and airport.longitude is not none) %}
-  <p class="meta">
-    {% if airport.facility_use == "PU" %}public-use{% elif airport.facility_use == "PR" %}private-use{% endif %}
-    {% if airport.ownership %}{% if airport.facility_use %} · {% endif %}{{ airport.ownership|ownership_label }} ownership{% endif %}
-    {% if airport.service_level %} · {{ airport.service_level|service_label }}{% endif %}
-    {% if airport.latitude is not none and airport.longitude is not none %}
-    · <a href="geo:{{ airport.latitude }},{{ airport.longitude }}">{{ "%.4f"|format(airport.latitude) }}, {{ "%.4f"|format(airport.longitude) }}</a>
+{% macro featured_panel(label, work, empty) %}
+  <article class="panel">
+    <h2>{{ label }}</h2>
+    {% if work %}
+    <p class="panel-kicker">
+      {% if work.edition %}{{ work.edition }}{% else %}Listed{% endif %}
+      {% if not work.hub and work.parts|length > 1 %} · {{ work.parts|length }} chapters{% endif %}
+    </p>
+    {% if work.hub %}
+    <h3><a href="/documents/{{ work.hub.id }}/">{{ work.title }}</a></h3>
+    {% if work.summary %}<p class="panel-summary">{{ work.summary }}</p>{% endif %}
+    <p class="panel-links">
+      <a href="/documents/{{ work.hub.id }}/">This record</a>
+      · <a href="{{ work.hub.source_url }}">Official source</a>
+      {% if work.hub.preserved_url %} · <a href="{{ work.hub.preserved_url }}">Saved copy</a>{% endif %}
+    </p>
+    {% else %}
+    <h3>{{ work.title }}</h3>
     {% endif %}
-    {% if airport.nasr_effective %} · FAA data {{ airport.nasr_effective }}{% endif %}
-    {% if airport.website %} · <a href="{{ airport.website }}">Airport website</a>{% endif %}
-  </p>
-  {% endif %}
-  {% if airport.admitted and "nasr" not in airport.sources %}
-  <p class="meta">Listed from a plan or a report, not from the current public airport list.</p>
-  {% endif %}
-  {% if brief %}
-  <ul class="brief">
-    {% for line in brief %}
-    <li>{{ line }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  <p class="on-page">
-    <a href="#plans">Plans</a>
-    · <a href="#funding">Funding</a>
-    {% if airport.state %}· <a href="#law">Law</a>{% endif %}
-  </p>
+    {% if work.parts %}{{ part_list(work.parts) }}{% endif %}
+    {% else %}
+    <p>{{ empty }}</p>
+    {% endif %}
+  </article>
+{% endmacro %}
 
-  {% set alps = documents | selectattr("kind", "equalto", "alp") | list %}
-  {% set plans = documents | selectattr("kind", "equalto", "master_plan") | list %}
-  {% set notices = documents | selectattr("kind", "equalto", "notice") | list %}
-  {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan", "notice"]) | list %}
-  <h2 id="plans">Airport Layout Plans</h2>
-  {% if alps %}
-  <ul class="doc-list">
-    {% for doc in alps %}{{ plan_item(doc) }}{% endfor %}
-  </ul>
-  {% else %}
-  <p>No Airport Layout Plan is listed yet. That does not mean none exists.</p>
-  {% endif %}
-
-  <h2>Master plans</h2>
-  {% if plans %}
-  <ul class="doc-list">
-    {% for doc in plans %}{{ plan_item(doc) }}{% endfor %}
-  </ul>
-  {% else %}
-  <p>No master plan is listed yet.{% if alps %} An ALP can stand on its own.{% endif %}</p>
-  {% endif %}
-  {% if other_docs %}
-  <h2>Other planning records</h2>
-  <ul class="doc-list">
-    {% for doc in other_docs %}{{ plan_item(doc, true) }}{% endfor %}
-  </ul>
-  {% endif %}
-
-  <h2 id="funding">Funding</h2>
-  <p class="meta">Federal, state, local, and other grants when an official record is found. A grant is not a plan.</p>
-  {% for section in funding %}
-  <h3>{{ section.label }}</h3>
-  {% if section.grants %}
-  <p class="totals">
-    {% if section.stats.total %}{{ section.stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
-    in {{ section.stats.count }} grant{% if section.stats.count != 1 %}s{% endif %}{% if section.stats.year_min %}
-    (FY {{ section.stats.year_min }}{% if section.stats.year_max and section.stats.year_max != section.stats.year_min %}-{{ section.stats.year_max }}{% endif %}){% endif %}.
-  </p>
-  {% if section.stats.spent is not none or section.stats.remaining is not none %}
-  <p class="totals">
-    {% if section.stats.spent is not none %}{{ section.stats.spent|usd }} spent{% endif %}
-    {% if section.stats.spent is not none and section.stats.remaining is not none %} · {% endif %}
-    {% if section.stats.remaining is not none %}{{ section.stats.remaining|usd }} not yet spent{% endif %}
-  </p>
-  {% endif %}
-  {% if section.stats.by_year %}
-  <p class="meta">{% for year, total in section.stats.by_year %}FY {{ year }} {{ total|usd }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
-  {% endif %}
-  {% if section.stats.planning_count %}
-  <p class="meta">{{ section.stats.planning_count }} planning grant{% if section.stats.planning_count != 1 %}s{% endif %} in this list{% if section.stats.planning %} - {{ section.stats.planning[0].description|grant_title }}{% if section.stats.planning[0].fiscal_year %} (FY {{ section.stats.planning[0].fiscal_year }}){% endif %}{% endif %}.</p>
-  {% endif %}
-  <ul class="grant-list">
-    {% for grant in section.grants %}
+{% macro grant_item(grant) %}
     <li>
       <p class="grant-when">{{ grant|grant_date }}{% if grant.amount %} · {{ grant.amount|usd }} awarded{% endif %}</p>
       {% if grant.outlayed is not none and grant|grant_remaining is not none %}
@@ -135,11 +68,137 @@
       </p>
       {% endif %}
     </li>
+{% endmacro %}
+
+{% block content %}
+  <p class="crumb"><a href="/airports/">Airports</a>{% if state %} · <a href="/states/{{ state.code }}/">{{ state.name }}</a>{% elif airport.state %} · <a href="/states/{{ airport.state }}/">{{ airport.state }}</a>{% endif %}</p>
+  <h1>{{ airport.name }}{% if airport.lid %} ({{ airport.lid|abbr("lid") }}){% elif airport.icao %} ({{ airport.icao|abbr("icao") }}){% endif %}</h1>
+  {% if place %}
+  <p class="place">{{ place }}</p>
+  {% endif %}
+  {% if facts %}
+  <p class="identity">
+    {% for fact in facts %}
+      {%- if fact.term %}{{ fact.label|abbr(fact.term) }}{% else %}{{ fact.label }}{% endif -%}
+      {%- if not loop.last %} · {% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if airport.website|public_website %}
+  <p class="airport-site"><a href="{{ airport.website|public_website }}">{{ airport.website|website_label }}</a></p>
+  {% endif %}
+  <p class="on-page">
+    Sections:
+    <a href="#plans">Plans</a>
+    · <a href="#funding">Funding</a>
+    {% if airport.state %}· <a href="#law">Law</a>{% endif %}
+  </p>
+
+  {% if overview and (overview.facts or overview.trajectory) %}
+  <aside class="plan-brief">
+    <div class="plan-brief-row{% if overview.trajectory %} has-outlook{% endif %}">
+      <div class="plan-brief-facts">
+        <h2>Overview</h2>
+        {% if overview.facts %}
+        <dl>
+          {% for label, value in overview.facts %}
+          <dt>{{ label }}</dt>
+          <dd>{% for line in value.splitlines() %}{% if not loop.first %}<br>{% endif %}{{ line }}{% endfor %}</dd>
+          {% endfor %}
+        </dl>
+        {% endif %}
+      </div>
+      {{ outlook_meter(overview.trajectory) }}
+    </div>
+  </aside>
+  {% endif %}
+
+  <div id="plans" class="featured">
+    {{ featured_panel("Airport Layout Plan", latest_alp, "No Airport Layout Plan is listed yet. That does not mean none exists.") }}
+    {{ featured_panel(
+      "Master plan",
+      latest_plan,
+      plan_empty
+    ) }}
+  </div>
+  <p class="meta">
+    {{ completeness|completeness_phrase }}
+    {% if documents %} · <a href="/feeds/airports/{{ airport.lid }}.xml">RSS</a>{% endif %}
+  </p>
+  {% if earlier %}
+  <h3>Earlier editions</h3>
+  <ul class="edition-list">
+    {% for work in earlier %}
+    <li>
+      {% if work.hub %}
+      <a href="/documents/{{ work.hub.id }}/">{{ work.title }}</a>
+      {% else %}
+      {{ work.title }}
+      {% endif %}
+      <span class="meta">{{ work.kind|kind_label }}{% if work.edition %} · {{ work.edition }}{% endif %}</span>
+      {% if work.hub and work.hub.source_url %} · <a href="{{ work.hub.source_url }}">Official source</a>{% endif %}
+      {% if work.parts %}{{ part_list(work.parts) }}{% endif %}
+    </li>
     {% endfor %}
   </ul>
-  {% else %}
-  <p>{{ section.empty }}</p>
   {% endif %}
+  {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan", "notice"]) | list %}
+  {% if other_docs %}
+  <h3>Other planning records</h3>
+  <ul class="edition-list">
+    {% for doc in other_docs %}
+    <li>
+      <a href="/documents/{{ doc.id }}/">{{ doc.title or doc.id }}</a>
+      <span class="meta">{{ doc.kind|kind_label }}</span>
+      {% if doc.source_url %} · <a href="{{ doc.source_url }}">Official source</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2 id="funding">Funding</h2>
+  <p class="meta">Federal, state, local, and other grants when an official record is found. A grant is not a plan.</p>
+  {% if money.count %}
+  <ul class="money-stats">
+    <li><strong>{% if money.total %}{{ money.total|usd }}{% else %}-{% endif %}</strong> awarded</li>
+    <li><strong>{% if money.spent is not none %}{{ money.spent|usd }}{% else %}-{% endif %}</strong> spent</li>
+    <li><strong>{% if money.remaining is not none %}{{ money.remaining|usd }}{% else %}-{% endif %}</strong> not yet spent</li>
+  </ul>
+  {% if money.has_split %}
+  <div class="split-bar" role="img" aria-label="{{ money.spent|usd }} spent, {{ money.remaining|usd }} not yet spent">
+    <span class="split-spent" style="width: {{ money.spent_pct }}%"></span>
+    <span class="split-left" style="width: {{ money.remaining_pct }}%"></span>
+  </div>
+  <p class="meta">Spent vs not yet spent</p>
+  {% endif %}
+  {% if money.planning_count %}
+  <p class="meta">{{ money.planning_count }} planning grant{% if money.planning_count != 1 %}s{% endif %} in this list.</p>
+  {% endif %}
+  {% if money.bars %}
+  <h3>By year</h3>
+  <ul class="year-bars">
+    {% for row in money.bars %}
+    <li>
+      <span class="year-label">FY {{ row.year }}</span>
+      <span class="year-track"><span class="year-fill" style="width: {{ row.pct }}%"></span></span>
+      <span class="year-amt">{% if row.total %}{{ row.total|usd }}{% else %}Amounts not listed{% endif %} · {{ row.count }} project{% if row.count != 1 %}s{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <h3>Projects by year</h3>
+  {% for group in money.groups %}
+  <h4>{% if group.year %}FY {{ group.year }}{% else %}Year not listed{% endif %}</h4>
+  <ul class="grant-list">
+    {% for grant in group.grants %}{{ grant_item(grant) }}{% endfor %}
+  </ul>
+  {% endfor %}
+  {% endif %}
+  {% for section in funding %}
+    {% if not section.grants %}
+    <h3>{{ section.label }}</h3>
+    <p>{{ section.empty }}</p>
+    {% endif %}
   {% endfor %}
 
   {% if airport.state %}
@@ -167,6 +226,7 @@
   {% endif %}
   {% endif %}
 
+  {% set notices = documents | selectattr("kind", "equalto", "notice") | list %}
   {% if notices %}
   <h2>Notices</h2>
   <p class="meta">Publisher, date, and URL only. Article text is not stored.</p>
@@ -182,7 +242,7 @@
   {% endif %}
 
   <aside class="page-notes">
-    <p>Airport identity from the <a href="https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/">FAA</a>. Federal grants from <a href="https://www.faa.gov/airports/aip/grant_histories">AIP grant histories</a> and <a href="https://www.usaspending.gov/">USAspending</a>.</p>
+    <p>Airport identity from the <a href="https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/">{{ "FAA"|abbr("faa") }}</a>. Federal grants from <a href="https://www.faa.gov/airports/aip/grant_histories">{{ "AIP"|abbr("aip") }} grant histories</a> and <a href="https://www.usaspending.gov/">USAspending</a>.</p>
     <p>
       Something missing?
       <a href="{{ intake_url }}">Tell us</a>

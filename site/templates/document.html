@@ -3,6 +3,8 @@
 {% block title %}{{ document.title or document.id }} | AptPlans{% endblock %}
 {% block description %}{{ document.title or document.id }}{% endblock %}
 
+{% block body_class %}document-page{% endblock %}
+
 {% block content %}
   <p class="crumb">
     {% if airport %}<a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a> ·{% endif %}
@@ -17,10 +19,49 @@
     <a href="/feeds/">All feeds</a>
   </p>
 
+  {% if preview %}
+  <div class="file-view is-loading" aria-busy="true">
+    <p class="file-wait" role="status">Loading the file...</p>
+    <p class="file-fail" role="alert">This file could not be loaded. Use the official source link below.</p>
+    <iframe
+      class="file-frame"
+      data-src="{{ preview.src }}"
+      title="{{ document.title or document.id }}"
+      {% if preview.media == "html" %}sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"{% endif %}
+    ></iframe>
+    <noscript>
+      <style>
+        .file-view.is-loading .file-wait,
+        .file-view.is-error .file-fail { display: none !important; }
+      </style>
+      <iframe class="file-frame" src="{{ preview.src }}" title="{{ document.title or document.id }}"></iframe>
+    </noscript>
+    <p class="meta">
+      {% if preview.origin == "saved" %}
+      Saved copy, shown on this page.
+      <a href="{{ preview.src }}">Open the file</a>
+      {% else %}
+      Official file, cached for this local preview. AptPlans does not yet have a saved copy.
+      <a href="{{ document.source_url }}">Open the official file</a>.
+      {% endif %}
+      If this pane is blank, the host may block embedding.
+    </p>
+  </div>
+  {% endif %}
+
   <h2>Official source</h2>
   <p><a href="{{ document.source_url }}">{{ document.source_url }}</a></p>
   {% if document.publisher or document.published_at %}
   <p>Published{% if document.published_at %} {{ document.published_at }}{% endif %}{% if document.publisher %} by {{ document.publisher }}{% endif %}.</p>
+  {% endif %}
+  {% if document.found_on and document.found_on != document.source_url %}
+  <p class="meta">Listed on <a href="{{ document.found_on }}">{{ document.found_on }}</a></p>
+  {% endif %}
+  {% if document.part_of %}
+  <p class="meta">Part of <a href="/documents/{{ document.part_of }}/">{{ document.part_of }}</a></p>
+  {% endif %}
+  {% if document.inferred_media() != "pdf" %}
+  <p class="meta">Saved as {{ document.inferred_media() }}</p>
   {% endif %}
   {% if document.source_status or document.source_retrieved_at %}
   <p class="meta">{% if document.source_status %}Source: {{ document.source_status }}{% endif %}{% if document.source_retrieved_at %}{% if document.source_status %} · {% endif %}last checked {{ document.source_retrieved_at }}{% endif %}</p>
@@ -56,4 +97,8 @@
     Stale, dead, or the wrong file?
     <a href="{{ intake_url }}">Tell us</a>.
   </p>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ '/js/preview.js'|asset }}"></script>
 {% endblock %}

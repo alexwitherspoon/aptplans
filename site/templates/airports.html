@@ -6,10 +6,10 @@
 {% block content %}
   <h1>Airports</h1>
   <p class="lede">Public-use US airports. Status starts at missing until we find an official file.</p>
-  <p><a href="/search/">Search</a> · <a href="/feeds/">RSS</a> · <a href="/data/catalog.json">Bulk JSON</a> · <a href="/data/catalog.csv">CSV</a></p>
+  <p><a href="/search/">Search</a> · <a href="/search/?outlook=growing">Growing</a> · <a href="/search/?outlook=declining">Declining</a> · <a href="/feeds/">RSS</a> · <a href="/data/catalog.json">Bulk JSON</a> · <a href="/data/catalog.csv">CSV</a></p>
   <table class="index-table">
     <thead>
-      <tr><th>LID</th><th>Airport</th><th>State</th><th>Role</th><th>Status</th></tr>
+      <tr><th>{{ "LID"|abbr("lid") }}</th><th>Airport</th><th>State</th><th>Role</th><th>Status</th></tr>
     </thead>
     <tbody>
       {% for airport in airports %}
@@ -17,7 +17,7 @@
         <td><a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a></td>
         <td>{{ airport.name }}</td>
         <td><a href="/states/{{ airport.state }}/">{{ airport.state }}</a></td>
-        <td>{{ airport.npias_role|role_label }}</td>
+        <td>{% if airport.npias_role %}{{ airport.npias_role|role_label|abbr(airport.npias_role) }}{% endif %}</td>
         <td><span class="badge">{{ completeness_for(airport.lid) }}</span></td>
       </tr>
       {% endfor %}

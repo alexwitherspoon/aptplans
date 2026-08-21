@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
+import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -15,13 +17,118 @@ ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIR = {"__pycache__", ".git", ".pytest_cache"}
 POLL_SEC = 0.4
 DEBOUNCE_SEC = 0.2
+PREVIEW_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$")
 
 log = logging.getLogger("aptplans.dev")
+_preview_catalog = None
+
+
+def files_dir(root: Path | None = None) -> Path:
+    base = root or ROOT
+    raw = os.environ.get("FILES_PATH") or os.environ.get("APTPLANS_FILES") or ""
+    if raw.strip():
+        return Path(raw)
+    return base / "data" / "files"
+
+
+def resolve_file_request(url_path: str, files_root: Path) -> Path | None:
+    """Map /files/{name} onto FILES_PATH. Reject path traversal."""
+    prefix = "/files/"
+    if not url_path.startswith(prefix):
+        return None
+    rel = url_path[len(prefix) :]
+    if not rel or rel.endswith("/") or ".." in Path(rel).parts:
+        return None
+    dest = (files_root / rel).resolve()
+    try:
+        dest.relative_to(files_root.resolve())
+    except ValueError:
+        return None
+    return dest
+
+
+def preview_doc_id(url_path: str) -> str | None:
+    prefix = "/files/preview/"
+    if not url_path.startswith(prefix) or not url_path.endswith(".pdf"):
+        return None
+    name = url_path[len(prefix) : -4]
+    if not PREVIEW_ID.fullmatch(name):
+        return None
+    return name
+
+
+def load_preview_catalog():
+    global _preview_catalog
+    if _preview_catalog is None:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from catalog.seed import seed_catalog
+
+        overlay = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
+        _preview_catalog = seed_catalog(
+            ROOT / "catalog", overlay_dir=Path(overlay) if overlay else None
+        )
+    return _preview_catalog
+
+
+def official_pdf_url(doc_id: str, catalog=None) -> str | None:
+    catalog = catalog if catalog is not None else load_preview_catalog()
+    doc = catalog.documents_by_id.get(doc_id)
+    if doc is None or doc.kind == "notice":
+        return None
+    if doc.inferred_media() != "pdf":
+        return None
+    if (doc.source_status or "") == "dead":
+        return None
+    url = (doc.source_url or "").strip()
+    if not url.startswith(("https://", "http://")):
+        return None
+    return url
+
+
+def fetch_preview_pdf(url: str, dest: Path, opener=None) -> None:
+    from pipeline.gates import MAX_BYTES
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": os.environ.get("APTPLANS_USER_AGENT") or "aptplans.org"},
+    )
+    open_fn = opener or urllib.request.urlopen
+    with open_fn(req, timeout=60) as resp:
+        data = resp.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise ValueError("payload too large")
+    if not data.startswith(b"%PDF"):
+        raise ValueError("not a pdf")
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    tmp.write_bytes(data)
+    tmp.replace(dest)
+
+
+def ensure_preview_file(url_path: str, files_root: Path, catalog=None, opener=None) -> Path | None:
+    mapped = resolve_file_request(url_path, files_root)
+    if mapped is None:
+        return None
+    if mapped.is_file():
+        return mapped
+    doc_id = preview_doc_id(url_path)
+    if not doc_id:
+        return mapped
+    url = official_pdf_url(doc_id, catalog=catalog)
+    if not url:
+        return mapped
+    log.info("fetching official pdf for preview id=%s", doc_id)
+    try:
+        fetch_preview_pdf(url, mapped, opener=opener)
+    except Exception as exc:
+        log.warning("preview fetch failed id=%s: %s", doc_id, exc)
+    return mapped
 
 
 def watch_roots(root: Path | None = None) -> list[Path]:
     base = root or ROOT
-    roots = [base / "site", base / "catalog"]
+    roots = [base / "site", base / "catalog", base / "pipeline"]
     overlay = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
     extra = Path(overlay) if overlay else base / "data" / "catalog"
     if extra not in roots:
@@ -63,12 +170,19 @@ class _Handler(SimpleHTTPRequestHandler):
         log.info("%s", format % args)
 
 
-def serve(host: str, port: int, out: Path) -> ThreadingHTTPServer:
+def serve(host: str, port: int, out: Path, files_root: Path | None = None) -> ThreadingHTTPServer:
     directory = str(out)
+    extra = files_root if files_root is not None else files_dir()
 
     class DistHandler(_Handler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=directory, **kwargs)
+
+        def translate_path(self, path: str) -> str:
+            mapped = ensure_preview_file(path.split("?", 1)[0], extra)
+            if mapped is not None:
+                return str(mapped)
+            return super().translate_path(path)
 
     return ThreadingHTTPServer((host, port), DistHandler)
 
@@ -105,11 +219,14 @@ def main(argv: list[str] | None = None) -> int:
     roots = watch_roots()
     log.info("building %s", out)
     rebuild(out)
-    httpd = serve(args.host, args.port, out)
+    stored = files_dir()
+    stored.mkdir(parents=True, exist_ok=True)
+    httpd = serve(args.host, args.port, out, stored)
     log.info(
-        "serving http://%s:%s  (rebuilds on changes under site/, catalog/, overlay)",
+        "serving http://%s:%s  (rebuilds on changes under site/, catalog/, pipeline/, overlay; /files from %s)",
         args.host,
         args.port,
+        stored,
     )
     import threading
 

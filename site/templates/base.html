@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if cache_bust %} data-cache="{{ cache_bust }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,7 +17,7 @@
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="{{ self.title() }}">
   <meta name="twitter:description" content="{{ self.description() }}">
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="{{ '/css/styles.css'|asset }}">
   {% for feed in rss_links %}
   <link rel="alternate" type="application/rss+xml" title="{{ feed.title }}" href="{{ feed.href }}">
   {% endfor %}
@@ -25,7 +25,7 @@
   <script type="application/ld+json">{{ blob|safe }}</script>
   {% endfor %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="site-header">
     <a class="wordmark" href="/">AptPlans</a>
     <nav>
@@ -43,6 +43,7 @@
     <p>Unofficial. Not an FAA, state, or airport site. Not legal advice and not for flight planning. Follow the official source.</p>
     <p><a href="{{ canonical }}">aptplans.org</a> · © {{ year }} · <a href="https://github.com/alexwitherspoon/aptplans">Source</a> · <a href="/feeds/">RSS</a></p>
   </footer>
-  <script src="/js/suggest.js" defer></script>
+  <script src="{{ '/js/suggest.js'|asset }}" defer></script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -18,6 +18,11 @@
     other: "Planning document"
   };
 
+  function catalogUrl() {
+    var v = document.documentElement.getAttribute("data-cache") || "";
+    return "/data/search.json" + (v ? "?v=" + encodeURIComponent(v) : "");
+  }
+
   function esc(value) {
     return String(value).replace(/[&<>"']/g, function (char) {
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char];
@@ -27,10 +32,20 @@
   function badge(item) {
     var label = labels[item.kind] || labels[item.type] || item.type;
     if (item.page) label += " · p. " + item.page;
+    if (item.outlook) label += " · " + item.outlook.charAt(0).toUpperCase() + item.outlook.slice(1);
     return label;
   }
 
+  function outlookValue(form) {
+    var checked = form.querySelector("input[name=outlook]:checked");
+    var outlook = checked ? checked.value : "";
+    if (outlook === "growing" || outlook === "declining" || outlook === "maintaining") return outlook;
+    return "";
+  }
+
   function scopeFilter(form) {
+    var outlook = outlookValue(form);
+    if (outlook) return "type = airport AND outlook = \"" + outlook + "\"";
     var checked = form.querySelector("input[name=scope]:checked");
     var scope = checked ? checked.value : "all";
     if (scope === "plans") return "kind IN [master_plan, alp, other]";
@@ -43,7 +58,7 @@
       q: q,
       limit: LIMIT,
       matchingStrategy: "last",
-      attributesToRetrieve: ["title", "url", "type", "kind", "page"],
+      attributesToRetrieve: ["title", "url", "type", "kind", "page", "outlook"],
       attributesToHighlight: ["title"]
     };
     var filter = scopeFilter(form);
@@ -57,18 +72,23 @@
 
   function catalogHits(items, q, form) {
     var needle = q.toLowerCase();
+    var outlook = outlookValue(form);
     var checked = form.querySelector("input[name=scope]:checked");
     var scope = checked ? checked.value : "all";
     return items.filter(function (item) {
-      var kind = item.kind || item.type;
-      if (scope === "plans" && kind !== "master_plan" && kind !== "alp" && kind !== "other") {
-        return false;
+      if (outlook) {
+        if (item.type !== "airport" || item.outlook !== outlook) return false;
+      } else {
+        var kind = item.kind || item.type;
+        if (scope === "plans" && kind !== "master_plan" && kind !== "alp" && kind !== "other") {
+          return false;
+        }
+        if (scope === "projects" && item.type !== "funding") return false;
       }
-      if (scope === "projects" && item.type !== "funding") return false;
       var hay = ((item.title || "") + " " + (item.text || "")).toLowerCase();
       return hay.indexOf(needle) !== -1;
     }).slice(0, LIMIT).map(function (item) {
-      return { title: item.title, url: item.url, type: item.type, kind: item.type };
+      return { title: item.title, url: item.url, type: item.type, kind: item.type, outlook: item.outlook || "" };
     });
   }
 
@@ -82,7 +102,7 @@
     var catalog = null;
     var pending = null;
 
-    fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
+    fetch(catalogUrl()).then(function (res) { return res.json(); }).then(function (items) {
       catalog = items;
     }).catch(function () {});
 
@@ -125,7 +145,7 @@
         apply();
         return;
       }
-      fetch("/data/search.json").then(function (res) { return res.json(); }).then(function (items) {
+      fetch(catalogUrl()).then(function (res) { return res.json(); }).then(function (items) {
         catalog = items;
         apply();
       }).catch(function () {});

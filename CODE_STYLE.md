@@ -9,9 +9,9 @@ This is an **unofficial document library**, not flight-planning weather and not 
 - Official sources are the citation of record. A document is `complete` only with both an official URL and a hash-verified preserved copy.
 - Name **airport master plans** and **Airport Layout Plans (ALPs)** as coequal works. Use the FAA term Airport Layout Plan on first mention, then ALP. An ALP without a narrative master plan is still a catalogued document (`kind: alp`), not `no_plan_known`. FAA names and systems used in this repo are defined in [`docs/FAA.md`](docs/FAA.md).
 - Summaries and change notes are unofficial. Do not brand a model or call the site an "AI product" on public pages.
-- Keep templates few and CSS thin. Search and document pages are static HTML. Do not add a map library or a JavaScript SPA.
+- Keep templates few and CSS thin. Search and document pages are static HTML. Document pages may embed a PDF or saved HTML file in an iframe. Do not add a map library or a JavaScript SPA.
 - User-facing crawlers identify as `aptplans.org`.
-- The pipeline is gated logic. The local model is a subroutine the worker may call for a typed question after those gates pass. It does not run the pipeline, browse, or override a failed check. If a TOC is missing, the worker still sends a viable 32k text chunk rather than stopping for a human.
+- The pipeline is gated logic. The local model is a subroutine the worker may call for a typed question after those gates pass. It does not run the pipeline, browse, or override a failed check. The worker reads native text from the whole file, then sends successive 32k chunks and reduces. Missing a TOC is not a reason to stop for a human. Origin can wait.
 - In prose, headings, and table cells, do not use the Unicode em dash. Use a single ASCII hyphen (`-`) for a break or aside. Keep `--` only where Markdown or a CLI example needs it.
 
 `docs/` describes required behavior in the present tense (what the system does and why). Track gaps in GitHub issues, not in architecture docs.
@@ -31,6 +31,7 @@ Python 3.12+. New modules live under `site/`, `catalog/`, `pipeline/`, or `tests
 - Templates extend a small base. One accent color, readable measure, no card grids or stock heroes.
 - Class names are ordinary English (`site-header`, `lede`). No utility-class frameworks.
 - CSS in `site/static/css/`. 2-space indent. Prefer a few custom properties over a design-token pile.
+- Link CSS and JS with the `asset` filter so a content-hash query string busts caches. Do not hardcode `/css/styles.css` in templates.
 - The unofficial disclaimer lives once in the site footer. Do not repeat it on page bodies. About copy stays short.
 
 ## Shell, Make, and host scripts

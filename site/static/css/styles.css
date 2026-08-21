@@ -25,8 +25,19 @@ body {
   padding: 1.5rem 1.25rem 3rem;
 }
 
+body.airport-page,
+body.document-page {
+  max-width: 64rem;
+}
+
 a {
   color: var(--accent);
+}
+
+abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.12em;
+  cursor: help;
 }
 
 .site-header {
@@ -80,6 +91,88 @@ h1 {
 
 .site-footer p {
   margin: 0.35rem 0;
+}
+
+.file-view {
+  position: relative;
+  margin: 1.5rem 0 2rem;
+}
+
+.file-wait {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: #fff;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+
+.file-view.is-loading .file-wait {
+  display: flex;
+}
+
+.file-fail {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 1.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #fff;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+
+.file-view.is-error .file-wait {
+  display: none;
+}
+
+.file-view.is-error .file-fail {
+  display: flex;
+}
+
+.file-view.is-error .file-frame {
+  visibility: hidden;
+}
+
+.file-wait::before {
+  content: "";
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--rule);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: file-spin 0.8s linear infinite;
+}
+
+@keyframes file-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-wait::before {
+    animation: none;
+  }
+}
+
+.file-frame {
+  display: block;
+  width: 100%;
+  height: min(85vh, 56rem);
+  border: 1px solid var(--rule);
+  background: #fff;
 }
 
 .search-form {
@@ -220,20 +313,6 @@ h1 {
   margin: 1.25rem 0 1.5rem;
 }
 
-.on-page a {
-  text-decoration: none;
-}
-
-.brief {
-  list-style: none;
-  padding: 0;
-  margin: 0.75rem 0 0;
-}
-
-.brief li {
-  margin: 0.35rem 0;
-}
-
 .index-table {
   width: 100%;
   border-collapse: collapse;
@@ -340,4 +419,292 @@ code {
 
 .page-notes p {
   margin: 0.35rem 0;
+}
+
+.identity {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+
+.place {
+  margin: 0 0 0.2rem;
+}
+
+.airport-site {
+  margin: 0 0 0.75rem;
+}
+
+.featured {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 0.5rem 0 1.5rem;
+}
+
+@media (min-width: 44rem) {
+  .featured {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.panel {
+  border: 1px solid var(--rule);
+  background: #fff;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.panel h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.4rem;
+}
+
+.panel h3 {
+  font-size: 1.15rem;
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+}
+
+.panel-kicker {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.25rem;
+}
+
+.panel-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+  margin: 0 0 0.75rem;
+}
+
+.panel-links {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.plan-brief {
+  border: 1px solid var(--rule);
+  background: #fff;
+  padding: 1rem 1.1rem 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.plan-brief h2,
+.outlook figcaption {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.35rem;
+  line-height: 1.25;
+}
+
+.plan-brief dl {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.plan-brief dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.plan-brief dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.plan-brief-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem 1.5rem;
+  align-items: start;
+}
+
+.plan-brief-row.has-outlook {
+  grid-template-columns: 1fr minmax(12rem, 18rem);
+}
+
+.plan-brief-facts {
+  min-width: 0;
+}
+
+.outlook {
+  margin: 0;
+  max-width: 18rem;
+  justify-self: end;
+}
+
+@media (max-width: 40rem) {
+  .plan-brief-row.has-outlook {
+    grid-template-columns: 1fr;
+  }
+
+  .outlook {
+    justify-self: start;
+    max-width: 18rem;
+  }
+}
+
+.outlook > span {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.outlook svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.outlook-arc {
+  stroke: var(--rule);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.outlook-tick {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.outlook-needle {
+  stroke: var(--fg);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.outlook-hub {
+  fill: var(--fg);
+}
+
+.outlook-label {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: inherit;
+}
+
+.edition-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+}
+
+.edition-list li {
+  margin: 0.4rem 0;
+}
+
+.edition-parts {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  font-size: 0.9rem;
+}
+
+.edition-parts li {
+  margin: 0.25rem 0;
+}
+
+.panel .edition-parts {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.7rem;
+}
+
+.money-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.75rem;
+  list-style: none;
+  margin: 0.75rem 0 1rem;
+  padding: 0;
+}
+
+.money-stats li {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.money-stats strong {
+  display: block;
+  color: var(--fg);
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.split-bar {
+  display: flex;
+  height: 0.65rem;
+  background: var(--rule);
+  margin: 0.35rem 0 0.25rem;
+}
+
+.split-spent {
+  background: var(--accent);
+}
+
+.split-left {
+  background: #a3b5aa;
+}
+
+.year-bars {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1.5rem;
+}
+
+.year-bars li {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr minmax(7rem, auto);
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+}
+
+.year-label {
+  color: var(--muted);
+}
+
+.year-track {
+  display: block;
+  height: 0.55rem;
+  background: var(--rule);
+}
+
+.year-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  min-width: 0;
+}
+
+.year-amt {
+  color: var(--muted);
+  text-align: right;
+}
+
+@media (max-width: 36rem) {
+  .year-bars li {
+    grid-template-columns: 4.2rem 1fr;
+  }
+
+  .year-amt {
+    grid-column: 1 / -1;
+    text-align: left;
+    margin-top: -0.25rem;
+  }
 }
