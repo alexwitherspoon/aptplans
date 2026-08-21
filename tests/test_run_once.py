@@ -483,7 +483,7 @@ def test_process_next_explore_html_preserves_page_and_queues_pdfs(tmp_path: Path
 def test_process_fetch_strips_html_api_keys(tmp_path: Path) -> None:
     html_path = tmp_path / "hub.html"
     html_path.write_text(
-        "<html><body>master plan REDACTED</body></html>",
+        "<html><body>master plan AIzaSyFAKEKEYFORUNITTESTSONLY</body></html>",
         encoding="utf-8",
     )
     queue = JobQueue(tmp_path / "queue")
