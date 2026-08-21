@@ -39,6 +39,21 @@ COMPOSE+=(
 echo "Building and starting site, search, worker, and Ollama"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
+echo "Waiting for VPN egress"
+egress_ok=0
+for _ in $(seq 1 36); do
+    if "${COMPOSE[@]}" exec -T egress /gluetun-entrypoint healthcheck 2>/dev/null; then
+        egress_ok=1
+        break
+    fi
+    sleep 5
+done
+if [ "${egress_ok}" -ne 1 ]; then
+    echo "egress did not become healthy" >&2
+    "${COMPOSE[@]}" logs --tail=80 egress >&2 || true
+    exit 1
+fi
+
 echo "Waiting for Caddy"
 caddy_ok=0
 for _ in $(seq 1 30); do

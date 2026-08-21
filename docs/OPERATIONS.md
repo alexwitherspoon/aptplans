@@ -203,6 +203,32 @@ Expect `200` or `301`/`302` for each. Any `URLError`, `RuntimeError` (missing pr
 
 If `egress` is unhealthy or VPN creds are missing, worker fetches fail closed rather than falling back to the host IP.
 
+**Troubleshooting stuck `egress`**
+
+Symptoms: `health: starting` forever, logs show `UDPv4 link remote` without `Initialization Sequence Completed`, or healthcheck DNS errors (`operation not permitted` on `1.1.1.1:53`). Worker stays down because it waits for healthy egress.
+
+```bash
+# 1. Confirm VPN creds are present (values not printed)
+grep -c '^PIA_OPENVPN_' /home/aptplans/.env.secrets
+
+# 2. Ensure Gluetun data dir exists and refresh PIA server list
+sudo mkdir -p /var/lib/aptplans/egress
+sudo chown aptplans:aptplans /var/lib/aptplans/egress
+docker run --rm -v /var/lib/aptplans/egress:/gluetun qmcgaw/gluetun:v3.40.0 \
+  update -enduser -providers "private internet access"
+
+# 3. Add EGRESS_PATH to production env if missing, then recreate egress
+grep -q '^EGRESS_PATH=' /home/aptplans/.env.production || \
+  echo 'EGRESS_PATH=/var/lib/aptplans/egress' | sudo tee -a /home/aptplans/.env.production
+$COMPOSE_PROD up -d --force-recreate egress
+$COMPOSE_PROD logs -f egress   # wait for Initialization Sequence Completed
+
+# 4. If UDP still fails, try TCP (some networks block UDP 1197)
+#    Set in compose or one-shot: OPENVPN_PROTOCOL=tcp
+```
+
+After `egress` is healthy, `worker` starts automatically (`depends_on: service_healthy`).
+
 ## Disk
 
 PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files` and `/var/lib/aptplans/reject`. Expected corpus is on the order of 0.25-1 TB, with headroom on an 8 TB mirror. Reject copies age out after 90 days. There is no offsite replica of the bytes in the first deployment.

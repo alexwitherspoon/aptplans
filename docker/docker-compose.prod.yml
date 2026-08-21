@@ -113,24 +113,28 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     cpuset: ${WORKER_CPUSET:-0-3,16-19}
+    volumes:
+      - ${EGRESS_PATH:-/var/lib/aptplans/egress}:/gluetun
     environment:
       VPN_SERVICE_PROVIDER: private internet access
       VPN_TYPE: openvpn
       OPENVPN_USER: ${PIA_OPENVPN_USER:-}
       OPENVPN_PASSWORD: ${PIA_OPENVPN_PASSWORD:-}
       SERVER_REGIONS: ${PIA_SERVER_REGIONS:-US East}
+      FIREWALL_OUTBOUND_SUBNETS: 172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
+      HEALTH_TARGET_ADDRESS: 1.1.1.1:443
       HTTPPROXY: "on"
       HTTPPROXY_LOG: "off"
       HTTPPROXY_LISTENING_ADDRESS: :8888
-      HEALTH_VPN_DURATION_INITIAL: 60s
+      HEALTH_VPN_DURATION_INITIAL: 90s
     expose:
       - "8888"
     healthcheck:
       test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 6
+      start_period: 120s
     logging:
       driver: json-file
       options:

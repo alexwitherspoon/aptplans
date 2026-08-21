@@ -22,7 +22,7 @@ MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"
 TEXT_DIR="${TEXT_DIR:-/var/lib/aptplans/text}"
 SEARCH_DIR="${SEARCH_DIR:-/var/lib/aptplans/search}"
 REJECT_DIR="${REJECT_DIR:-/var/lib/aptplans/reject}"
-LOGS_DIR="${LOGS_DIR:-/var/lib/aptplans/logs}"
+EGRESS_DIR="${EGRESS_DIR:-/var/lib/aptplans/egress}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -157,8 +157,9 @@ ensure_directories() {
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SEARCH_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${REJECT_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${LOGS_DIR}"
+    as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${EGRESS_DIR}"
     as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
-    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}" "${REJECT_DIR}" "${LOGS_DIR}"
+    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}" "${REJECT_DIR}" "${LOGS_DIR}" "${EGRESS_DIR}"
 }
 
 ensure_origin_tls() {
@@ -251,6 +252,7 @@ TEXT_PATH=${TEXT_DIR}
 SEARCH_PATH=${SEARCH_DIR}
 REJECT_PATH=${REJECT_DIR}
 LOGS_PATH=${LOGS_DIR}
+EGRESS_PATH=${EGRESS_DIR}
 # EPYC 7351P: node 0 for site/worker/search/host, nodes 1-3 for Ollama.
 SITE_CPUSET=0-3,16-19
 WORKER_CPUSET=0-3,16-19
