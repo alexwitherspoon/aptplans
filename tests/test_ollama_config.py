@@ -62,6 +62,8 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "/srv/files" in prod
     assert "OLLAMA_HOST=http://ollama:11434" in text
     assert "APTPLANS_FETCH_PROXY=http://egress:8888" in prod
+    assert "APTPLANS_DEV_PREVIEW=0" in prod
+    assert "APTPLANS_REFERENCE_SEED=0" in prod
     assert "INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}" in prod
     assert "APTPLANS_REVIEW_TOKEN=${APTPLANS_REVIEW_TOKEN:-}" in prod
     assert "APTPLANS_LOGS=/var/lib/aptplans/logs" in prod
