@@ -1,0 +1,495 @@
+{
+  "description": "Gold labels for gated search-hit triage. Explorer packets only; confirmation still requires a fetch. CI does not call a model.",
+  "cases": [
+    {
+      "id": "4s9-hub",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "\"Mulino State Airport\" 4S9 master plan",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+      "prose": "Mulino State Airport [4S9]. Links: Airport Diagram https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf Master Plan https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["hub_page", "both"],
+        "kind_guess": ["master_plan", "alp", "unknown"],
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf",
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf"
+        ],
+        "page_urls": [
+          "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx"
+        ]
+      }
+    },
+    {
+      "id": "4s9-amp-pdf",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 AMP filetype:pdf",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf",
+      "page_url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+      "prose": "Mulino Final AMP July 2019. Official Oregon Department of Aviation master plan PDF.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "master_plan",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf"
+        ],
+        "page_urls": [
+          "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx"
+        ]
+      }
+    },
+    {
+      "id": "4s9-alp-diagram",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 airport diagram ALP",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf",
+      "page_url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+      "prose": "Airport Diagram for Mulino State Airport. File ODA_Doc_4S9_ALP.pdf from the Oregon Department of Aviation airport page.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "alp",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf"
+        ],
+        "page_urls": [
+          "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx"
+        ]
+      }
+    },
+    {
+      "id": "4s9-ch2",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "Mulino 4S9 master plan inventory",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf",
+      "page_url": "",
+      "prose": "Chapter Two Airport Master Plan Update INVENTORY Mulino Airport. 2008 Port of Portland study.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": "chapter",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf"
+        ],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "4s9-alp-narrative",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 Chapter 6 ALP",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%206%20-%20ALP%20Narrative.pdf",
+      "page_url": "",
+      "prose": "Chapter Six Airport Master Plan Update AIRPORT LAYOUT PLAN. This narrative describes sheets in the ALP drawing set. It is not the drawing set.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": "chapter",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%206%20-%20ALP%20Narrative.pdf"
+        ],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "4s9-ea",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 master plan 2019",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Projects/Draft%20EA%206-11-2019%20completePart-1.pdf",
+      "page_url": "",
+      "prose": "Draft Environmental Assessment June 2019 for Mulino State Airport obstruction removal and fencing. NEPA EA, not a master plan.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "not_plan",
+        "kind_guess": "unknown",
+        "fetch": "no",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "4s9-news",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "Mulino State Airport master plan",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "https://www.oregon.gov/aviation/agency/about/pages/be-informed.aspx",
+      "prose": "Notice - Mulino State Airport - Waterline and Hangar Construction Project Starting Soon! Construction start early summer 2026. Check NOTAMs. No master plan PDF is linked.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "notice",
+        "kind_guess": "unknown",
+        "fetch": "no",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "4s9-wikipedia",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "Mulino State Airport 4S9",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "https://en.wikipedia.org/wiki/Mulino_State_Airport",
+      "prose": "Mulino State Airport (FAA LID: 4S9) is a public airport in Mulino, Oregon. Wikipedia encyclopedia article.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "not_plan",
+        "kind_guess": "unknown",
+        "fetch": "no",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "wrong-airport-uao",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 master plan filetype:pdf",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/Airports/Documents/UAO/Master%20Plan/6.%20Chapter%203%20-%20Forecasts.pdf",
+      "page_url": "",
+      "prose": "Chapter Three Airport Master Plan Update Aurora State Airport (UAO) aviation demand forecasts.",
+      "gold": {
+        "same_airport": false,
+        "hit_type": "artifact",
+        "kind_guess": ["chapter", "unknown"],
+        "fetch": "no",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "invented-url",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 ALP",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf",
+      "page_url": "",
+      "prose": "Also try https://example.invalid/made-up-4S9-master-plan.pdf which does not appear as artifact_url.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": "alp",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf"
+        ],
+        "page_urls": [],
+        "forbid_urls": [
+          "https://example.invalid/made-up-4S9-master-plan.pdf"
+        ]
+      }
+    },
+    {
+      "id": "ssi-name",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "city": "Portland",
+      "state": "OR",
+      "query": "PDX ALP",
+      "provider": "fixture",
+      "artifact_url": "https://example.com/PDX_ALP_SSI_sheet.pdf",
+      "page_url": "",
+      "prose": "Sensitive Security Information ALP sheet filename PDX_ALP_SSI_sheet.pdf.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": ["alp", "unknown"],
+        "fetch": "needs_human",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "pdx-hub",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "city": "Portland",
+      "state": "OR",
+      "query": "PDX 2045 master plan",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "https://pdx2045.org/",
+      "prose": "PDX 2045 Master Plan Update. Port of Portland planning microsite for Portland International Airport.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "hub_page",
+        "kind_guess": "master_plan",
+        "fetch": "yes",
+        "artifact_urls": [],
+        "page_urls": [
+          "https://pdx2045.org/"
+        ]
+      }
+    },
+    {
+      "id": "pdx-existing",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "city": "Portland",
+      "state": "OR",
+      "query": "PDX 2045 existing conditions",
+      "provider": "fixture",
+      "artifact_url": "https://pdx2045.org/wp-content/uploads/2025/06/PDX-2045-Exisiting-Conditions-Report-Full-Size.pdf",
+      "page_url": "https://pdx2045.org/",
+      "prose": "PDX 2045 Existing Conditions Report. Volume of the master plan update, not the whole study.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "chapter",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://pdx2045.org/wp-content/uploads/2025/06/PDX-2045-Exisiting-Conditions-Report-Full-Size.pdf"
+        ],
+        "page_urls": [
+          "https://pdx2045.org/"
+        ]
+      }
+    },
+    {
+      "id": "4s2-alp",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "city": "Hood River",
+      "state": "OR",
+      "query": "4S2 airport layout plan",
+      "provider": "fixture",
+      "artifact_url": "https://www.portofhoodriver.com/files/c0434eac6/03-Hood-River-ALP.pdf",
+      "page_url": "https://www.portofhoodriver.com/airport-master-plan",
+      "prose": "Ken Jernstedt Airfield Airport Layout Plan sheet with FAA approval blocks.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "alp",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.portofhoodriver.com/files/c0434eac6/03-Hood-River-ALP.pdf"
+        ],
+        "page_urls": [
+          "https://www.portofhoodriver.com/airport-master-plan"
+        ]
+      }
+    },
+    {
+      "id": "4s2-hub",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "city": "Hood River",
+      "state": "OR",
+      "query": "Ken Jernstedt Airfield master plan",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "https://www.portofhoodriver.com/airport-master-plan",
+      "prose": "Port of Hood River Airport Master Plan page for Ken Jernstedt Airfield (4S2).",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "hub_page",
+        "kind_guess": "master_plan",
+        "fetch": "yes",
+        "artifact_urls": [],
+        "page_urls": [
+          "https://www.portofhoodriver.com/airport-master-plan"
+        ]
+      }
+    },
+    {
+      "id": "ttd-bound",
+      "lid": "TTD",
+      "name": "Portland-Troutdale Airport",
+      "city": "Troutdale",
+      "state": "OR",
+      "query": "Troutdale TTD master plan",
+      "provider": "fixture",
+      "artifact_url": "https://cdn.portofportland.com/pdfs/TTD-PAC-report.pdf",
+      "page_url": "",
+      "prose": "Troutdale Airport Master Plan: Shaping Our Future. One published PAC report.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": "master_plan",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://cdn.portofportland.com/pdfs/TTD-PAC-report.pdf"
+        ],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "bvy-alp",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "city": "Beverly",
+      "state": "MA",
+      "query": "Beverly BVY airport layout plan",
+      "provider": "fixture",
+      "artifact_url": "https://beverlyairport.com/wp-content/uploads/2024/03/ALP.pdf",
+      "page_url": "https://beverlyairport.com/documents/",
+      "prose": "Signed Airport Layout Plan for Beverly Regional Airport.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "alp",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://beverlyairport.com/wp-content/uploads/2024/03/ALP.pdf"
+        ],
+        "page_urls": [
+          "https://beverlyairport.com/documents/"
+        ]
+      }
+    },
+    {
+      "id": "oregon-budget",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "city": "Portland",
+      "state": "OR",
+      "query": "PDX master plan budget",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/example/2025-27-LAB.pdf",
+      "page_url": "",
+      "prose": "Oregon Department of Aviation 2025-27 Legislatively Adopted Budget. Program Operations. Aviation System Action Program. Not an ALP.",
+      "gold": {
+        "same_airport": false,
+        "hit_type": "not_plan",
+        "kind_guess": "unknown",
+        "fetch": "no",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "no-url",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "4S9 master plan",
+      "provider": "fixture",
+      "artifact_url": "",
+      "page_url": "",
+      "prose": "Someone said Mulino has a 2019 master plan but no link was returned.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["not_plan", "notice"],
+        "kind_guess": "unknown",
+        "fetch": "needs_human",
+        "artifact_urls": [],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "mixed-prose-2019-vs-2008",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "query": "Mulino 4S9 current master plan",
+      "provider": "fixture",
+      "artifact_url": "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf",
+      "page_url": "",
+      "prose": "The 2008 chapters are still posted, but ODAV's airport page lists the July 2019 AMP as Master Plan. Confirm the 2019 file, not a single 2008 chapter, as the current whole plan.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": "artifact",
+        "kind_guess": "master_plan",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf"
+        ],
+        "page_urls": []
+      }
+    },
+    {
+      "id": "hio-for-hio",
+      "lid": "HIO",
+      "name": "Hillsboro Airport",
+      "city": "Hillsboro",
+      "state": "OR",
+      "query": "HIO master plan",
+      "provider": "fixture",
+      "artifact_url": "https://cdn.portofportland.com/pdfs/HIO_Ch1_Inventory.pdf",
+      "page_url": "https://www.portofportland.com/HIO/Masterplan",
+      "prose": "Hillsboro Airport Master Plan Inventory chapter from the Port of Portland hub.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "chapter",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://cdn.portofportland.com/pdfs/HIO_Ch1_Inventory.pdf"
+        ],
+        "page_urls": [
+          "https://www.portofportland.com/HIO/Masterplan"
+        ]
+      }
+    },
+    {
+      "id": "4s2-chapters-bound",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "city": "Hood River",
+      "state": "OR",
+      "query": "4S2 master plan chapters",
+      "provider": "fixture",
+      "artifact_url": "https://www.portofhoodriver.com/files/2289d2744/Chapters-1-4.pdf",
+      "page_url": "https://www.portofhoodriver.com/airport-master-plan",
+      "prose": "Ken Jernstedt Airfield Airport Master Plan Chapters 1-4 PDF.",
+      "gold": {
+        "same_airport": true,
+        "hit_type": ["artifact", "both"],
+        "kind_guess": "chapter",
+        "fetch": "yes",
+        "artifact_urls": [
+          "https://www.portofhoodriver.com/files/2289d2744/Chapters-1-4.pdf"
+        ],
+        "page_urls": [
+          "https://www.portofhoodriver.com/airport-master-plan"
+        ]
+      }
+    }
+  ]
+}

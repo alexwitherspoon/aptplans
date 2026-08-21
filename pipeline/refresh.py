@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import os
 from zoneinfo import ZoneInfo
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 ROOT = Path(__file__).resolve().parents[1]
 PAUSE_SECONDS = 2.0
+
+
+def overlay_dir_from_env(override: Path | None = None) -> Path:
+    if override is not None:
+        return override
+    raw = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
+    if raw:
+        return Path(raw)
+    return ROOT / "data" / "catalog"
 
 
 def overlay_airports_path(overlay_dir: Path) -> Path:

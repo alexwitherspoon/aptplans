@@ -1,0 +1,142 @@
+{
+  "description": "Recorded search hits for the adaptive ladder. Replay only; not a publish. Captured 2026-08-20 from live web search of the same query strings seed_steps emits.",
+  "queries": {
+    "\"Mulino State Airport\" 4S9 \"master plan\"": [
+      {
+        "title": "Airports Update",
+        "url": "https://www.oregon.gov/aviation/state-aviation-board/Documents/2026/04_02/Presentations/2026-4%20Airports%20Presentation.pdf",
+        "snippet": "Mulino Hangar Construction. Complete design standards identified in new master plan."
+      },
+      {
+        "title": "Chapter Two INVENTORY",
+        "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf",
+        "snippet": "Chapter Two Airport Master Plan Update INVENTORY Mulino Airport."
+      },
+      {
+        "title": "Chapter One",
+        "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%201%20-%20Strategic%20Analysis.pdf",
+        "snippet": "Mulino Airport master plan strategic analysis. 2008 Port of Portland update."
+      },
+      {
+        "title": "ODAV Easement Acquisition Projects Overview",
+        "url": "https://www.oregon.gov/aviation/state-aviation-board/Documents/2025/11_06/ODAV%20Easement%20Acquisition%20CWE%20Projects%20Overview%202025-11-06.pdf",
+        "snippet": "Obstructions confirmed in AMP (2019) at Mulino State Airport 4S9."
+      }
+    ],
+    "site:oregon.gov 4S9 \"master plan\"": [
+      {
+        "title": "Aviation : Mulino State Airport [4S9] : Airports : State of Oregon",
+        "url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+        "snippet": "Mulino State Airport [4S9] owned by the Oregon Department of Aviation."
+      },
+      {
+        "title": "Chapter Two INVENTORY",
+        "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf",
+        "snippet": "Airport Master Plan Update INVENTORY Mulino Airport."
+      },
+      {
+        "title": "Chapter Four",
+        "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%204%20-%20Facility%20Requirements.pdf",
+        "snippet": "Airport Master Plan Update facility requirements. Final Airport Layout Plan."
+      }
+    ],
+    "\"Ken Jernstedt Airfield\" 4S2 \"master plan\"": [
+      {
+        "title": "KEN JERNSTEDT AIRFIELD - HOOD RIVER",
+        "url": "https://www.portofhoodriver.com/files/2289d2744/Chapters-1-4.pdf",
+        "snippet": "AIRPORT MASTER PLAN FINAL REPORT - MARCH 2018 Ken Jernstedt Airfield 4S2."
+      },
+      {
+        "title": "Airport - Master Plan - Port of Hood River",
+        "url": "https://www.portofhoodriver.com/airport-master-plan",
+        "snippet": "Ken Jernstedt Airfield Airport Master Plan. 2018 ALP title sheet and chapters."
+      },
+      {
+        "title": "Airport - Port of Hood River",
+        "url": "https://www.portofhoodriver.com/airport",
+        "snippet": "FAA Identifier: 4S2. Master plan adopted March 2018."
+      }
+    ],
+    "site:portofhoodriver.com 4S2 \"master plan\"": [
+      {
+        "title": "Airport - Master Plan - Port of Hood River",
+        "url": "https://www.portofhoodriver.com/airport-master-plan",
+        "snippet": "2018 Master Plan chapters and Airport Layout Plan sheets."
+      }
+    ],
+    "\"Portland International Airport\" PDX \"master plan\"": [
+      {
+        "title": "PDX 2045",
+        "url": "https://pdx2045.org/",
+        "snippet": "PDX 2045 is Portland International Airport’s (PDX) Master Plan update."
+      },
+      {
+        "title": "Existing Conditions",
+        "url": "https://pdx2045.org/wp-content/uploads/2025/06/PDX-2045-Exisiting-Conditions-Report-Full-Size.pdf",
+        "snippet": "Portland International Airport Master Plan Update. Existing conditions report."
+      }
+    ],
+    "site:portofportland.com PDX \"master plan\"": [
+      {
+        "title": "Minutes Executive Director General Discussion Consent Items",
+        "url": "https://cdn.portofportland.com/commission/May%202026%20Commission%20Agenda.pdf",
+        "snippet": "Adoption of the PDX 2045 Master Plan. Visit pdx2045.org to learn more."
+      },
+      {
+        "title": "Forecasts",
+        "url": "https://cdn.portofportland.com/pdfs/PDX-2045-Forecast-Report-Executive-Summary.pdf",
+        "snippet": "Portland International Airport Master Plan Update forecasts through 2045."
+      }
+    ],
+    "site:pdx2045.org PDX \"master plan\"": [
+      {
+        "title": "PDX 2045",
+        "url": "https://pdx2045.org/",
+        "snippet": "PDX Master Plan update hub."
+      }
+    ],
+    "\"Beverly Regional Airport\" BVY \"master plan\"": [
+      {
+        "title": "Airport Documents | Beverly Regional Airport",
+        "url": "https://beverlyairport.com/documents/",
+        "snippet": "Beverly Regional Airport Master Plan, completed in June 2022. Chapter 6 Airport Layout Plan."
+      },
+      {
+        "title": "01 BVY_2022 AMP_Ch1-Introduction_Final",
+        "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Chapter-1-Introduction.pdf",
+        "snippet": "Airport Master Plan (AMP) for Beverly Regional Airport (BVY)."
+      },
+      {
+        "title": "06 BVY_2022 AMP_Ch6-Airport Layout Plan_FINAL",
+        "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Chapter-6-Airport-Layout-Plan.pdf",
+        "snippet": "Beverly Regional Airport ALP drawing set."
+      }
+    ],
+    "site:beverlyairport.com BVY \"master plan\"": [
+      {
+        "title": "Airport Documents | Beverly Regional Airport",
+        "url": "https://beverlyairport.com/documents/",
+        "snippet": "Master Plan Documents and 2022 Airport Layout Plan."
+      }
+    ],
+    "\"Portland-Hillsboro Airport\" HIO \"master plan\"": [
+      {
+        "title": "Port of Portland - Hillsboro Airport Master Plan",
+        "url": "https://www.portofportland.com/HIO/Masterplan",
+        "snippet": "Hillsboro Airport Master Plan. FAA approved May 2020."
+      },
+      {
+        "title": "HIO Summary Report Final 041520",
+        "url": "https://cdn.portofportland.com/pdfs/HIO_Summary_Report_Final.pdf",
+        "snippet": "Hillsboro Airport (HIO) Airport Master Plan summary report."
+      }
+    ],
+    "site:portofportland.com HIO \"master plan\"": [
+      {
+        "title": "Port of Portland - Hillsboro Airport Master Plan",
+        "url": "https://www.portofportland.com/HIO/Masterplan",
+        "snippet": "Master Plan report and preferred alternative for HIO."
+      }
+    ]
+  }
+}

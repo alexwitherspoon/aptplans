@@ -17,7 +17,7 @@ from catalog.store import write_overlay_update
 from pipeline.fetch import fetch_bytes, fetch_meta
 from pipeline.lock import worker_lock
 from pipeline.queue import JobQueue, QueueJob
-from pipeline.refresh import PAUSE_SECONDS, ROOT
+from pipeline.refresh import PAUSE_SECONDS, ROOT, overlay_dir_from_env
 
 log = logging.getLogger("aptplans.check")
 
@@ -278,7 +278,7 @@ def run_check_pass(
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    overlay = Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog"))
+    overlay = overlay_dir_from_env()
     queue = Path(os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue"))
     catalog_root = ROOT / "catalog"
     with worker_lock(queue):

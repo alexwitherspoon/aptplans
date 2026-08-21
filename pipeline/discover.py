@@ -4,30 +4,40 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import urlparse, unquote
 
 from catalog.seed import seed_catalog
+from pipeline.gates import looks_like_pdf
 from pipeline.queue import JobQueue, QueueJob
+from pipeline.search_scope import in_search_scope, parse_search_states
 
 
-def looks_like_pdf(url: str) -> bool:
-    path = unquote(urlparse(url).path).lower()
-    return path.endswith(".pdf")
+def seed_explore_hubs(queue: JobQueue, catalog_root: Path, overlay_dir: Path | None = None) -> int:
+    """Queue airport website HTML as explore jobs. PDFs are not required.
 
-
-def seed_link_checks(queue: JobQueue, catalog_root: Path, overlay_dir: Path | None = None) -> int:
-    from pipeline.check import due_documents
-
+    Not called from ``main``. A bulk NASR website crawl would snapshot every
+    homepage; hubs are seeded from signals (search, intake, a chosen website).
+    Live scope follows APTPLANS_SEARCH_STATES (default Oregon).
+    """
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    allowed = parse_search_states()
     queued = 0
-    for document in due_documents(catalog.documents):
+    seen: set[str] = set()
+    for airport in catalog.airports:
+        if not in_search_scope(airport.state, allowed):
+            continue
+        website = (airport.website or "").strip()
+        if not website.startswith("http") or website in seen:
+            continue
+        seen.add(website)
         queue.enqueue(
             QueueJob(
-                kind="check",
-                document_id=document.id,
-                source_url=document.source_url,
-                airport_lid=document.airport_lid,
-                state=document.state,
+                kind="explore",
+                document_id=f"{airport.lid.lower()}-site",
+                source_url=website,
+                airport_lid=airport.lid,
+                state=airport.state,
+                suggested_kind="other",
+                found_on=website,
             )
         )
         queued += 1

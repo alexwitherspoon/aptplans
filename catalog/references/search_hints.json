@@ -1,0 +1,121 @@
+{
+  "description": "Gold for gated search-hint queries. The model never searches and never invents fetch URLs. CI does not call a model.",
+  "cases": [
+    {
+      "id": "4s9-2019-year",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "city": "Mulino",
+      "state": "OR",
+      "website": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+      "ran_queries": [
+        "\"Mulino State Airport\" 4S9 \"master plan\"",
+        "site:oregon.gov 4S9 \"master plan\""
+      ],
+      "missing": ["whole_plan", "alp"],
+      "hits": [
+        {
+          "title": "Chapter Two INVENTORY",
+          "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf",
+          "snippet": "Chapter Two Airport Master Plan Update INVENTORY Mulino Airport 2008."
+        },
+        {
+          "title": "Aviation : Mulino State Airport [4S9]",
+          "url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+          "snippet": "Oregon Department of Aviation airport page for 4S9."
+        },
+        {
+          "title": "ODAV Easement Acquisition Projects Overview",
+          "url": "https://www.oregon.gov/aviation/state-aviation-board/Documents/2025/11_06/ODAV%20Easement%20Acquisition%20CWE%20Projects%20Overview%202025-11-06.pdf",
+          "snippet": "Obstructions confirmed in AMP (2019) at Mulino State Airport 4S9."
+        }
+      ],
+      "gold": {
+        "must_include": ["4S9"],
+        "must_include_any": ["2019", "AMP", "final"],
+        "forbid_http": true,
+        "allow_hosts": ["oregon.gov"]
+      }
+    },
+    {
+      "id": "pdx-microsite-host",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "city": "Portland",
+      "state": "OR",
+      "website": "https://www.portofportland.com/PDX",
+      "ran_queries": [
+        "site:portofportland.com PDX \"master plan\""
+      ],
+      "missing": ["whole_plan", "alp"],
+      "hits": [
+        {
+          "title": "Commission agenda",
+          "url": "https://cdn.portofportland.com/commission/May%202026%20Commission%20Agenda.pdf",
+          "snippet": "Adoption of the PDX 2045 Master Plan. Visit pdx2045.org to learn more."
+        }
+      ],
+      "gold": {
+        "must_include": ["PDX"],
+        "must_include_any": ["pdx2045.org", "2045"],
+        "forbid_http": true,
+        "allow_hosts": ["portofportland.com", "cdn.portofportland.com", "pdx2045.org"]
+      }
+    },
+    {
+      "id": "hio-cdn-chapters",
+      "lid": "HIO",
+      "name": "Portland-Hillsboro Airport",
+      "city": "Hillsboro",
+      "state": "OR",
+      "website": "https://www.portofportland.com/HIO",
+      "ran_queries": [
+        "\"Portland-Hillsboro Airport\" HIO \"master plan\""
+      ],
+      "missing": ["whole_plan", "alp"],
+      "hits": [
+        {
+          "title": "Port of Portland - Hillsboro Airport Master Plan",
+          "url": "https://www.portofportland.com/HIO/Masterplan",
+          "snippet": "Hillsboro Airport Master Plan. FAA approved May 2020. Report chapters on cdn.portofportland.com."
+        },
+        {
+          "title": "HIO Summary Report Final 041520",
+          "url": "https://cdn.portofportland.com/pdfs/HIO_Summary_Report_Final.pdf",
+          "snippet": "Hillsboro Airport (HIO) Airport Master Plan summary report."
+        }
+      ],
+      "gold": {
+        "must_include": ["HIO"],
+        "must_include_any": ["cdn.portofportland.com", "chapter", "ALP", "master plan"],
+        "forbid_http": true,
+        "allow_hosts": ["portofportland.com", "cdn.portofportland.com"]
+      }
+    },
+    {
+      "id": "4s2-already-has-hub",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "city": "Hood River",
+      "state": "OR",
+      "website": "https://www.portofhoodriver.com/",
+      "ran_queries": [
+        "\"Ken Jernstedt Airfield\" 4S2 \"master plan\""
+      ],
+      "missing": ["alp"],
+      "hits": [
+        {
+          "title": "Airport - Master Plan - Port of Hood River",
+          "url": "https://www.portofhoodriver.com/airport-master-plan",
+          "snippet": "Ken Jernstedt Airfield Airport Master Plan. 2018 ALP title sheet."
+        }
+      ],
+      "gold": {
+        "must_include": ["4S2"],
+        "must_include_any": ["ALP", "airport layout", "layout plan"],
+        "forbid_http": true,
+        "allow_hosts": ["portofhoodriver.com"]
+      }
+    }
+  ]
+}
