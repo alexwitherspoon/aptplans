@@ -1,4 +1,4 @@
-"""On-disk serial queue. One JSON file per job."""
+"""On-disk queue. One JSON file per job; airport slots pace parallel work."""
 
 from __future__ import annotations
 
@@ -14,6 +14,11 @@ MAX_ATTEMPTS = 3
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_lid(raw: str | None) -> str | None:
+    lid = (raw or "").strip().upper()
+    return lid or None
 
 
 class JobRetry(Exception):
@@ -77,7 +82,6 @@ class JobQueue:
         self.pending.mkdir(parents=True, exist_ok=True)
         self.active.mkdir(parents=True, exist_ok=True)
         self.done.mkdir(parents=True, exist_ok=True)
-        self._claimed: Path | None = None
 
     def _next_name(self) -> str:
         existing = [path.name for path in self.pending.glob("*.json")]
@@ -108,27 +112,157 @@ class JobQueue:
                     return True
         return False
 
-    def claim(self) -> QueueJob | None:
-        """Move one job to active. A crash leaves it there so the next pass retries."""
-        if self._claimed is not None:
-            raise RuntimeError("complete the claimed job before claiming another")
-        active = sorted(self.active.glob("*.json"))
-        pending = sorted(self.pending.glob("*.json"))
-        path = (active or pending or [None])[0]
-        if path is None:
+    def active_airport_lids(self) -> frozenset[str]:
+        lids: set[str] = set()
+        for path in self.active.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            lid = _normalize_lid(data.get("airport_lid"))
+            if lid:
+                lids.add(lid)
+        return frozenset(lids)
+
+    def _cursor_path(self) -> Path:
+        return self.root / ".airport_cursor"
+
+    def _read_cursor(self) -> str | None:
+        path = self._cursor_path()
+        if not path.is_file():
             return None
+        try:
+            return _normalize_lid(path.read_text(encoding="utf-8"))
+        except OSError:
+            return None
+
+    def _write_cursor(self, lid: str | None) -> None:
+        path = self._cursor_path()
+        if not lid:
+            if path.is_file():
+                path.unlink()
+            return
+        path.write_text(lid + "\n", encoding="utf-8")
+
+    def _pending_has_lid(self, lid: str) -> bool:
+        for path in self.pending.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            if _normalize_lid(data.get("airport_lid")) == lid:
+                return True
+        return False
+
+    @staticmethod
+    def _claimable(
+        lid: str | None,
+        active_lids: frozenset[str],
+        airport_limit: int,
+        focus_lid: str | None,
+    ) -> bool:
+        if not lid:
+            return not active_lids
+        if active_lids:
+            if lid in active_lids:
+                return True
+            return len(active_lids) < airport_limit
+        if airport_limit <= 1:
+            return lid == focus_lid if focus_lid else False
+        return True
+
+    def _focus_lid(self, airport_limit: int, active_lids: frozenset[str]) -> str | None:
+        if airport_limit <= 1:
+            focus = self._read_cursor()
+            if focus and not self._pending_has_lid(focus) and focus not in active_lids:
+                self._write_cursor(None)
+                focus = None
+            if active_lids:
+                return next(iter(active_lids))
+            if focus:
+                return focus
+            pending = sorted(self.pending.glob("*.json"))
+            if not pending:
+                return None
+            try:
+                focus = _normalize_lid(
+                    json.loads(pending[0].read_text(encoding="utf-8")).get("airport_lid")
+                )
+            except (OSError, json.JSONDecodeError, TypeError):
+                focus = None
+            if focus:
+                self._write_cursor(focus)
+            return focus
+
+        pending = sorted(self.pending.glob("*.json"))
+        if not pending:
+            return None
+        try:
+            return _normalize_lid(
+                json.loads(pending[0].read_text(encoding="utf-8")).get("airport_lid")
+            )
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+
+    def _pick_pending(self, airport_limit: int, active_lids: frozenset[str]) -> QueueJob | None:
+        pending = sorted(self.pending.glob("*.json"))
+        if not pending:
+            return None
+        focus_lid = self._focus_lid(airport_limit, active_lids)
+        for path in pending:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            lid = _normalize_lid(data.get("airport_lid"))
+            if self._claimable(lid, active_lids, airport_limit, focus_lid):
+                job = self._activate(path)
+                if airport_limit <= 1 and lid:
+                    self._write_cursor(lid)
+                return job
+        return None
+
+    def claim(self, *, airport_limit: int = 1) -> QueueJob | None:
+        """Move one job to active. Respects airport concurrency slots."""
+        active = sorted(self.active.glob("*.json"))
+        active_lids = self.active_airport_lids()
+
+        if len(active) == 1 and airport_limit == 1:
+            return self._activate(active[0])
+
+        if len(active_lids) >= airport_limit:
+            return None
+
+        picked = self._pick_pending(airport_limit, active_lids)
+        if picked is not None:
+            return picked
+
+        if len(active) == 1 and airport_limit == 1:
+            return self._activate(active[0])
+        return None
+
+    def _activate(self, path: Path) -> QueueJob:
         if path.parent != self.active:
             dest = self.active / path.name
             path.replace(dest)
             path = dest
-        self._claimed = path
         job = QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
         job.attempts += 1
         path.write_text(json.dumps(job.to_dict(), indent=2) + "\n", encoding="utf-8")
         return job
 
-    def complete(self) -> None:
-        if self._claimed is None:
+    def complete(self, job: QueueJob) -> None:
+        lid = _normalize_lid(job.airport_lid)
+        for path in self.active.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            if data.get("id") == job.id:
+                path.replace(self.done / path.name)
+                break
+        else:
             return
-        self._claimed.replace(self.done / self._claimed.name)
-        self._claimed = None
+        if lid and not self._pending_has_lid(lid) and lid not in self.active_airport_lids():
+            if self._read_cursor() == lid:
+                self._write_cursor(None)

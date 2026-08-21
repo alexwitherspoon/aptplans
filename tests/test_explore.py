@@ -110,7 +110,7 @@ def test_seed_explore_hubs_queues_mulino_website(tmp_path: Path) -> None:
             assert claimed.kind == "explore"
             assert claimed.source_url.endswith("mulino-4s9.aspx")
             assert claimed.document_id == "4s9-site"
-        queue.complete()
+        queue.complete(claimed)
         claimed = queue.claim()
     assert found_mulino is True
 

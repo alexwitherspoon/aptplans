@@ -110,7 +110,7 @@ def test_run_loop_sleeps_only_when_idle() -> None:
         return n["i"] == 1
 
     try:
-        run_loop(process=process, sleep=sleeps.append, idle=60)
+        run_loop(process=process, sleep=sleeps.append, idle=60, job_pause=0)
     except KeyboardInterrupt:
         pass
     assert n["i"] == 3
@@ -130,7 +130,7 @@ def test_run_loop_backoff_on_job_retry() -> None:
         raise KeyboardInterrupt
 
     try:
-        run_loop(process=process, sleep=sleeps.append, idle=9)
+        run_loop(process=process, sleep=sleeps.append, idle=9, job_pause=0)
     except KeyboardInterrupt:
         pass
     assert sleeps == [120]
@@ -140,8 +140,8 @@ def test_run_loop_polls_intake_hourly(monkeypatch) -> None:
     pulls: list[bool] = []
     now = {"t": 0.0}
 
-    def fake_next(pull_intake: bool = False, **_kwargs) -> bool:
-        pulls.append(pull_intake)
+    def fake_next(pull_intake: bool = False, pull_discovery: bool = False, **_kwargs) -> bool:
+        pulls.append((pull_intake, pull_discovery))
         if now["t"] > 4000:
             raise KeyboardInterrupt
         return False
@@ -151,12 +151,12 @@ def test_run_loop_polls_intake_hourly(monkeypatch) -> None:
 
     monkeypatch.setattr("pipeline.worker.process_next", fake_next)
     try:
-        run_loop(sleep=sleeper, idle=60, intake_idle=3600, now=lambda: now["t"])
+        run_loop(sleep=sleeper, idle=60, intake_idle=3600, discovery_idle=999999, job_pause=0, now=lambda: now["t"])
     except KeyboardInterrupt:
         pass
-    assert pulls[0] is False
-    assert pulls[1] is True
-    assert pulls.count(True) == 2
+    assert pulls[0] == (False, False)
+    assert (True, False) in pulls
+    assert pulls.count((True, False)) == 2
 
 
 def test_main_search_failure_keeps_worker(monkeypatch) -> None:
