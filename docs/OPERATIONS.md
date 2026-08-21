@@ -1,6 +1,6 @@
 # Operations
 
-Steady state should be boring: unattended-upgrades, a Monday reboot, a worker that drains the document queue continuously (one job at a time), a daily official-URL check, a monthly NASR/NPIAS/grant refresh, and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
+Steady state should be boring: unattended-upgrades, a Monday reboot, a worker that drains the document queue continuously (one job at a time), a daily official-URL check, a monthly NASR/NPIAS/OurAirports/grant and overlay fact-sheet refresh (airport HTML extracts the sheet on each site generate), and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
 
 ## Deploy
 
@@ -62,7 +62,7 @@ docker compose --env-file /home/aptplans/.env.production \
   exec ollama ollama list
 ```
 
-Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after import; after a Monday reboot, `aptplans-ollama-warmup.service` loads it again. First load on CPU can take several minutes. Worker generate calls keep thinking off so unofficial notes are the paragraph, not chain-of-thought.
+Ollama keeps `bonsai-27b` loaded (`OLLAMA_KEEP_ALIVE=-1`). CD warms it after import; after a Monday reboot, `aptplans-ollama-warmup.service` loads it again. First load on CPU can take several minutes. Worker generate calls keep thinking off so unofficial notes are the paragraph, not chain-of-thought. Large plans are read in full, then sent as successive 32k windows with a reduce. Origin waits (`APTPLANS_LLM_TIMEOUT`, default 3600s per call).
 
 Throughput is a KS-6 measurement, not a laptop one. Do it by hand: one Compose exec, no CI. Ollama is serial (`OLLAMA_NUM_PARALLEL=1`). The document worker may be in a generate; the flock will wait, or run this when logs show idle. Then:
 
@@ -97,7 +97,7 @@ docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 
 CD rebuilds HTML on the GitHub runner from the git catalog and rsyncs `dist/` to `/var/lib/aptplans/site`. Origin then rebuilds again from git plus `/var/lib/aptplans/catalog` overlay so hashed completeness from the worker is not wiped. Caddy bind-mounts that directory.
 
-If HTML looks stale at the edge, purge Cloudflare for HTML/RSS only. Leave hashed `/files/` objects cached.
+If HTML looks stale at the edge after 24 hours, origin Cache-Control already caps shared caches at a day. Purge Cloudflare for HTML/RSS only when a same-day fix must land immediately. Leave hashed `/files/` objects cached.
 
 Rebuild the public search index after a bulk text restore or a Meilisearch volume wipe. `--reindex` extracts missing page JSONL from hashed PDFs, then replaces the daemon index from overlay plus those sidecars. A worker boot does the same page backfill when the index has no page hits:
 
@@ -114,10 +114,12 @@ Worker overlay and queue:
 | Path | Contents |
 | --- | --- |
 | `/var/lib/aptplans/files` | hashed PDFs |
+| `/var/lib/aptplans/reject` | 90-day private copies of artifacts that failed a check (not Caddy) |
 | `/var/lib/aptplans/text` | gated page JSONL (not served) |
 | `/var/lib/aptplans/search` | Meilisearch data (no host port) |
 | `/var/lib/aptplans/catalog` | overlay JSONL (`airports.jsonl` from NASR+NPIAS, `grants.jsonl` from AIP histories, plus document completeness and hashes) |
 | `/var/lib/aptplans/queue` | serial job JSON |
+| `/var/lib/aptplans/logs` | redacted worker JSONL (`GET /review/v1/logs`) |
 
 Seed known official PDFs onto the queue (does not fetch):
 
@@ -149,14 +151,16 @@ User-Agent is `aptplans.org`. One request at a time per host. Honor robots.txt. 
 
 ## Disk
 
-PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files`. Expected corpus is on the order of 0.25-1 TB, with headroom on an 8 TB mirror. There is no offsite replica of the bytes in the first deployment.
+PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files` and `/var/lib/aptplans/reject`. Expected corpus is on the order of 0.25-1 TB, with headroom on an 8 TB mirror. Reject copies age out after 90 days. There is no offsite replica of the bytes in the first deployment.
 
 ## Failures
 
-Low-confidence unofficial wording can still go live when outer gates passed. Hash mismatches and SSI-looking files must not. Open or update a GitHub issue and leave `review_status` as `needs_human` only for those integrity or safety cases.
+Low-confidence unofficial wording can still go live when outer gates passed **and** the record was vetted (`review_status` auto_pass or published). A hashed snapshot stays `pending` until that vet step. Hash mismatches and SSI-looking files must not publish. Those bytes, plus newsletters and other kind-gate failures, are kept in `/var/lib/aptplans/reject` for 90 days so scoring work can pull them over the review API. They never go under Caddy `/files/`. Open or update a GitHub issue and leave `review_status` as `needs_human` only for integrity or safety cases that still need a human.
+
+On origin, `https://aptplans.org/review` is the private review API (HTTPS, API key; Caddy `:443` only). CD writes `APTPLANS_REVIEW_TOKEN` from the GitHub Actions secret into `/home/aptplans/.env.secrets` so Compose interpolates it. A laptop or Cursor agent uses the same key in gitignored `.env` with `APTPLANS_REVIEW_URL=https://aptplans.org/review`. `GET /v1/status` and `GET /v1/logs` are the health loop. `GET /v1/stats`, `GET /v1/outcomes?bucket=uncertain`, `GET /v1/signals`, and `GET /v1/rejects` measure the live mix. `GET /v1/rejects/{sha256}/bytes` copies a failed artifact for local training (still not a publish). `POST /v1/label` records a gold packet without publishing. `PATCH /v1/documents/{id}` sets `review_status`. `make pull-outcomes` writes `data/score/review/` (including `rejects/` files) for scoring work; then `python3 scripts/train_evidence.py --outcomes data/score/review/gold.json`. Merge new official URLs plus labels into `catalog/references/score_gold.json` (no excerpts). Do not log the token.
 
 Skip filenames and appendices that look like SSI or security-restricted drawings.
 
 ## Logs
 
-Compose uses json-file logging with rotation (`max-size` 10m). Pipeline output also lands in the systemd journal for the oneshot service.
+Compose uses json-file logging with rotation (`max-size` 10m). The worker also appends redacted JSON lines under `/var/lib/aptplans/logs`. `GET https://aptplans.org/review/v1/logs` (API key) is the programmatic view. Pipeline output also lands in the systemd journal for the oneshot timers.

@@ -39,9 +39,9 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - weekly Docker prune (Sunday 02:00 Pacific)
    - always-on document worker (one job at a time; weekly pipeline timer disabled)
    - daily official-URL check (dead, moved, or live; Wayback rediscovery on origin)
-   - monthly NASR/NPIAS airport refresh (1st of the month, Pacific)
+   - monthly NASR/NPIAS airport, grant, and fact-sheet refresh (1st of the month, Pacific)
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
-   - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS and intake GitHub token if those Actions secrets are set)
+   - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS, intake GitHub token, review API token, Brave search key, and optional Gemini key if those Actions secrets are set)
    - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
    - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
 
@@ -52,15 +52,17 @@ Host layout:
 | `/opt/aptplans` | rsynced git tree |
 | `/var/lib/aptplans/site` | generated HTML |
 | `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
+| `/var/lib/aptplans/reject` | 90-day private failed artifacts (not in git; not on Caddy) |
 | `/var/lib/aptplans/text` | gated native page JSONL (not in git; not on Caddy) |
 | `/var/lib/aptplans/search` | Meilisearch data (not in git; no host port) |
 | `/var/lib/aptplans/catalog` | worker overlay (airport identity, completeness, hashes; not in git) |
 | `/var/lib/aptplans/queue` | serial job JSON |
+| `/var/lib/aptplans/logs` | redacted worker JSONL for the review API |
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
 | `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
-| `/home/aptplans/.env.secrets` | PIA SOCKS + intake GitHub token (CD; bootstrap does not overwrite) |
+| `/home/aptplans/.env.secrets` | PIA SOCKS + intake GitHub token + review token + Brave/Gemini search keys (CD; bootstrap does not overwrite) |
 | `/home/aptplans/.env.search` | Meilisearch master key (bootstrap writes once; CD does not overwrite) |
 
 ## Manual deploy

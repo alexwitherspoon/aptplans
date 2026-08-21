@@ -16,6 +16,11 @@ INVENTORY = REFERENCE_FILES / "4s9-2008-inventory.pdf"
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _drain(**kwargs) -> None:
+    while process_next(pull_intake=False, **kwargs):
+        pass
+
+
 def test_run_once_empty_queue_is_success(tmp_path: Path) -> None:
     assert (
         run_once(
@@ -53,14 +58,11 @@ def test_run_once_preserves_fixture_and_writes_overlay(tmp_path: Path) -> None:
     )
     files = tmp_path / "files"
     overlay = tmp_path / "overlay"
-    assert (
-        run_once(
-            queue_dir=tmp_path / "queue",
-            files_dir=files,
-            overlay_dir=overlay,
-            catalog_root=ROOT / "catalog",
-        )
-        == 0
+    _drain(
+        queue_dir=tmp_path / "queue",
+        files_dir=files,
+        overlay_dir=overlay,
+        catalog_root=ROOT / "catalog",
     )
     digest = hashlib.sha256(INVENTORY.read_bytes()).hexdigest()
     assert (files / f"{digest}.pdf").is_file()
@@ -70,6 +72,7 @@ def test_run_once_preserves_fixture_and_writes_overlay(tmp_path: Path) -> None:
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     doc = catalog.document("4s9-2008-inventory")
     assert doc.completeness == "complete"
+    assert doc.review_status == "pending"
     assert doc.content_sha256 == digest
     assert JobQueue(tmp_path / "queue").claim() is None
 
@@ -87,14 +90,11 @@ def test_run_once_admits_lid_not_in_catalog(tmp_path: Path) -> None:
         )
     )
     overlay = tmp_path / "overlay"
-    assert (
-        run_once(
-            queue_dir=tmp_path / "queue",
-            files_dir=tmp_path / "files",
-            overlay_dir=overlay,
-            catalog_root=ROOT / "catalog",
-        )
-        == 0
+    _drain(
+        queue_dir=tmp_path / "queue",
+        files_dir=tmp_path / "files",
+        overlay_dir=overlay,
+        catalog_root=ROOT / "catalog",
     )
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     assert catalog.airports_by_lid["XYZ"].admitted is True
@@ -122,14 +122,11 @@ def test_run_once_reuses_same_content_as_mirror(tmp_path: Path) -> None:
                 issue_number=None,
             )
         )
-        assert (
-            run_once(
-                queue_dir=tmp_path / "queue",
-                files_dir=files,
-                overlay_dir=overlay,
-                catalog_root=ROOT / "catalog",
-            )
-            == 0
+        _drain(
+            queue_dir=tmp_path / "queue",
+            files_dir=files,
+            overlay_dir=overlay,
+            catalog_root=ROOT / "catalog",
         )
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     docs = catalog.documents_for_airport("QQQ")
@@ -157,14 +154,11 @@ def test_run_once_new_edition_supersedes_prior_work(tmp_path: Path) -> None:
                 issue_number=None,
             )
         )
-        assert (
-            run_once(
-                queue_dir=tmp_path / "queue",
-                files_dir=files,
-                overlay_dir=overlay,
-                catalog_root=ROOT / "catalog",
-            )
-            == 0
+        _drain(
+            queue_dir=tmp_path / "queue",
+            files_dir=files,
+            overlay_dir=overlay,
+            catalog_root=ROOT / "catalog",
         )
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     by_url = {doc.source_url: doc for doc in catalog.documents_for_airport("RRR")}
@@ -187,14 +181,11 @@ def test_run_once_records_change_when_hash_differs(tmp_path: Path) -> None:
                 issue_number=None,
             )
         )
-        assert (
-            run_once(
-                queue_dir=tmp_path / "queue",
-                files_dir=files,
-                overlay_dir=overlay,
-                catalog_root=ROOT / "catalog",
-            )
-            == 0
+        _drain(
+            queue_dir=tmp_path / "queue",
+            files_dir=files,
+            overlay_dir=overlay,
+            catalog_root=ROOT / "catalog",
         )
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     assert catalog.document("4s9-2008-inventory").content_sha256 == hashlib.sha256(
@@ -256,6 +247,45 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
     queue.enqueue(
         QueueJob(
             kind="fetch",
+            document_id="4s9-2008-inventory",
+            source_url=INVENTORY.resolve().as_uri(),
+            airport_lid="4S9",
+            issue_number=None,
+        )
+    )
+    assert (
+        process_next(
+            queue_dir=tmp_path / "queue",
+            files_dir=tmp_path / "files",
+            overlay_dir=tmp_path / "overlay",
+            catalog_root=ROOT / "catalog",
+        )
+        is True
+    )
+    assert order == ["lock", "unlock"]
+
+
+def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:
+    order: list[str] = []
+    real_lock = worker_lock
+
+    @contextmanager
+    def tracking_lock(queue_dir: Path):
+        order.append("lock")
+        with real_lock(queue_dir):
+            yield
+        order.append("unlock")
+
+    def rebuild() -> None:
+        order.append("rebuild")
+
+    monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
+    monkeypatch.setattr("pipeline.run_once._maybe_rebuild_site", rebuild)
+    monkeypatch.setattr("pipeline.run_once.process_vet", lambda *_args, **_kwargs: "auto_pass")
+    queue = JobQueue(tmp_path / "queue")
+    queue.enqueue(
+        QueueJob(
+            kind="vet",
             document_id="4s9-2008-inventory",
             source_url=INVENTORY.resolve().as_uri(),
             airport_lid="4S9",
@@ -382,6 +412,12 @@ fixture
         doc.completeness == "complete" and doc.airport_lid == "4S9"
         for doc in catalog.documents
     )
+    _drain(
+        queue_dir=tmp_path / "queue",
+        files_dir=tmp_path / "files",
+        overlay_dir=tmp_path / "overlay",
+        catalog_root=ROOT / "catalog",
+    )
     assert (
         process_next(
             queue_dir=tmp_path / "queue",
@@ -392,3 +428,54 @@ fixture
         )
         is False
     )
+
+
+def test_process_next_explore_html_preserves_page_and_queues_pdfs(tmp_path: Path) -> None:
+    from tests.test_explore import AMP, HUB_WITH_LINKS
+
+    html_path = tmp_path / "mulino.html"
+    html_path.write_text(HUB_WITH_LINKS, encoding="utf-8")
+    queue = JobQueue(tmp_path / "queue")
+    queue.enqueue(
+        QueueJob(
+            kind="explore",
+            document_id="4s9-site",
+            source_url=html_path.resolve().as_uri(),
+            airport_lid="4S9",
+            state="OR",
+        )
+    )
+    assert (
+        process_next(
+            queue_dir=tmp_path / "queue",
+            files_dir=tmp_path / "files",
+            overlay_dir=tmp_path / "overlay",
+            catalog_root=ROOT / "catalog",
+        )
+        is True
+    )
+    catalog = seed_catalog(ROOT / "catalog", overlay_dir=tmp_path / "overlay")
+    hub = catalog.document("4s9-site")
+    assert hub.kind == "other"
+    assert hub.completeness == "complete"
+    assert hub.review_status == "pending"
+    assert hub.inferred_media() == "html"
+    assert (tmp_path / "files" / f"{hub.content_sha256}.html").is_file()
+    pending = JobQueue(tmp_path / "queue")
+    child = pending.claim()
+    assert child is not None
+    fetch_urls = []
+    vet_ids = []
+    while child is not None:
+        if child.kind == "fetch":
+            fetch_urls.append(child.source_url)
+            assert child.found_on == html_path.resolve().as_uri()
+        elif child.kind == "vet":
+            vet_ids.append(child.document_id)
+        else:
+            assert child.kind == "explore"
+        pending.complete()
+        child = pending.claim()
+    assert AMP in fetch_urls
+    assert "4s9-site" in vet_ids
+

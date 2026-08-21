@@ -16,26 +16,93 @@ from catalog.models import (
     Document,
     find_same_content,
     prior_work_document,
+    visible_on_site,
 )
 from catalog.seed import seed_catalog
 from catalog.store import append_change, completeness_for_airport, upsert_airport_overlay, write_overlay_update
 from pipeline.check import apply_outcome, check_document
+from pipeline.explore import confirm_jobs, explore_page, followup_explore_jobs, hub_document_kind, page_title
 from pipeline.fetch import fetch_bytes
 from pipeline.files import store_bytes
-from pipeline.gates import evaluate_file, filename_from_url, intake_status
+from pipeline.gates import evaluate_payload, filename_from_url, intake_status, sniff_media
 from pipeline.github import GitHubIntake, github_from_env
 from pipeline.intake import IntakeHint, hint_can_queue, parse_issue_body, resolve_intake
 from pipeline.parse import change_note, content_changed, content_fingerprint
+from pipeline.stages import review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
+from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
+from pipeline.refresh import overlay_dir_from_env
+from pipeline.reject import purge_expired, store_reject
 
 log = logging.getLogger("aptplans.job")
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
+    """Append a scoring/production outcome. Failures here must not fail the job."""
+    try:
+        scored = score_job_signal(
+            lid=job.airport_lid or "",
+            url=job.source_url or "",
+            label=job.document_id or "",
+        )
+        rejected = job.reject_record
+        extra = {}
+        if isinstance(rejected, dict):
+            extra = {
+                "reject_sha256": rejected.get("sha256") or None,
+                "reject_reason": rejected.get("reason"),
+                "reject_expires_at": rejected.get("expires_at"),
+                "reject_stored": rejected.get("stored"),
+            }
+        record_outcome(
+            overlay_dir,
+            {
+                "job_id": job.id,
+                "job_kind": job.kind,
+                "document_id": job.document_id,
+                "lid": job.airport_lid,
+                "state": job.state,
+                "url": job.source_url,
+                "job_status": status,
+                "scored": scored or None,
+                "source": "worker",
+                **extra,
+            },
+        )
+    except Exception:
+        log.exception("outcome log failed job=%s", job.id)
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _keep_failed(
+    job: QueueJob,
+    files_dir: Path,
+    *,
+    reason: str,
+    data: bytes = b"",
+    http_status: int | None = None,
+) -> None:
+    """Private 90-day copy. Failures here must not fail the job or publish."""
+    try:
+        job.reject_record = store_reject(
+            reason=reason,
+            url=job.source_url or "",
+            data=data,
+            lid=job.airport_lid or "",
+            state=job.state or "",
+            job_id=job.id,
+            job_kind=job.kind,
+            http_status=http_status,
+            files_dir=files_dir,
+        )
+    except Exception:
+        log.exception("reject store failed job=%s", job.id)
 
 
 def _paths(
@@ -47,8 +114,7 @@ def _paths(
     return (
         queue_dir or Path(os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue")),
         files_dir or Path(os.environ.get("APTPLANS_FILES", ROOT / "data" / "files")),
-        overlay_dir
-        or Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog")),
+        overlay_dir or overlay_dir_from_env(),
         catalog_root or (ROOT / "catalog"),
     )
 
@@ -123,29 +189,46 @@ def process_fetch(
     files_dir: Path,
     overlay_dir: Path,
     catalog_root: Path,
+    queue: JobQueue | None = None,
+    data: bytes | None = None,
 ) -> str:
     if not job.source_url:
         _reply(job, "needs_human", None)
         return "needs_human"
-    try:
-        data, _status = fetch_bytes(job.source_url)
-    except HTTPError as exc:
-        status = "dead" if exc.code in {404, 410} else "needs_human"
-        log.info("fetch HTTP %s %s -> %s", exc.code, job.source_url, status)
-        _reply(job, status, None)
-        return status
-    except (URLError, OSError, TimeoutError, ValueError, PermissionError) as exc:
-        log.info("fetch failed %s: %s", job.source_url, exc)
-        _reply(job, "needs_human", None)
-        return "needs_human"
+    if data is None:
+        try:
+            data, _status = fetch_bytes(job.source_url)
+        except HTTPError as exc:
+            status = "dead" if exc.code in {404, 410} else "needs_human"
+            body = b""
+            try:
+                body = exc.read()
+            except Exception:
+                body = b""
+            log.info("fetch HTTP %s %s -> %s", exc.code, job.source_url, status)
+            _keep_failed(job, files_dir, reason=status, data=body, http_status=exc.code)
+            _reply(job, status, None)
+            return status
+        except ValueError as exc:
+            log.info("fetch failed %s: %s", job.source_url, exc)
+            _keep_failed(job, files_dir, reason="too_large")
+            _reply(job, "needs_human", None)
+            return "needs_human"
+        except (URLError, OSError, TimeoutError, PermissionError) as exc:
+            log.info("fetch failed %s: %s", job.source_url, exc)
+            _reply(job, "needs_human", None)
+            return "needs_human"
 
     filename = filename_from_url(job.source_url)
-    status = intake_status(evaluate_file(job.source_url, filename, data))
+    media = sniff_media(data)
+    status = intake_status(evaluate_payload(job.source_url, filename, data, allow_html=True))
     if status:
+        _keep_failed(job, files_dir, reason=status, data=data)
         _reply(job, status, None)
         return status
 
-    stored = store_bytes(data, files_dir)
+    suffix = ".pdf" if media == "pdf" else ".html" if media == "html" else ".bin"
+    stored = store_bytes(data, files_dir, suffix=suffix)
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
     if job.airport_lid and job.airport_lid not in catalog.airports_by_lid:
         upsert_airport_overlay(
@@ -198,25 +281,33 @@ def process_fetch(
         source_url = previous.source_url
         if job.source_url and job.source_url not in mirrors:
             mirrors.append(job.source_url)
+    title = previous.title if previous else filename
+    if media == "html" and (not previous or not previous.title):
+        title = page_title(data.decode("utf-8", "replace")) or title
     updates = {
         "id": document_id,
         "kind": kind,
         "airport_lid": job.airport_lid or (previous.airport_lid if previous else None),
         "state": (previous.state if previous else None) or job.state,
-        "title": previous.title if previous else filename,
+        "title": title,
         "edition": previous.edition if previous else None,
         "source_url": source_url,
         "source_retrieved_at": _utc_now(),
         "source_status": "live",
         "content_sha256": stored.sha256,
-        "preserved_url": f"/files/{stored.sha256}.pdf",
+        "preserved_url": f"/files/{stored.sha256}{suffix}",
         "completeness": "complete",
-        "review_status": "auto_pass",
+        "review_status": review_after_snapshot(previous.review_status if previous else None),
         "license_or_rights": previous.license_or_rights if previous else "public_record",
         "mirrors": mirrors,
         "supersedes": previous.supersedes if previous else None,
         "publisher": previous.publisher if previous else None,
         "published_at": previous.published_at if previous else None,
+        "found_on": job.found_on or (previous.found_on if previous else None) or (
+            job.source_url if media == "html" else None
+        ),
+        "part_of": job.part_of or (previous.part_of if previous else None),
+        "media": media,
     }
     if text_sha:
         updates["text_sha256"] = text_sha
@@ -228,7 +319,16 @@ def process_fetch(
             from pipeline.parse import extract_pages
             from pipeline.textstore import text_dir, write_pages
 
-            pages = write_pages(text_dir(files_dir), stored.sha256, extract_pages(data))
+            if media == "html":
+                from pipeline.explore import page_excerpt
+
+                pages = write_pages(
+                    text_dir(files_dir),
+                    stored.sha256,
+                    [page_excerpt(data.decode("utf-8", "replace"), 20_000)],
+                )
+            else:
+                pages = write_pages(text_dir(files_dir), stored.sha256, extract_pages(data))
         except Exception:
             log.exception("text sidecar failed; preserve still counts")
     if previous is None:
@@ -264,29 +364,80 @@ def process_fetch(
                 unofficial_note=note,
             ),
         )
-    if os.environ.get("APTPLANS_LLM") == "1":
+    if os.environ.get("APTPLANS_LLM") == "1" and media == "pdf":
         try:
-            from pipeline.ollama import unofficial_note
-            from pipeline.parse import extract_text, viable_chunk
+            from pipeline.ollama import unofficial_note_from_text
+            from pipeline.parse import extract_text
 
             text = extract_text(data)
             if text.strip():
-                updates["summary"] = unofficial_note(viable_chunk(text))
+                updates["summary"] = unofficial_note_from_text(text)
         except Exception:
             log.exception("unofficial note failed; preserve still counts")
     write_overlay_update(overlay_dir, document_id, updates)
-    try:
-        from pipeline.search import upsert_preserved
+    if job.airport_lid and kind in {"master_plan", "alp"}:
+        try:
+            from pipeline.overviews import upsert_overview_for
 
-        upsert_preserved(updates, pages)
-    except Exception:
-        log.exception("search index failed; preserve still counts")
+            upsert_overview_for(overlay_dir, catalog_root, job.airport_lid)
+        except Exception:
+            log.exception("overview refresh failed; preserve still counts")
+    listed = visible_on_site(
+        Document.from_dict(
+            {
+                "id": document_id,
+                "kind": kind,
+                "source_url": source_url,
+                "completeness": "complete",
+                "review_status": updates["review_status"],
+            }
+        )
+    )
+    if listed:
+        try:
+            from pipeline.search import upsert_preserved
+
+            upsert_preserved(updates, pages)
+        except Exception:
+            log.exception("search index failed; preserve still counts")
+    if queue is not None:
+        queue.enqueue(
+            QueueJob(
+                kind="vet",
+                document_id=document_id,
+                source_url=job.source_url,
+                airport_lid=job.airport_lid,
+                state=job.state,
+                found_on=job.found_on or updates.get("found_on"),
+            )
+        )
+    if media == "html" and queue is not None and job.source_url:
+        result = explore_page(data.decode("utf-8", "replace"), job.source_url)
+        for child in confirm_jobs(
+            result,
+            airport_lid=job.airport_lid,
+            state=job.state,
+        ):
+            if child.source_url and child.source_url != job.source_url:
+                queue.enqueue(child)
+                log.info("explore queued %s from %s", child.source_url, job.source_url)
+        first_hop = not job.found_on or job.found_on.rstrip("/") == job.source_url.rstrip("/")
+        if first_hop:
+            for child in followup_explore_jobs(
+                result,
+                airport_lid=job.airport_lid,
+                state=job.state,
+            ):
+                queue.enqueue(child)
+                log.info("explore follow-up %s from %s", child.source_url, job.source_url)
     _reply(job, "preserved", None)
     log.info(
-        "preserved %s sha256=%s airport=%s",
+        "preserved %s sha256=%s airport=%s media=%s review=%s",
         document_id,
         stored.sha256,
         job.airport_lid,
+        media,
+        updates["review_status"],
     )
     return "preserved"
 
@@ -309,6 +460,118 @@ def process_check(
     return outcome.status
 
 
+def process_explore(
+    job: QueueJob,
+    files_dir: Path,
+    overlay_dir: Path,
+    catalog_root: Path,
+    queue: JobQueue,
+) -> str:
+    if not job.source_url:
+        return "needs_human"
+    try:
+        data, _status = fetch_bytes(job.source_url)
+    except HTTPError as exc:
+        status = "dead" if exc.code in {404, 410} else "needs_human"
+        body = b""
+        try:
+            body = exc.read()
+        except Exception:
+            body = b""
+        log.info("explore fetch HTTP %s %s -> %s", exc.code, job.source_url, status)
+        _keep_failed(job, files_dir, reason=status, data=body, http_status=exc.code)
+        return status
+    except ValueError as exc:
+        log.info("explore fetch failed %s: %s", job.source_url, exc)
+        _keep_failed(job, files_dir, reason="too_large")
+        return "needs_human"
+    except (URLError, OSError, TimeoutError, PermissionError) as exc:
+        log.info("explore fetch failed %s: %s", job.source_url, exc)
+        return "needs_human"
+    media = sniff_media(data)
+    if media == "pdf":
+        return process_fetch(
+            job, files_dir, overlay_dir, catalog_root, queue=queue, data=data
+        )
+    if media != "html":
+        _keep_failed(job, files_dir, reason="not_plan", data=data)
+        return "not_plan"
+    result = explore_page(data.decode("utf-8", "replace"), job.source_url)
+    if not job.suggested_kind:
+        job.suggested_kind = hub_document_kind(result)
+    if not job.document_id and job.airport_lid:
+        job.document_id = f"{job.airport_lid.lower()}-site"
+    return process_fetch(
+        job, files_dir, overlay_dir, catalog_root, queue=queue, data=data
+    )
+
+
+def process_vet(
+    job: QueueJob,
+    files_dir: Path,
+    overlay_dir: Path,
+    catalog_root: Path,
+) -> str:
+    """Classify a snapshot. Does not fetch. Does not publish unless the record already was."""
+    if not job.document_id:
+        return "needs_human"
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    document = catalog.documents_by_id.get(job.document_id)
+    if document is None or not document.content_sha256:
+        return "pending"
+    if document.review_status == "published":
+        return "published"
+    if os.environ.get("APTPLANS_LLM") != "1":
+        log.info("vet deferred; APTPLANS_LLM unset document=%s", job.document_id)
+        return "pending"
+    stored = files_dir / f"{document.content_sha256}.pdf"
+    if not stored.is_file():
+        stored = files_dir / f"{document.content_sha256}.html"
+    if not stored.is_file():
+        return "pending"
+    data = stored.read_bytes()
+    try:
+        from pipeline.ollama import generate
+        from pipeline.parse import extract_text, viable_chunk
+        from pipeline.queries import verify_candidate
+
+        excerpt = (
+            viable_chunk(extract_text(data))
+            if data.startswith(b"%PDF")
+            else viable_chunk(data.decode("utf-8", "replace"))
+        )
+        airport = catalog.airports_by_lid.get(document.airport_lid or "")
+        scored = verify_candidate(
+            lid=document.airport_lid or "",
+            name=airport.name if airport is not None else "",
+            url=document.source_url,
+            excerpt=excerpt,
+            generate_fn=generate,
+        )
+    except Exception:
+        log.exception("vet failed document=%s", job.document_id)
+        return "pending"
+    kind = str(scored.get("kind") or "")
+    review = review_after_vet(
+        official_plan=bool(scored.get("official_plan")),
+        same_airport=bool(scored.get("same_airport")),
+        kind=kind,
+    )
+    if kind == "not_plan":
+        _keep_failed(job, files_dir, reason="not_plan", data=data)
+    updates = {"review_status": review}
+    write_overlay_update(overlay_dir, document.id, updates)
+    if visible_on_site(document.overlay(updates)):
+        try:
+            from pipeline.search import upsert_preserved
+
+            upsert_preserved({**document.to_dict(), **updates}, [])
+        except Exception:
+            log.exception("search index failed after vet; review still written")
+    log.info("vet %s review=%s", document.id, review)
+    return review
+
+
 def _run_claimed_job(
     queue: JobQueue,
     job: QueueJob,
@@ -319,13 +582,26 @@ def _run_claimed_job(
     """Process a claimed job. True if the public HTML should rebuild after unlock."""
     if job.kind == "check":
         status = process_check(job, overlay_dir, catalog_root, queue)
+        _observe_job(overlay_dir, job, status)
         queue.complete()
         return status in {"dead", "moved", "live"}
-    if job.kind != "fetch":
-        log.info("skip unsupported job kind %s", job.kind)
+    if job.kind == "explore":
+        status = process_explore(job, files_dir, overlay_dir, catalog_root, queue)
+        _observe_job(overlay_dir, job, status)
         queue.complete()
         return False
-    status = process_fetch(job, files_dir, overlay_dir, catalog_root)
+    if job.kind == "vet":
+        status = process_vet(job, files_dir, overlay_dir, catalog_root)
+        _observe_job(overlay_dir, job, status)
+        queue.complete()
+        return status in {"auto_pass", "published"}
+    if job.kind != "fetch":
+        log.info("skip unsupported job kind %s", job.kind)
+        _observe_job(overlay_dir, job, "skipped")
+        queue.complete()
+        return False
+    status = process_fetch(job, files_dir, overlay_dir, catalog_root, queue=queue)
+    _observe_job(overlay_dir, job, status)
     queue.complete()
     if status != "preserved":
         return False
@@ -336,7 +612,7 @@ def _run_claimed_job(
             job.airport_lid,
             completeness_for_airport(catalog, job.airport_lid),
         )
-    return True
+    return False
 
 
 def _execute_claimed(
@@ -357,6 +633,7 @@ def _execute_claimed(
                 job.source_url,
             )
             try:
+                _observe_job(overlay_dir, job, "needs_human")
                 _reply(job, "needs_human", None)
             except Exception:
                 log.exception("intake reply failed after giving up")
@@ -379,6 +656,17 @@ def process_next(
     )
     rebuild = False
     with worker_lock(queue_dir):
+        try:
+            purged = purge_expired(files_dir=files_dir)
+            if purged.get("dropped"):
+                log.info(
+                    "reject purge dropped=%s removed_files=%s kept=%s",
+                    purged.get("dropped"),
+                    purged.get("removed_files"),
+                    purged.get("kept"),
+                )
+        except Exception:
+            log.exception("reject purge failed")
         queue = JobQueue(queue_dir)
         job = queue.claim()
         if job is not None:

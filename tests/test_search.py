@@ -51,6 +51,15 @@ def test_page_record_links_hashed_pdf() -> None:
 def test_catalog_records_have_stable_ids() -> None:
     airport = Airport(lid="PDX", name="Portland Intl", city="Portland", state="OR")
     assert airport_record(airport)["id"] == "airport-PDX"
+    assert airport_record(airport)["outlook"] is None
+    declining = airport_record(
+        airport,
+        {"trajectory": {"band": "declining", "position": -0.5}},
+    )
+    assert declining["outlook"] == "declining"
+    assert "planning outlook declining" in declining["text"]
+    growing = airport_record(airport, outlook="growing")
+    assert growing["outlook"] == "growing"
     document = Document(
         id="pdx-2045",
         kind="master_plan",
@@ -66,6 +75,8 @@ def test_catalog_records_have_stable_ids() -> None:
 
 def test_search_ranks_page_text_above_unofficial_summary() -> None:
     assert SETTINGS["searchableAttributes"] == ["lid", "title", "text", "summary"]
+    assert "outlook" in SETTINGS["filterableAttributes"]
+    assert "outlook" in SETTINGS["displayedAttributes"]
 
 
 def test_upsert_preserved_is_noop_without_meili(monkeypatch) -> None:
@@ -156,8 +167,33 @@ def test_caddy_search_proxy_is_post_only() -> None:
         assert "Bearer {$MEILI_MASTER_KEY}" in text
         assert "search:7700" in text
         assert "dial_timeout 1s" in text
+        assert "handle_path /files/*" in text
+        assert 'Cache-Control "public, max-age=31536000, immutable"' in text
+        assert 'Cache-Control "public, max-age=86400"' in text
+        assert 'Cache-Control "no-store"' in text
+        assert "root * /srv/files" in text
         assert "/dumps" not in text
         assert "/indexes/aptplans/documents" not in text
+
+
+def test_caddy_review_proxy_is_https_and_token() -> None:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    local = (root / "docker" / "Caddyfile").read_text(encoding="utf-8")
+    prod = (root / "docker" / "Caddyfile.prod").read_text(encoding="utf-8")
+    assert "handle_path /review/*" in prod
+    assert "import review" in prod
+    assert "reverse_proxy review:8787" in prod
+    assert "Cache-Control \"no-store, private\"" in prod
+    assert "header X-Api-Key *" in prod
+    assert "header Authorization Bearer*" in prod
+    assert "path /v1/health" in prod
+    assert ":443" in prod
+    assert "handle_path /review/*" not in local
+    site80 = prod.split(":80", 1)[1].split(":443", 1)[0]
+    assert "import review" not in site80
+    assert "import static" in site80
 
 
 def test_makefile_binds_local_text_and_search() -> None:
@@ -166,6 +202,7 @@ def test_makefile_binds_local_text_and_search() -> None:
     text = (Path(__file__).resolve().parents[1] / "Makefile").read_text(encoding="utf-8")
     assert "TEXT_PATH ?= $(CURDIR)/data/text" in text
     assert "SEARCH_PATH ?= $(CURDIR)/data/search" in text
+    assert "LOGS_PATH ?= $(CURDIR)/data/logs" in text
     assert "up: site" in text and "$(COMPOSE) up --build site" in text
     assert "stack:" in text and "$(COMPOSE) up --build" in text
 

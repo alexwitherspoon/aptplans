@@ -2,10 +2,9 @@
 #
 # See docs/LOCAL_SETUP.md and docs/TESTING.md
 
-.PHONY: help site test test-unit dev up stack down down-clean build clean pipeline worker links model llm
+.PHONY: help site test test-unit dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes
 
 COMPOSE := docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml
-COMPOSE_PROD := docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml
 PY ?= python3
 HOST ?= 127.0.0.1
 PORT ?= 8080
@@ -15,6 +14,8 @@ export CATALOG_OVERLAY_PATH ?= $(CURDIR)/data/catalog
 export MODELS_PATH ?= $(CURDIR)/data/models
 export TEXT_PATH ?= $(CURDIR)/data/text
 export SEARCH_PATH ?= $(CURDIR)/data/search
+export REJECT_PATH ?= $(CURDIR)/data/reject
+export LOGS_PATH ?= $(CURDIR)/data/logs
 
 help: ## Show this help message
 	@echo ''
@@ -25,7 +26,7 @@ help: ## Show this help message
 	@grep -E '^(site|dev|up|stack|down|down-clean|pipeline|worker|links|model|llm):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Testing:'
-	@grep -E '^(test|test-unit):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^(test|test-unit|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Build & cleanup:'
 	@grep -E '^(build|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -41,14 +42,29 @@ test: test-unit site ## Run tests and verify a site build
 test-unit: ## Run unit tests
 	$(PY) -m pytest tests -q
 
+eval-search: ## Replay the adaptive search ladder against fixtures (no network, not a publish)
+	$(PY) scripts/eval_search_plan.py --catalog
+
+eval-evidence: ## Replay evidence weights against committed full gold sources (no network, not a publish)
+	$(PY) scripts/eval_evidence.py --committed
+
+train-evidence: ## Fit/eval evidence weights on full gold sources (local cache, not CI, not a publish)
+	$(PY) scripts/train_evidence.py
+
+review-api: ## Origin-only outcomes API on 127.0.0.1:8787 (token from .env.review)
+	$(PY) -m pipeline.review_api
+
+pull-outcomes: ## Pull review buckets into data/score/review (needs .env.review)
+	$(PY) scripts/pull_outcomes.py
+
 dev: ## Watch sources, rebuild dist/, and serve at http://127.0.0.1:8080
-	$(PY) scripts/devserve.py --host $(HOST) --port $(PORT) --out dist
+	APTPLANS_DEV_PREVIEW=1 $(PY) scripts/devserve.py --host $(HOST) --port $(PORT) --out dist
 
 up: site ## Build the site and start local Caddy (Docker)
 	$(COMPOSE) up --build site
 
 stack: site ## Build the site and start local Caddy, search, worker, and Ollama
-	mkdir -p data/files data/queue data/catalog data/models data/text data/search
+	mkdir -p data/files data/queue data/catalog data/models data/text data/search data/reject
 	$(COMPOSE) up --build
 
 down: ## Stop local Docker services
@@ -63,7 +79,7 @@ build: ## Build Docker images
 pipeline: worker ## Run one serial worker job
 
 worker: ## Run one serial worker job (does not start Ollama)
-	mkdir -p data/files data/queue data/catalog data/text
+	mkdir -p data/files data/queue data/catalog data/text data/reject
 	$(COMPOSE) run --rm --no-deps worker python3 pipeline/run_once.py
 
 links: ## Check due official URLs (no live FAA, no Ollama)

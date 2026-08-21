@@ -4,6 +4,7 @@ services:
       - "${APP_PORT:-8080}:80"
     volumes:
       - ../dist:/srv/site:ro
+      - ${FILES_PATH:-../data/files}:/srv/files:ro
     environment:
       - APP_ENV=local
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
@@ -21,10 +22,39 @@ services:
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_TEXT=/var/lib/aptplans/text
+      - APTPLANS_REJECT=/var/lib/aptplans/reject
+      - APTPLANS_LOGS=/var/lib/aptplans/logs
       - OLLAMA_HOST=http://ollama:11434
       - MEILI_URL=http://search:7700
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
       # Laptop stack: no live FAA refresh, no LLM.
+
+  review:
+    image: aptplans-worker
+    working_dir: /app
+    command: ["python3", "-m", "pipeline.review_api"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ..:/app
+      - ${CATALOG_OVERLAY_PATH:-../data/catalog}:/var/lib/aptplans/catalog
+      - ${REJECT_PATH:-../data/reject}:/var/lib/aptplans/reject
+      - ${QUEUE_PATH:-../data/queue}:/var/lib/aptplans/queue:ro
+      - ${LOGS_PATH:-../data/logs}:/var/lib/aptplans/logs:ro
+    environment:
+      - APP_ENV=local
+      - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
+      - APTPLANS_REJECT=/var/lib/aptplans/reject
+      - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_LOGS=/var/lib/aptplans/logs
+      - APTPLANS_REVIEW_BIND=0.0.0.0:8787
+      - APTPLANS_REVIEW_TOKEN=${APTPLANS_REVIEW_TOKEN:-dev-review-token}
+      - APTPLANS_REVIEW_PUBLIC=1
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   ollama:
     ports:

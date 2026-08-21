@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.worker import cold_start_overlays, run_loop
-from tests.test_airports import PDX_NASR, _nasr_zip, _npias_xlsx
+from pipeline.worker import cold_start_overlays, cold_start_overviews, run_loop
+from tests.test_airports import PDX_NASR, _nasr_zip, _npias_xlsx, _ourairports_csv
 from tests.test_grants import grant_bytes_for
 
 
@@ -34,6 +34,8 @@ def _fetch_ok() -> tuple:
             return nasr, 200
         if "npias" in url.lower():
             return npias, 200
+        if "ourairports" in url.lower() or "davidmegginson" in url.lower():
+            return _ourairports_csv(), 200
         found = grant_bytes_for(url)
         if found is not None:
             return found
@@ -89,6 +91,12 @@ def test_cold_start_off_without_env(tmp_path: Path, monkeypatch) -> None:
         cold_start_overlays(tmp_path, fetch=fake_fetch, sleep=lambda _s: None, pause_before=0)
         is False
     )
+
+
+def test_cold_start_overviews_writes_missing_then_skips(tmp_path: Path) -> None:
+    assert cold_start_overviews(tmp_path) is True
+    assert (tmp_path / "overviews.jsonl").is_file()
+    assert cold_start_overviews(tmp_path) is False
 
 
 def test_run_loop_sleeps_only_when_idle() -> None:
@@ -156,6 +164,7 @@ def test_main_search_failure_keeps_worker(monkeypatch) -> None:
 
     called: list[str] = []
     monkeypatch.setattr(worker, "cold_start_overlays", lambda **_kwargs: False)
+    monkeypatch.setattr(worker, "cold_start_overviews", lambda: False)
     monkeypatch.setattr(worker, "_rebuild_site", lambda: called.append("rebuild"))
 
     def boom() -> None:

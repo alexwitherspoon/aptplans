@@ -1,8 +1,9 @@
-"""Fetch NASR, NPIAS, and AIP grant histories. CI must not call this live."""
+"""Fetch NASR, NPIAS, OurAirports home pages, and AIP grant histories. CI must not call this live."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 import re
@@ -17,6 +18,11 @@ from catalog.airports import (
     preserve_admitted,
 )
 from catalog.npias import NPIAS_SOURCE, parse_appendix_a_bytes
+from catalog.ourairports import (
+    OURAIRPORTS_CSV_URL,
+    apply_ourairports,
+    parse_ourairports_csv,
+)
 from catalog.store import load_airports_overlay, load_overlay, write_airports_overlay
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.lock import worker_lock
@@ -24,6 +30,7 @@ from pipeline.refresh import (
     PAUSE_SECONDS,
     ROOT,
     overlay_airports_path,
+    overlay_dir_from_env,
     should_refresh,
 )
 from pipeline.refresh_grants import maybe_refresh_grants
@@ -58,6 +65,13 @@ def refresh_airports(
         npias,
         npias_edition=npias_edition_from_url(NPIAS_SOURCE),
     )
+    sleep(pause_seconds)
+    oa_rows: dict = {}
+    try:
+        oa_bytes, _ = fetch(OURAIRPORTS_CSV_URL, timeout=180)
+        oa_rows = parse_ourairports_csv(oa_bytes)
+    except (OSError, PermissionError, TimeoutError, ValueError, csv.Error) as exc:
+        log.warning("OurAirports skipped (%s); writing NASR/NPIAS without home pages", exc)
     existing = load_airports_overlay(overlay_dir)
     document_lids = {
         str(row.get("airport_lid") or "")
@@ -65,6 +79,7 @@ def refresh_airports(
         if row.get("airport_lid")
     }
     airports = preserve_admitted(snapshot, existing, document_lids)
+    airports = apply_ourairports(airports, oa_rows)
     if not airports:
         raise ValueError("NASR/NPIAS snapshot produced no airports")
     write_airports_overlay(overlay_dir, airports)
@@ -89,17 +104,20 @@ def maybe_refresh(
     maybe_refresh_grants(
         overlay_dir, force=force, fetch=fetch, sleep=sleep, post_json=post_json
     )
+    from pipeline.overviews import refresh_overviews
+
+    refresh_overviews(overlay_dir, force=force)
     return airports_count
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(
-        description="Fetch NASR, NPIAS, and AIP grant histories into the catalog overlay"
+        description="Fetch NASR, NPIAS, OurAirports home pages, and AIP grant histories into the catalog overlay"
     )
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    overlay = Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog"))
+    overlay = overlay_dir_from_env()
     queue = Path(os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue"))
     with worker_lock(queue):
         maybe_refresh(overlay, force=args.force, post_json=post_json)

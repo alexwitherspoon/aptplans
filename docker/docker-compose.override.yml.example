@@ -14,6 +14,7 @@ services:
       - /var/lib/aptplans/queue:/var/lib/aptplans/queue
       - /var/lib/aptplans/catalog:/var/lib/aptplans/catalog
       - /var/lib/aptplans/text:/var/lib/aptplans/text
+      - /var/lib/aptplans/reject:/var/lib/aptplans/reject
 
   search:
     volumes:

@@ -20,6 +20,8 @@ TLS_DIR="${TLS_DIR:-/var/lib/aptplans/tls}"
 OLLAMA_DIR="${OLLAMA_DIR:-/var/lib/aptplans/ollama}"
 TEXT_DIR="${TEXT_DIR:-/var/lib/aptplans/text}"
 SEARCH_DIR="${SEARCH_DIR:-/var/lib/aptplans/search}"
+REJECT_DIR="${REJECT_DIR:-/var/lib/aptplans/reject}"
+LOGS_DIR="${LOGS_DIR:-/var/lib/aptplans/logs}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -152,8 +154,10 @@ ensure_directories() {
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${MODELS_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${TEXT_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SEARCH_DIR}"
+    as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${REJECT_DIR}"
+    as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${LOGS_DIR}"
     as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
-    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}"
+    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}" "${REJECT_DIR}" "${LOGS_DIR}"
 }
 
 ensure_origin_tls() {
@@ -244,6 +248,8 @@ OLLAMA_PATH=${OLLAMA_DIR}
 MODELS_PATH=${MODELS_DIR}
 TEXT_PATH=${TEXT_DIR}
 SEARCH_PATH=${SEARCH_DIR}
+REJECT_PATH=${REJECT_DIR}
+LOGS_PATH=${LOGS_DIR}
 # EPYC 7351P: node 0 for site/worker/search/host, nodes 1-3 for Ollama.
 SITE_CPUSET=0-3,16-19
 WORKER_CPUSET=0-3,16-19
@@ -274,7 +280,7 @@ EOF
 }
 
 ensure_secrets_file() {
-    # CD writes PIA and intake tokens here. Do not clobber an existing file.
+    # CD writes PIA, intake, review, and search tokens here. Do not clobber an existing file.
     local secrets_file="/home/${APP_USER}/.env.secrets"
     if [ -f "${secrets_file}" ]; then
         as_root chmod 600 "${secrets_file}"
@@ -282,7 +288,7 @@ ensure_secrets_file() {
         return
     fi
     as_root tee "${secrets_file}" >/dev/null <<EOF
-# Written by GitHub Actions Deploy (PIA SOCKS + intake token). Do not commit.
+# Written by GitHub Actions Deploy (PIA SOCKS + intake + review tokens). Do not commit.
 EOF
     as_root chown "${APP_USER}:${APP_USER}" "${secrets_file}"
     as_root chmod 600 "${secrets_file}"

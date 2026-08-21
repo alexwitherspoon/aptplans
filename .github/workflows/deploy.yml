@@ -136,6 +136,9 @@ jobs:
           PIA_SOCKS_PORT: ${{ secrets.PIA_SOCKS_PORT }}
           INTAKE_GITHUB_TOKEN: ${{ secrets.INTAKE_GITHUB_TOKEN }}
           INTAKE_GITHUB_REPO: ${{ github.repository }}
+          APTPLANS_REVIEW_TOKEN: ${{ secrets.APTPLANS_REVIEW_TOKEN }}
+          APTPLANS_SEARCH_KEY: ${{ secrets.APTPLANS_SEARCH_KEY }}
+          APTPLANS_GEMINI_KEY: ${{ secrets.APTPLANS_GEMINI_KEY }}
         run: |
           python3 - <<'PY'
           import os
@@ -149,6 +152,16 @@ jobs:
           token = os.environ.get("INTAKE_GITHUB_TOKEN", "").strip()
           if token:
               lines.append(f"INTAKE_GITHUB_TOKEN={token}")
+          review = os.environ.get("APTPLANS_REVIEW_TOKEN", "").strip()
+          if review:
+              lines.append(f"APTPLANS_REVIEW_TOKEN={review}")
+          search_key = os.environ.get("APTPLANS_SEARCH_KEY", "").strip()
+          if search_key:
+              lines.append(f"APTPLANS_SEARCH_KEY={search_key}")
+              lines.append("APTPLANS_SEARCH_PROVIDER=brave")
+          gemini = os.environ.get("APTPLANS_GEMINI_KEY", "").strip()
+          if gemini:
+              lines.append(f"APTPLANS_GEMINI_KEY={gemini}")
           user = os.environ.get("PIA_SOCKS_USER", "").strip()
           password = os.environ.get("PIA_SOCKS_PASSWORD", "").strip()
           host = os.environ.get("PIA_SOCKS_HOST", "").strip() or (
@@ -182,6 +195,21 @@ jobs:
             echo "intake GitHub token: set"
           else
             echo "intake GitHub token: unset"
+          fi
+          if [ -n "${APTPLANS_REVIEW_TOKEN}" ]; then
+            echo "review API token: set"
+          else
+            echo "review API token: unset"
+          fi
+          if [ -n "${APTPLANS_SEARCH_KEY}" ]; then
+            echo "Brave search key: set"
+          else
+            echo "Brave search key: unset"
+          fi
+          if [ -n "${APTPLANS_GEMINI_KEY}" ]; then
+            echo "Gemini search key: set"
+          else
+            echo "Gemini search key: unset"
           fi
 
       - name: Bootstrap host and start Caddy

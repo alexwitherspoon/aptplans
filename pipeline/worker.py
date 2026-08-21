@@ -11,10 +11,12 @@ from pathlib import Path
 
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.queue import JobRetry
-from pipeline.refresh import ROOT, overlays_need_fetch
+from pipeline.overviews import refresh_overviews
+from pipeline.refresh import ROOT, overlay_dir_from_env, overlays_need_fetch
 from pipeline.refresh_airports import maybe_refresh
 from pipeline.run_once import process_next
 from pipeline.search import boot_sync
+from pipeline.service_log import attach_jsonl_handler
 
 log = logging.getLogger("aptplans.worker")
 
@@ -31,13 +33,11 @@ def cold_start_overlays(
     pause_before: float = BOOT_PAUSE_SECONDS,
     post_json=None,
 ) -> bool:
-    """Fetch NASR, NPIAS, and AIP grants if overlays are missing or stale. Never force."""
+    """Fetch NASR, NPIAS, OurAirports home pages, and AIP grants if overlays are missing or stale. Never force."""
     if os.environ.get("APTPLANS_REFRESH_AIRPORTS") != "1":
         log.info("FAA overlay fetch off (APTPLANS_REFRESH_AIRPORTS unset)")
         return False
-    overlay = overlay_dir or Path(
-        os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog")
-    )
+    overlay = overlay_dir or overlay_dir_from_env()
     if not overlays_need_fetch(overlay):
         log.info("FAA overlays present for this month; skip fetch")
         return False
@@ -49,6 +49,14 @@ def cold_start_overlays(
         sleep(pause_before)
     maybe_refresh(overlay, fetch=fetch, sleep=sleep, post_json=post_json)
     return True
+
+
+def cold_start_overviews(overlay_dir: Path | None = None) -> bool:
+    """Write missing fact sheets, and any from a prior month. No FAA fetch."""
+    overlay = overlay_dir or overlay_dir_from_env()
+    if not overlay.is_dir():
+        return False
+    return refresh_overviews(overlay) > 0
 
 
 def _rebuild_site() -> None:
@@ -136,11 +144,20 @@ def main() -> None:
         idle_seconds(),
         intake_idle_seconds(),
     )
+    attach_jsonl_handler(logging.getLogger("aptplans"), name="worker")
+    rebuilt = False
     try:
         if cold_start_overlays(post_json=post_json):
-            _rebuild_site()
+            rebuilt = True
     except Exception:
         log.exception("FAA overlay fetch failed; worker stays up")
+    try:
+        if cold_start_overviews():
+            rebuilt = True
+    except Exception:
+        log.exception("overview refresh failed; worker stays up")
+    if rebuilt:
+        _rebuild_site()
     try:
         boot_sync()
     except Exception:

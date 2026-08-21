@@ -23,19 +23,29 @@ CD SSHs only as `aptplans`. sshd sets `PermitRootLogin no` and `AllowUsers aptpl
 | `PIA_SOCKS_HOST` | SOCKS host. Default `proxy-nl.privateinternetaccess.com` if unset |
 | `PIA_SOCKS_PORT` | SOCKS port. Default `1080` if unset |
 | `INTAKE_GITHUB_TOKEN` | Fine-grained PAT (or GitHub App installation token source) with **Issues: Read and write** on this repo only. Do not name this `GITHUB_TOKEN` |
+| `APTPLANS_REVIEW_TOKEN` | Bearer / `X-Api-Key` for `https://aptplans.org/review`. Random 32+ byte hex is enough. Copy the same value into gitignored `.env` (`APTPLANS_REVIEW_URL=https://aptplans.org/review`) |
+| `APTPLANS_SEARCH_KEY` | Brave Search API subscription token. Origin discovery searcher. CI must not set this |
+| `APTPLANS_GEMINI_KEY` | Optional Gemini API key. Last-resort search packets after Brave stalls. Not a classifier or fetch decider |
 
 Without the Origin CA pair, the host keeps a self-signed origin cert so Caddy can listen on 443. Set Cloudflare SSL to **Full**. After you add Origin CA material, switch the zone to **Full (strict)**.
 
-CD copies PIA and intake values to `/home/aptplans/.env.secrets` (mode 600). Bootstrap does not overwrite that file. Compose passes it only into interpolation for the **worker** service:
+CD copies PIA, intake, review, and search values to `/home/aptplans/.env.secrets` (mode 600). Bootstrap does not overwrite that file. Each deploy **replaces** the file, so a token that exists only on origin is wiped on the next CD run. Compose interpolates the env-file into **worker** and **review**:
 
 | Origin env | Source |
 | --- | --- |
 | `APTPLANS_FETCH_PROXY` | Assembled `socks5h://user:pass@host:port` when both PIA user and password are set |
 | `INTAKE_GITHUB_TOKEN` | Same name as the Actions secret |
 | `INTAKE_GITHUB_REPO` | `owner/name` from the deploying workflow (not a secret) |
+| `APTPLANS_REVIEW_TOKEN` | Same name as the Actions secret; interpolated into the review service |
+| `APTPLANS_SEARCH_KEY` | Brave Search API token; interpolated into the worker. CD also writes `APTPLANS_SEARCH_PROVIDER=brave` |
+| `APTPLANS_GEMINI_KEY` | Optional; interpolated into the worker for one escalate search per stalled airport |
 
 Create `INTAKE_GITHUB_TOKEN` at GitHub → Settings → Developer settings → Personal access tokens → Fine-grained. Resource owner this account, only repository `aptplans`, permission **Issues: Read and write** (Metadata stays read). Leave Contents unset.
 
-Omit any optional secret to skip that feature. An incomplete PIA pair (user without password) is ignored.
+Generate `APTPLANS_REVIEW_TOKEN` with `openssl rand -hex 32`. Add it under **Settings → Secrets and variables → Actions**. Copy the same Brave, Gemini, and review values into gitignored `.env` locally (`cp .env.example .env`). Do not commit it. CD logs only `set` or `unset`.
+
+Create `APTPLANS_SEARCH_KEY` at [Brave Search API](https://brave.com/search/api/). Brave is **$5 per 1,000 requests** and includes **$5 credit** each month. AptPlans caps billed spend at **$25/month** (`APTPLANS_BRAVE_MONTHLY_BUDGET_USD=25`): 1,000 credit queries plus 5,000 paid, **6,000 queries**. Set the same $25 limit in the Brave API dashboard. `APTPLANS_SEARCH_MONTHLY_CAP` is an optional tighter query fuse. Live search is limited to **Oregon** (`APTPLANS_SEARCH_STATES=OR` on the worker). Widen with `OR,WA` or `*` when the Oregon pass looks right. Those values are compose config, not GitHub secrets. Create `APTPLANS_GEMINI_KEY` in Google AI Studio only if you want escalate. That path uses Gemini 3.6 Flash with Google Search grounding, **one prompt per airport after Brave did not find a hub or both plan kinds**. Destination URLs become packets and still go through explore, confirm, and gates; bad URLs are dropped. Grounding on Gemini 3 is **5,000 free prompts/month**, then **$14 per 1,000 search queries** (one prompt can fire more than one query). AptPlans caps billed spend at **$25/month** (`APTPLANS_GEMINI_MONTHLY_BUDGET_USD=25`), counting **4 queries per escalate** on the paid slice: **5,446 prompts**. `APTPLANS_GEMINI_MONTHLY_CAP` is an optional tighter prompt fuse. `APTPLANS_GEMINI_MODEL` overrides the default `gemini-3.6-flash`. It extracts destination URLs and drops Google redirect URIs. Model titles and prose are discarded so Gemini cannot label a file as a master plan. Do not use Gemini for verify, kind, or fetch decisions. Local Bonsai stays boxed.
+
+Omit any optional secret to skip that feature. An incomplete PIA pair (user without password) is ignored. An unset review token leaves `/v1/health` up and every other review path 401. An unset Brave key leaves search on fixtures until you add it.
 
 The Meilisearch master key is **not** a GitHub secret. Bootstrap writes `/home/aptplans/.env.search` once. CD does not overwrite it.

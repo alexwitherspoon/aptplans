@@ -45,7 +45,7 @@ FAA advisory circular *Airport Design*. Design standards the ALP is checked agai
 
 ### NASR
 
-National Airspace System Resource. FAA 28-day subscription of aeronautical data. [Listing](https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/). AptPlans fetches the current **APT CSV** zip (for example `{DD}_{Mon}_{YYYY}_APT_CSV.zip` from `nfdc.faa.gov`) and reads `APT_BASE.csv`.
+National Airspace System Resource. FAA 28-day subscription of aeronautical data. [Listing](https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/). AptPlans fetches the current **APT CSV** zip (for example `{DD}_{Mon}_{YYYY}_APT_CSV.zip` from `nfdc.faa.gov`) and reads `APT_BASE.csv` for LID, name, ICAO, city, county, coordinates, elevation, ownership, public-use status, fuel types, and transient hangar/tiedown flags. `APT_RWY.csv` supplies runway ident, length, width, and surface type for the unofficial airport fact sheet when listed plans do not already give those figures.
 
 NASR is the **superset of airports we would consider**. Default pages are public-use airports and seaplane bases (`FACILITY_USE_CODE` PU, `SITE_TYPE_CODE` A or C). Private-use strips and heliports are not paged unless a plan or GitHub issue admits them.
 
@@ -75,11 +75,15 @@ FAA location identifier (LocID), three or four characters (PDX, 4S9). Primary ai
 
 ### ICAO and IATA
 
-ICAO is the four-character international code (KPDX). IATA is the three-character airline code when one exists. NASR supplies ICAO when present. Neither replaces LID as the catalog key.
+ICAO is the four-character international code (KPDX). IATA is the three-character airline code when one exists. NASR supplies ICAO when present. OurAirports may supply IATA and an official home page (`home_link`, http(s) only). Airport pages show the FAA LID only; ICAO is the fallback when no LID exists. Neither replaces LID as the catalog key. A failed OurAirports fetch does not block the NASR/NPIAS overlay.
+
+### OurAirports
+
+Public-domain airport list used on origin to fill blank IATA codes and official home pages. AptPlans matches US rows by FAA LID (`local_code`, or ICAO `Kxxx` when that is missing). Closed and heliport rows lose to an open airport with the same LID. CI does not live-fetch this file.
 
 ### Airport Master Record (5010, AMR)
 
-FAA Form 5010 facility data (runways, ownership, manager, and so on), served from ADIP. The name is easy to confuse with an **airport master plan**. It is operational identity, not a planning study. AptPlans does not treat a 5010 PDF as a master plan or ALP.
+FAA Form 5010 facility data (runways, ownership, manager, based aircraft, and so on), served from ADIP. The name is easy to confuse with an **airport master plan**. It is operational identity, not a planning study. AptPlans does not treat a 5010 PDF as a master plan or ALP. Overview runway dimensions come from the NASR APT zip already fetched for identity, not from a 5010 download. Based aircraft and operations stay on listed plans until those figures appear in a catalog source we already keep.
 
 ## FAA systems (usually not public PDFs)
 

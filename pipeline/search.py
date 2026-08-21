@@ -11,11 +11,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from catalog.grants import grant_title
 from catalog.models import Airport, Document, Grant, State
 from catalog.seed import seed_catalog
 from catalog.store import Catalog
 from pipeline.parse import extract_pages
-from pipeline.refresh import ROOT
+from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.textstore import pages_path, read_pages, text_dir, write_pages
 
 log = logging.getLogger("aptplans.search")
@@ -34,14 +35,17 @@ SETTINGS = {
         "lid",
         "kind",
         "completeness",
+        "outlook",
         "page",
         "document_id",
         "summary",
         "text",
     ],
-    "filterableAttributes": ["type", "state", "kind", "completeness", "document_id"],
+    "filterableAttributes": ["type", "state", "kind", "completeness", "document_id", "outlook"],
     "pagination": {"maxTotalHits": 100},
 }
+
+OUTLOOK_BANDS = ("declining", "growing", "maintaining")
 
 
 def meili_url() -> str:
@@ -94,14 +98,26 @@ def _enqueue(method: str, path: str, payload: dict | list | None = None) -> None
         _wait_task(int(uid))
 
 
-def grant_label(description: str) -> str:
-    text = " ".join((description or "").split())
-    if not text:
-        return "Grant"
-    return text.split(",", 1)[0].strip() or text
+def outlook_band(overview: dict | None) -> str | None:
+    if not overview or not isinstance(overview.get("trajectory"), dict):
+        return None
+    band = str(overview["trajectory"].get("band") or "").strip().lower()
+    return band if band in OUTLOOK_BANDS else None
 
 
-def airport_record(airport: Airport) -> dict:
+def outlook_search_text(band: str | None) -> str:
+    if not band:
+        return ""
+    return f"planning outlook {band}"
+
+
+def airport_record(
+    airport: Airport,
+    overview: dict | None = None,
+    *,
+    outlook: str | None = None,
+) -> dict:
+    band = outlook if outlook in OUTLOOK_BANDS else outlook_band(overview)
     return {
         "id": f"airport-{airport.lid}",
         "type": "airport",
@@ -111,10 +127,17 @@ def airport_record(airport: Airport) -> dict:
         "lid": airport.lid,
         "kind": None,
         "completeness": None,
+        "outlook": band,
         "summary": "",
         "text": " ".join(
             part
-            for part in (airport.city, airport.icao, airport.iata, airport.npias_role)
+            for part in (
+                airport.city,
+                airport.icao,
+                airport.iata,
+                airport.npias_role,
+                outlook_search_text(band),
+            )
             if part
         ),
         "document_id": None,
@@ -180,12 +203,12 @@ def page_record(document: Document, page: int, text: str) -> dict:
 
 
 def funding_record(grant: Grant) -> dict:
-    number = grant.grant_number or f"{grant.airport_lid}-{grant.fiscal_year}-{grant_label(grant.description)}"
+    number = grant.grant_number or f"{grant.airport_lid}-{grant.fiscal_year}-{grant_title(grant.description)}"
     slug = "".join(ch if ch.isalnum() else "-" for ch in number)[:80]
     return {
         "id": f"funding-{slug}",
         "type": "funding",
-        "title": f"{grant.airport_lid} {grant_label(grant.description)}",
+        "title": f"{grant.airport_lid} {grant_title(grant.description)}",
         "url": f"/airports/{grant.airport_lid}/#funding",
         "state": grant.state,
         "lid": grant.airport_lid,
@@ -255,12 +278,28 @@ def delete_pages(document_id: str) -> None:
 
 
 def sync_catalog(catalog: Catalog) -> None:
-    records = [airport_record(airport) for airport in catalog.airports]
+    records = [
+        airport_record(airport, catalog.overview_for(airport.lid))
+        for airport in catalog.airports
+    ]
     records += [state_record(state) for state in catalog.states]
     records += [document_record(document) for document in catalog.documents]
     records += [funding_record(grant) for grant in catalog.grants if grant.airport_lid]
     upsert(records)
     log.info("search catalog records upserted=%s", len(records))
+
+
+def sync_airports(catalog: Catalog, lids: list[str] | None = None) -> None:
+    """Refresh airport Meilisearch docs after fact sheets change."""
+    if not configured():
+        return
+    wanted = set(lids) if lids else None
+    records = [
+        airport_record(airport, catalog.overview_for(airport.lid))
+        for airport in catalog.airports
+        if wanted is None or airport.lid in wanted
+    ]
+    upsert(records)
 
 
 def backfill_text(
@@ -319,9 +358,7 @@ def reindex(
     overlay_dir: Path | None = None,
     dest: Path | None = None,
 ) -> None:
-    overlay = overlay_dir or Path(
-        os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog")
-    )
+    overlay = overlay_dir or overlay_dir_from_env()
     catalog = catalog or seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     ensure_index()
     backfill_text(catalog, dest=dest)
@@ -334,7 +371,7 @@ def boot_sync() -> None:
     if not configured():
         log.info("search index off (MEILI_URL or MEILI_MASTER_KEY unset)")
         return
-    overlay = Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog"))
+    overlay = overlay_dir_from_env()
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     last_error = None
     for attempt in range(5):

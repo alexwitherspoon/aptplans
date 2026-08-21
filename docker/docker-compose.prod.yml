@@ -15,6 +15,8 @@ services:
     environment:
       - APP_ENV=production
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-}
+    depends_on:
+      - review
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
       interval: 30s
@@ -38,13 +40,17 @@ services:
       - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue
       - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
       - ${TEXT_PATH:-/var/lib/aptplans/text}:/var/lib/aptplans/text
+      - ${REJECT_PATH:-/var/lib/aptplans/reject}:/var/lib/aptplans/reject
       - ${SITE_PATH:-/var/lib/aptplans/site}:/var/lib/aptplans/site
+      - ${LOGS_PATH:-/var/lib/aptplans/logs}:/var/lib/aptplans/logs
     environment:
       - APP_ENV=production
       - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_TEXT=/var/lib/aptplans/text
+      - APTPLANS_REJECT=/var/lib/aptplans/reject
+      - APTPLANS_LOGS=/var/lib/aptplans/logs
       - APTPLANS_SITE=/var/lib/aptplans/site
       - APTPLANS_USER_AGENT=aptplans.org
       - OLLAMA_HOST=http://ollama:11434
@@ -52,10 +58,42 @@ services:
       - APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}
       - INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}
       - INTAKE_GITHUB_REPO=${INTAKE_GITHUB_REPO:-}
+      - APTPLANS_SEARCH_KEY=${APTPLANS_SEARCH_KEY:-}
+      - APTPLANS_SEARCH_PROVIDER=${APTPLANS_SEARCH_PROVIDER:-brave}
+      - APTPLANS_GEMINI_KEY=${APTPLANS_GEMINI_KEY:-}
+      - APTPLANS_SEARCH_MONTHLY_CAP=${APTPLANS_SEARCH_MONTHLY_CAP:-}
+      - APTPLANS_BRAVE_MONTHLY_BUDGET_USD=${APTPLANS_BRAVE_MONTHLY_BUDGET_USD:-25}
+      - APTPLANS_GEMINI_MONTHLY_BUDGET_USD=${APTPLANS_GEMINI_MONTHLY_BUDGET_USD:-25}
+      - APTPLANS_GEMINI_MONTHLY_CAP=${APTPLANS_GEMINI_MONTHLY_CAP:-}
+      - APTPLANS_SEARCH_STATES=${APTPLANS_SEARCH_STATES:-OR}
       - APTPLANS_REFRESH_AIRPORTS=1
       - APTPLANS_LLM=1
       - MEILI_URL=http://search:7700
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-}
+
+  review:
+    image: aptplans-worker
+    working_dir: /app
+    command: ["python3", "-m", "pipeline.review_api"]
+    cpuset: ${WORKER_CPUSET:-0-3,16-19}
+    volumes:
+      - ${REPO_PATH:-/opt/aptplans}:/app
+      - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
+      - ${REJECT_PATH:-/var/lib/aptplans/reject}:/var/lib/aptplans/reject
+      - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue:ro
+      - ${LOGS_PATH:-/var/lib/aptplans/logs}:/var/lib/aptplans/logs:ro
+    environment:
+      - APP_ENV=production
+      - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
+      - APTPLANS_REJECT=/var/lib/aptplans/reject
+      - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_LOGS=/var/lib/aptplans/logs
+      - APTPLANS_REVIEW_BIND=0.0.0.0:8787
+      - APTPLANS_REVIEW_TOKEN=${APTPLANS_REVIEW_TOKEN:-}
+      - APTPLANS_REVIEW_PUBLIC=1
+    restart: unless-stopped
+    expose:
+      - "8787"
 
   ollama:
     # NUMA nodes 1-3: physical cores 4-15 plus SMT siblings (24 threads).

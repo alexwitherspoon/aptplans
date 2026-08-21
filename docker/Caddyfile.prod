@@ -18,6 +18,7 @@
 		method POST
 	}
 	handle @search_post {
+		header Cache-Control "no-store"
 		request_body {
 			max_size 8KB
 		}
@@ -34,7 +35,54 @@
 
 	handle {
 		root * /srv/site
+		header Cache-Control "public, max-age=86400"
 		file_server
+	}
+}
+
+# Token API for agents and laptops. TLS on :443 only. App still checks the key.
+# Health is the only unauthenticated path. Cloudflare must not cache this prefix.
+(review) {
+	handle_path /review/* {
+		header {
+			Cache-Control "no-store, private"
+			X-Robots-Tag "noindex, nofollow"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		}
+		request_body {
+			max_size 64KB
+		}
+		@review_health {
+			path /v1/health
+			method GET
+		}
+		handle @review_health {
+			reverse_proxy review:8787
+		}
+		@review_key {
+			header X-Api-Key *
+		}
+		@review_bearer {
+			header Authorization Bearer*
+		}
+		handle @review_key {
+			reverse_proxy review:8787 {
+				transport http {
+					response_header_timeout 120s
+				}
+			}
+		}
+		handle @review_bearer {
+			reverse_proxy review:8787 {
+				transport http {
+					response_header_timeout 120s
+				}
+			}
+		}
+		handle {
+			header Content-Type application/json
+			respond `{"error":"unauthorized"}` 401
+		}
 	}
 }
 
@@ -44,5 +92,6 @@
 
 :443 {
 	tls /certs/origin.pem /certs/origin.key
+	import review
 	import static
 }

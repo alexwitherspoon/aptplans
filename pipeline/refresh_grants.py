@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from catalog.grants import (
 from catalog.models import Grant
 from catalog.store import write_grants_overlay
 from pipeline.fetch import fetch_bytes, post_json
-from pipeline.refresh import PAUSE_SECONDS, ROOT, overlay_grants_path, should_refresh
+from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path, should_refresh
 from pipeline.usaspending import fetch_award_status
 
 log = logging.getLogger("aptplans.grants")
@@ -86,7 +85,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch FAA AIP grant histories into the catalog overlay")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    overlay = Path(os.environ.get("APTPLANS_CATALOG_OVERLAY", ROOT / "data" / "catalog"))
+    overlay = overlay_dir_from_env()
     maybe_refresh_grants(overlay, force=args.force, post_json=post_json)
     return 0
 

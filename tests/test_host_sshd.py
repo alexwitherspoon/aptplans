@@ -23,3 +23,12 @@ def test_cd_requires_aptplans_user() -> None:
     assert 'if [ "$(id -u)" -eq 0 ]' not in text
     assert "MEILI_MASTER_KEY" not in text
     assert ".env.search" not in text
+    assert "secrets.APTPLANS_REVIEW_TOKEN" in text
+    assert "secrets.APTPLANS_SEARCH_KEY" in text
+    assert "secrets.APTPLANS_GEMINI_KEY" in text
+    assert 'echo "review API token: set"' in text
+    assert 'echo "Brave search key: set"' in text
+    assert 'echo "Gemini search key: set"' in text
+    assert "review API token: ${" not in text
+    assert "Brave search key: ${" not in text
+    assert "Gemini search key: ${" not in text
