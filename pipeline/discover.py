@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from catalog.seed import seed_catalog
+from catalog.seed import reference_seed_enabled, seed_catalog
 from pipeline.gates import looks_like_pdf
 from pipeline.queue import JobQueue, QueueJob
 from pipeline.search_scope import in_search_scope, parse_search_states
@@ -45,6 +45,8 @@ def seed_explore_hubs(queue: JobQueue, catalog_root: Path, overlay_dir: Path | N
 
 
 def seed_reference_fetches(queue: JobQueue, catalog_root: Path) -> int:
+    if not reference_seed_enabled():
+        return 0
     catalog = seed_catalog(catalog_root)
     queued = 0
     for document in catalog.documents:

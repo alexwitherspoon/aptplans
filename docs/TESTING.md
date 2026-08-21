@@ -4,17 +4,17 @@
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-make test
+make ci
 ```
 
-`make test` runs pytest, then a full `site/build.py` into `dist/`.
+`make ci` runs pytest, then a full `site/build.py` into `dist/` with `APTPLANS_DEV_PREVIEW=1`. `make test` is an alias. `make test-unit` is pytest only (reference fixtures come from `tests/conftest.py`).
 
-CI (`.github/workflows/test.yml`) does the same on Python 3.12 for pushes and pull requests.
+CI (`.github/workflows/test.yml`) runs `make ci` on Python 3.12 for pushes and pull requests.
 
 ## What is covered now
 
 - Catalog schema includes completeness states and change events
-- Reference airports plus 50 state hubs (CI does not live-fetch FAA NASR, NPIAS, or OurAirports)
+- Reference airports plus 50 state hubs when reference seed is enabled (`APTPLANS_REFERENCE_SEED=1`; pytest sets this in `tests/conftest.py`). Production is the default. CI does not live-fetch FAA NASR, NPIAS, or OurAirports
 - NASR public-use airports merge with NPIAS role flags from fixtures; a LID not in NPIAS can still be admitted from intake
 - Worker cold start fetches FAA overlays only when files are missing or from a prior month (fixtures in tests; no live FAA or USAspending)
 - Reference master plans and ALPs (PDX, TTD, Mulino, plus other regions) validate as `link_only` fixtures against AC 150/5070-6B elements
