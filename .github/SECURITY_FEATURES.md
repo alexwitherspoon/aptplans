@@ -30,7 +30,7 @@ Dependency surfaces in this repo:
 | Runtime / dev Python | `pyproject.toml` | `pip` |
 | GitHub Actions pins | `.github/workflows/*.yml` | `github-actions` |
 | Site image base | `docker/Dockerfile` (`caddy:2-alpine`) | `docker` |
-| Worker image base | `docker/Dockerfile.worker` (`python:3.12-slim-bookworm`) | `docker` |
+| Worker image base | `docker/Dockerfile.worker` (`python:3.14-slim-bookworm`) | `docker` |
 | Compose service pins | `docker/docker-compose.yml` (`getmeili/meilisearch:v1.11.3`) | `docker` |
 | Ollama image | `${OLLAMA_IMAGE:-ollama/ollama:latest}` | Not pinned in git; set on origin |
 
