@@ -343,6 +343,29 @@ def test_work_excerpt_includes_committed_unofficial_summary() -> None:
     assert source_path_for(intro) is not None
 
 
+def test_source_path_for_skips_git_fixtures_on_production(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("APTPLANS_DEV_PREVIEW", raising=False)
+    monkeypatch.delenv("APTPLANS_REFERENCE_SEED", raising=False)
+    intro = Document(
+        id="bvy-2022-introduction",
+        kind="master_plan",
+        source_url="https://example.com/x.pdf",
+        completeness="link_only",
+    )
+    assert source_path_for(intro) is None
+    stored = tmp_path / "abc123.pdf"
+    stored.write_bytes(b"%PDF-1.4")
+    monkeypatch.setenv("FILES_PATH", str(tmp_path))
+    preserved = Document(
+        id="bvy-2022-introduction",
+        kind="master_plan",
+        source_url="https://example.com/x.pdf",
+        completeness="complete",
+        content_sha256="abc123",
+    )
+    assert source_path_for(preserved) == stored
+
+
 def test_overview_is_stale_missing_or_prior_month() -> None:
     august = datetime(2026, 8, 20, tzinfo=PACIFIC)
     assert overview_is_stale(None, now=august) is True

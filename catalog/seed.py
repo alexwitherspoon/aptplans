@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,6 +19,25 @@ from catalog.store import (
     load_overviews_overlay,
     merge_overlay,
 )
+
+
+def _truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def reference_seed_enabled() -> bool:
+    """Git reference rows and fixture bytes are for CI and local preview only.
+
+    Production is the default: no git reference airports, grants, budgets, or
+    embedded fixture paths unless ``APTPLANS_DEV_PREVIEW=1`` (``make dev``) or
+    ``APTPLANS_REFERENCE_SEED=1``. Origin never sets those flags.
+    """
+    flag = os.environ.get("APTPLANS_REFERENCE_SEED", "").strip().lower()
+    if flag in {"1", "true", "yes"}:
+        return True
+    if flag in {"0", "false", "no"}:
+        return False
+    return _truthy("APTPLANS_DEV_PREVIEW")
 
 
 def _states(catalog_root: Path) -> list[State]:
@@ -112,19 +132,23 @@ def _reference_budgets(catalog_root: Path) -> list[Budget]:
 
 
 def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog:
+    use_reference = reference_seed_enabled()
     by_lid = {airport.lid: airport for airport in load_airports_overlay(overlay_dir)}
-    documents = _apply_reference_cases(by_lid, catalog_root)
-    documents.extend(_reference_statutes(catalog_root))
+    documents: list[Document] = _reference_statutes(catalog_root)
+    if use_reference:
+        documents = _apply_reference_cases(by_lid, catalog_root) + documents
     airports = sorted(by_lid.values(), key=lambda item: (item.state, item.lid))
     overlay_grants = load_grants_overlay(overlay_dir)
     overlay_budgets = load_budgets_overlay(overlay_dir)
+    grants = overlay_grants if overlay_grants or not use_reference else _reference_grants(catalog_root)
+    budgets = overlay_budgets if overlay_budgets or not use_reference else _reference_budgets(catalog_root)
     catalog = Catalog(
         airports=airports,
         states=_states(catalog_root),
         documents=documents,
         changes=load_changes_overlay(overlay_dir),
-        grants=overlay_grants or _reference_grants(catalog_root),
-        budgets=overlay_budgets or _reference_budgets(catalog_root),
+        grants=grants,
+        budgets=budgets,
         overviews=load_overviews_overlay(overlay_dir),
     )
     overlay = load_overlay(overlay_dir)

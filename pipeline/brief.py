@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from catalog import ROOT as CATALOG_ROOT, load_embedded_fixtures
+from catalog.seed import reference_seed_enabled
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _TOC = re.compile(r"\.{4,}|table of contents", re.I)
@@ -275,11 +276,12 @@ def files_dir() -> Path:
 
 
 def source_path_for(document) -> Path | None:
-    for row in load_embedded_fixtures():
-        if row.get("document_id") == document.id:
-            path = CATALOG_ROOT / "references" / row["path"]
-            if path.is_file():
-                return path
+    if reference_seed_enabled():
+        for row in load_embedded_fixtures():
+            if row.get("document_id") == document.id:
+                path = CATALOG_ROOT / "references" / row["path"]
+                if path.is_file():
+                    return path
     preview = files_dir() / "preview" / f"{document.id}.pdf"
     if (
         os.environ.get("APTPLANS_DEV_PREVIEW", "").strip().lower() in {"1", "true", "yes"}

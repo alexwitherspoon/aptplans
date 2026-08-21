@@ -121,7 +121,7 @@ Worker overlay and queue:
 | `/var/lib/aptplans/queue` | serial job JSON |
 | `/var/lib/aptplans/logs` | redacted worker JSONL (`GET /review/v1/logs`) |
 
-Seed known official PDFs onto the queue (does not fetch):
+Seed known official PDFs onto the queue for local backfill only (does not fetch). Production is the default; this no-ops unless reference seed is enabled:
 
 ```bash
 docker compose --env-file /home/aptplans/.env.production \
