@@ -40,9 +40,14 @@ class QueueJob:
     report_type: str | None = None
     suggested_kind: str | None = None
     attempts: int = 0
+    found_on: str | None = None
+    part_of: str | None = None
+    reject_record: dict | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        data.pop("reject_record", None)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> QueueJob:
@@ -58,6 +63,8 @@ class QueueJob:
             report_type=data.get("report_type"),
             suggested_kind=data.get("suggested_kind"),
             attempts=int(data.get("attempts") or 0),
+            found_on=data.get("found_on"),
+            part_of=data.get("part_of"),
         )
 
 
