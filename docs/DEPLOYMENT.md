@@ -61,6 +61,7 @@ Host layout:
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
+| `/var/lib/aptplans/egress` | Gluetun VPN state and server list (not in git) |
 | `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
 | `/home/aptplans/.env.secrets` | PIA VPN (`PIA_OPENVPN_*`) + intake GitHub token + review token + Brave/Gemini search keys (CD; bootstrap does not overwrite) |
 | `/home/aptplans/.env.search` | Meilisearch master key (bootstrap writes once; CD does not overwrite) |
