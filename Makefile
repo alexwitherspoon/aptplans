@@ -2,7 +2,7 @@
 #
 # See docs/LOCAL_SETUP.md and docs/TESTING.md
 
-.PHONY: help site test test-unit dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes
+.PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes
 
 COMPOSE := docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml
 PY ?= python3
@@ -26,7 +26,7 @@ help: ## Show this help message
 	@grep -E '^(site|dev|up|stack|down|down-clean|pipeline|worker|links|model|llm):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Testing:'
-	@grep -E '^(test|test-unit|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^(test|test-unit|ci|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Build & cleanup:'
 	@grep -E '^(build|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -37,10 +37,13 @@ help: ## Show this help message
 site: ## Build the static site into dist/
 	$(PY) site/build.py --out dist
 
-test: test-unit site ## Run tests and verify a site build
-
-test-unit: ## Run unit tests
+test-unit: ## Run unit tests only (reference fixtures via tests/conftest.py)
 	$(PY) -m pytest tests -q
+
+ci: test-unit ## CI entry point: pytest, then a fixture site build (GitHub Actions)
+	APTPLANS_DEV_PREVIEW=1 $(PY) site/build.py --out dist
+
+test: ci ## Alias for make ci
 
 eval-search: ## Replay the adaptive search ladder against fixtures (no network, not a publish)
 	$(PY) scripts/eval_search_plan.py --catalog

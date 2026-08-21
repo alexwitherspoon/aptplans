@@ -28,7 +28,7 @@ python3 -m pipeline.refresh_airports
 
 Fact sheets (`overviews.jsonl`) generate when missing and again if last written in a prior calendar month, for search and the review API. Airport HTML extracts the same sheet on every `site/build.py` generate (cached PDF text plus regex; no model). Listed files first; NASR fills runway dimensions, elevation, and fuel/storage when those files have no figure. Grants stay on Funding. CI must not run that against live FAA. Tests inject tiny zip/xlsx fixtures.
 
-Seed known official PDFs onto the queue without fetching:
+Seed known official PDFs onto the queue without fetching. Reference seed must be enabled (`APTPLANS_DEV_PREVIEW=1` or `APTPLANS_REFERENCE_SEED=1`); production no-ops by default:
 
 ```
 python3 -m pipeline.discover

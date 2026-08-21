@@ -1,4 +1,4 @@
-"""Strip third-party keys from saved HTML before it lands in git."""
+"""Strip third-party keys from saved HTML before preserve or commit."""
 
 from __future__ import annotations
 
