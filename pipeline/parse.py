@@ -10,8 +10,11 @@ from pypdf import PdfReader
 
 from catalog import load_shape_card
 
-# Stay well under the 32k model window after the prompt is added.
+# One generate() prompt stays inside the 32k window after the prompt is added.
+# The whole file is still read; extra windows are sequential chunks, then a reduce.
 CHUNK_CHARS = 24_000
+
+_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def extract_pages(data: bytes, max_pages: int | None = None) -> list[str]:
@@ -20,17 +23,20 @@ def extract_pages(data: bytes, max_pages: int | None = None) -> list[str]:
     return [(page.extract_text() or "").strip() for page in pages]
 
 
-def extract_text(data: bytes, max_chars: int = 500_000) -> str:
+def extract_text(data: bytes, max_chars: int | None = None, max_pages: int | None = None) -> str:
+    """Native text from every page unless the caller passes a cap."""
     parts = []
     total = 0
-    for page in extract_pages(data):
+    for page in extract_pages(data, max_pages=max_pages):
         if not page:
             continue
         parts.append(page)
         total += len(page)
-        if total >= max_chars:
+        if max_chars is not None and total >= max_chars:
             break
     text = "\n\n".join(parts)
+    if max_chars is None:
+        return text
     return text[:max_chars]
 
 
@@ -53,12 +59,29 @@ def outline_titles(data: bytes) -> list[str]:
 
 
 def viable_chunk(text: str, max_chars: int = CHUNK_CHARS) -> str:
+    """First window of text that fits one generate() prompt. Prefer text_chunks for the whole file."""
     cleaned = re.sub(r"[ \t]+", " ", text or "").strip()
     if len(cleaned) <= max_chars:
         return cleaned
     cut = cleaned[:max_chars]
     space = cut.rfind(" ")
     return cut[:space] if space > 4000 else cut
+
+
+def text_chunks(text: str, max_chars: int = CHUNK_CHARS) -> list[str]:
+    """Split full extracted text into successive generate() windows."""
+    rest = re.sub(r"[ \t]+", " ", text or "").strip()
+    chunks: list[str] = []
+    while rest:
+        if len(rest) <= max_chars:
+            chunks.append(rest)
+            break
+        cut = rest[:max_chars]
+        space = cut.rfind(" ")
+        take = cut[:space] if space > max_chars // 4 else cut
+        chunks.append(take.strip())
+        rest = rest[len(take) :].lstrip()
+    return chunks
 
 
 def normalize_text(text: str) -> str:
@@ -90,6 +113,9 @@ def _image_bytes(data: bytes) -> list[bytes]:
 
 def content_fingerprint(data: bytes) -> tuple[str, str]:
     """Hash extracted text and embedded images. PDF wrapper metadata is ignored."""
+    if not data.startswith(b"%PDF"):
+        text = normalize_text(_TAG_RE.sub(" ", data.decode("utf-8", "replace")))
+        return hashlib.sha256(text.encode("utf-8")).hexdigest(), hashlib.sha256(b"").hexdigest()
     text = normalize_text(extract_text(data))
     text_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
     images = hashlib.sha256()

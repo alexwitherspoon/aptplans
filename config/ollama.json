@@ -3,7 +3,7 @@
   "repo_id": "prism-ml/Bonsai-27B-gguf",
   "filename": "Bonsai-27B-Q1_0.gguf",
   "num_ctx": 32768,
-  "temperature": 0.5,
+  "temperature": 0,
   "top_p": 0.85,
   "top_k": 20,
   "min_p": 0,

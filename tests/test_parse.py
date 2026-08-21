@@ -10,9 +10,10 @@ from pipeline.parse import (
     content_fingerprint,
     extract_text,
     shape_hits,
+    text_chunks,
     viable_chunk,
 )
-from pipeline.ollama import unofficial_note
+from pipeline.ollama import unofficial_note, unofficial_note_from_text
 
 INVENTORY = REFERENCE_FILES / "4s9-2008-inventory.pdf"
 
@@ -48,6 +49,45 @@ def test_extract_inventory_has_mulino_and_inventory_heading() -> None:
 def test_unofficial_note_uses_injected_generate() -> None:
     note = unofficial_note("Mulino inventory chapter", generate_fn=lambda prompt: "Stay in chapter two.")
     assert note == "Stay in chapter two."
+
+
+def test_text_chunks_cover_the_whole_file() -> None:
+    text = ("front " * 400) + "UNIQUE_MIDDLE_MARKER " + ("back " * 400)
+    chunks = text_chunks(text, max_chars=200)
+    assert chunks
+    assert all(len(c) <= 200 for c in chunks)
+    joined = " ".join(chunks)
+    assert "UNIQUE_MIDDLE_MARKER" in joined
+    assert "front" in chunks[0]
+    assert "back" in chunks[-1]
+
+
+def test_unofficial_note_from_text_reduces_multiple_chunks() -> None:
+    calls: list[str] = []
+
+    def gen(prompt: str) -> str:
+        calls.append(prompt)
+        if prompt.startswith("Combine"):
+            return "One paragraph from the whole file."
+        return "Part note."
+
+    note = unofficial_note_from_text("word " * 80, generate_fn=gen, max_chars=40)
+    assert note == "One paragraph from the whole file."
+    assert len(calls) > 2
+    assert any(item.startswith("Combine") for item in calls)
+
+
+def test_unofficial_note_from_text_single_chunk_skips_reduce() -> None:
+    calls: list[str] = []
+
+    def gen(prompt: str) -> str:
+        calls.append(prompt)
+        return "Stay in chapter two."
+
+    note = unofficial_note_from_text("short excerpt", generate_fn=gen)
+    assert note == "Stay in chapter two."
+    assert len(calls) == 1
+    assert not any(item.startswith("Combine") for item in calls)
 
 
 def test_robots_cache_honors_disallow(monkeypatch) -> None:

@@ -49,13 +49,12 @@ def complete(
     }
     if json_mode:
         payload["format"] = "json"
-    options: dict = {}
+    options: dict = {"temperature": 0}
     if num_predict:
         options["num_predict"] = num_predict
     if raw_ctx.isdigit():
         options["num_ctx"] = int(raw_ctx)
-    if options:
-        payload["options"] = options
+    payload["options"] = options
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{ollama_host()}/api/generate",
@@ -108,6 +107,43 @@ def unofficial_note_prompt(chunk: str) -> str:
 
 def unofficial_note(chunk: str, generate_fn=generate) -> str:
     return generate_fn(unofficial_note_prompt(chunk))
+
+
+def _note_timeout() -> int:
+    raw = os.environ.get("APTPLANS_LLM_TIMEOUT", "").strip()
+    if raw.isdigit():
+        return max(60, int(raw))
+    return 3600
+
+
+def reduce_notes_prompt(notes: list[str]) -> str:
+    body = "\n\n".join(f"Part {index}: {note}" for index, note in enumerate(notes, start=1))
+    return (
+        "Combine these unofficial notes from successive parts of one airport planning "
+        "file into one unofficial paragraph. Stay grounded in the notes. Do not give "
+        "legal advice. Do not name a model.\n\n"
+        f"{body}"
+    )
+
+
+def unofficial_note_from_text(
+    text: str,
+    generate_fn=None,
+    *,
+    max_chars: int | None = None,
+) -> str:
+    """Read the whole extracted file. One generate() window at a time, then reduce."""
+    from pipeline.parse import CHUNK_CHARS, text_chunks
+
+    fn = generate_fn or (lambda prompt: generate(prompt, timeout=_note_timeout()))
+    window = CHUNK_CHARS if max_chars is None else max_chars
+    chunks = text_chunks(text, max_chars=window)
+    if not chunks:
+        return ""
+    notes = [unofficial_note(chunk, generate_fn=fn) for chunk in chunks]
+    if len(notes) == 1:
+        return notes[0]
+    return fn(reduce_notes_prompt(notes))
 
 
 def load_model(timeout: int = 1200) -> None:

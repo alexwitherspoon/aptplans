@@ -16,6 +16,7 @@ def test_ollama_config_pins_bonsai_gguf() -> None:
     assert data["repo_id"] == "prism-ml/Bonsai-27B-gguf"
     assert data["filename"] == "Bonsai-27B-Q1_0.gguf"
     assert int(data["num_ctx"]) >= 32768
+    assert float(data["temperature"]) == 0
     assert int(data["num_thread"]) == 12
     assert int(data["num_gpu"]) == 0
     assert int(data["keep_alive"]) == -1
@@ -34,6 +35,7 @@ def test_local_ollama_writes_origin_modelfile(tmp_path, monkeypatch) -> None:
     text = path.read_text(encoding="utf-8")
     assert "FROM /models/Bonsai-27B-Q1_0.gguf" in text
     assert "PARAMETER num_ctx 32768" in text
+    assert "PARAMETER temperature 0" in text
     assert "PARAMETER num_thread 12" in text
 
 
@@ -54,9 +56,22 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "MEILI_URL=http://search:7700" in prod
     assert "APTPLANS_TEXT=/var/lib/aptplans/text" in text
     assert "APTPLANS_TEXT=/var/lib/aptplans/text" in prod
+    assert "APTPLANS_REJECT=/var/lib/aptplans/reject" in text
+    assert "APTPLANS_REJECT=/var/lib/aptplans/reject" in prod
+    assert "/srv/reject" not in prod
+    assert "/srv/files" in prod
     assert "OLLAMA_HOST=http://ollama:11434" in text
     assert "APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}" in text
     assert "INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}" in prod
+    assert "APTPLANS_REVIEW_TOKEN=${APTPLANS_REVIEW_TOKEN:-}" in prod
+    assert "APTPLANS_LOGS=/var/lib/aptplans/logs" in prod
+    assert "127.0.0.1:8787:8787" not in prod
+    assert "handle_path /review/*" in (ROOT / "docker" / "Caddyfile.prod").read_text(encoding="utf-8")
+    assert "APTPLANS_SEARCH_KEY=${APTPLANS_SEARCH_KEY:-}" in prod
+    assert "APTPLANS_GEMINI_KEY=${APTPLANS_GEMINI_KEY:-}" in prod
+    assert "APTPLANS_SEARCH_STATES=${APTPLANS_SEARCH_STATES:-OR}" in prod
+    assert "APTPLANS_BRAVE_MONTHLY_BUDGET_USD=${APTPLANS_BRAVE_MONTHLY_BUDGET_USD:-25}" in prod
+    assert "APTPLANS_GEMINI_MONTHLY_BUDGET_USD=${APTPLANS_GEMINI_MONTHLY_BUDGET_USD:-25}" in prod
     assert "APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog" in prod
     assert "APTPLANS_QUEUE=/var/lib/aptplans/queue" in prod
     assert "APTPLANS_SITE=/var/lib/aptplans/site" in prod
@@ -77,6 +92,7 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "0.0.0.0:11434" not in local
     assert "7700:7700" not in local
     assert "aptplanslocalkey1" in local
+    assert "${FILES_PATH:-../data/files}:/srv/files:ro" in local
 
 
 def test_generate_honors_predict_and_ctx_env(monkeypatch) -> None:
@@ -107,6 +123,7 @@ def test_generate_honors_predict_and_ctx_env(monkeypatch) -> None:
     assert captured["body"]["think"] is False
     assert captured["body"]["options"]["num_predict"] == 48
     assert captured["body"]["options"]["num_ctx"] == 2048
+    assert captured["body"]["options"]["temperature"] == 0
 
     monkeypatch.setenv("APTPLANS_LLM_THINK", "1")
     assert ollama.generate("hello") == "ok"
@@ -118,4 +135,5 @@ def test_generate_honors_predict_and_ctx_env(monkeypatch) -> None:
     assert ollama.generate("hello", json_mode=True, think=False) == "ok"
     assert captured["body"]["think"] is False
     assert captured["body"]["format"] == "json"
-    assert "options" not in captured["body"]
+    assert captured["body"]["options"]["temperature"] == 0
+    assert "num_predict" not in captured["body"]["options"]
