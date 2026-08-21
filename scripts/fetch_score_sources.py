@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from pipeline.evidence import SCORE_CACHE, gold_source_path, load_score_gold
 from pipeline.gates import sniff_media
+from pipeline.sanitize import redact_html_secrets
 
 UA = "aptplans.org eval (https://aptplans.org)"
 
@@ -90,6 +91,8 @@ def main() -> int:
             time.sleep(args.sleep)
             continue
         dest = SCORE_CACHE / f"{case['id']}{suffix}"
+        if suffix == ".html":
+            data = redact_html_secrets(data.decode("utf-8", "replace")).encode("utf-8")
         dest.write_bytes(data)
         rows.append(
             {

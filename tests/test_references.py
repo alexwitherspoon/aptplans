@@ -155,3 +155,12 @@ def test_embedded_pdfs_match_manifest_hashes() -> None:
     assert "master_plan" in kinds
     assert "alp" in kinds
     assert {"PDX", "TTD", "4S9", "4S2", "BVY"} <= lids
+
+
+def test_reference_hub_html_has_no_api_keys() -> None:
+    from pipeline.sanitize import html_has_secrets
+
+    html_paths = sorted(REFERENCE_FILES.glob("*.html"))
+    assert html_paths, "expected committed hub HTML fixtures"
+    offenders = [path.name for path in html_paths if html_has_secrets(path.read_text(encoding="utf-8", errors="replace"))]
+    assert not offenders, f"redact third-party keys in {offenders}"
