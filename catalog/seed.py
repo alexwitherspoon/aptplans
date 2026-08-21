@@ -37,6 +37,8 @@ def reference_seed_enabled() -> bool:
         return True
     if flag in {"0", "false", "no"}:
         return False
+    if os.environ.get("APP_ENV", "").strip().lower() == "production":
+        return False
     return _truthy("APTPLANS_DEV_PREVIEW")
 
 

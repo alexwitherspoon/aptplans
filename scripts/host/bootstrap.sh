@@ -22,6 +22,7 @@ MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"
 TEXT_DIR="${TEXT_DIR:-/var/lib/aptplans/text}"
 SEARCH_DIR="${SEARCH_DIR:-/var/lib/aptplans/search}"
 REJECT_DIR="${REJECT_DIR:-/var/lib/aptplans/reject}"
+LOGS_DIR="${LOGS_DIR:-/var/lib/aptplans/logs}"
 EGRESS_DIR="${EGRESS_DIR:-/var/lib/aptplans/egress}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 

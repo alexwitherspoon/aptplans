@@ -78,4 +78,10 @@ if [ ! -s /var/lib/aptplans/catalog/airports.jsonl ] || [ ! -s /var/lib/aptplans
 fi
 echo "Rebuilding HTML from git catalog plus origin overlay"
 "${COMPOSE[@]}" run --rm --no-deps --no-TTY worker python3 site/build.py --out /var/lib/aptplans/site
+airport_count="$(python3 -c "import json; print(json.load(open('/var/lib/aptplans/site/status.json'))['counts']['airports'])")"
+if [ "${airport_count}" -lt 1000 ]; then
+    echo "site build has ${airport_count} airports; expected NASR overlay (>=1000)" >&2
+    exit 1
+fi
+echo "site build ok (${airport_count} airports)"
 echo "deploy complete"

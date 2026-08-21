@@ -48,6 +48,8 @@ services:
       - ${LOGS_PATH:-/var/lib/aptplans/logs}:/var/lib/aptplans/logs
     environment:
       - APP_ENV=production
+      - APTPLANS_DEV_PREVIEW=0
+      - APTPLANS_REFERENCE_SEED=0
       - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog

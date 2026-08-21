@@ -27,7 +27,7 @@ if str(REPO) not in sys.path:
 from catalog.grants import faa_year_summary_url, grant_title, remaining_obligation, usaspending_award_url
 from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, looks_like_work_edition, visible_on_site
 from catalog.ourairports import http_url
-from catalog.seed import seed_catalog
+from catalog.seed import reference_seed_enabled, seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts
 from pipeline.brief import airport_overview
 from pipeline.search import airport_record
@@ -1323,6 +1323,8 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     status = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "unofficial": True,
+        "reference_seed": reference_seed_enabled(),
+        "overlay_dir": os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip() or None,
         "counts": stats,
         "source_sha": source_sha,
     }

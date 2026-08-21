@@ -65,11 +65,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build static site
-        run: |
-          pip install -e .
-          make site
-
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.10.0
         with:
@@ -108,7 +103,6 @@ jobs:
             --exclude '*.egg-info/' \
             --exclude '.pytest_cache/' \
             ./ "${DEPLOY_USER}@${DEPLOY_HOST}:/opt/aptplans/"
-          rsync -az --delete dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:/var/lib/aptplans/site/"
 
       - name: Install origin TLS material
         env:
