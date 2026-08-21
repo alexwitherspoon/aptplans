@@ -34,6 +34,7 @@ from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
 from pipeline.refresh import overlay_dir_from_env
 from pipeline.reject import purge_expired, store_reject
+from pipeline.sanitize import redact_html_secrets
 
 log = logging.getLogger("aptplans.job")
 
@@ -226,6 +227,9 @@ def process_fetch(
         _keep_failed(job, files_dir, reason=status, data=data)
         _reply(job, status, None)
         return status
+
+    if media == "html":
+        data = redact_html_secrets(data.decode("utf-8", "replace")).encode("utf-8")
 
     suffix = ".pdf" if media == "pdf" else ".html" if media == "html" else ".bin"
     stored = store_bytes(data, files_dir, suffix=suffix)

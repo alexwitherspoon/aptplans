@@ -479,3 +479,31 @@ def test_process_next_explore_html_preserves_page_and_queues_pdfs(tmp_path: Path
     assert AMP in fetch_urls
     assert "4s9-site" in vet_ids
 
+
+def test_process_fetch_strips_html_api_keys(tmp_path: Path) -> None:
+    html_path = tmp_path / "hub.html"
+    html_path.write_text(
+        "<html><body>master plan REDACTED</body></html>",
+        encoding="utf-8",
+    )
+    queue = JobQueue(tmp_path / "queue")
+    queue.enqueue(
+        QueueJob(
+            kind="fetch",
+            document_id=None,
+            source_url=html_path.resolve().as_uri(),
+            airport_lid="4S9",
+            state="OR",
+        )
+    )
+    assert (
+        process_next(
+            queue_dir=tmp_path / "queue",
+            files_dir=tmp_path / "files",
+            overlay_dir=tmp_path / "overlay",
+            catalog_root=ROOT / "catalog",
+        )
+        is True
+    )
+    stored = next((tmp_path / "files").glob("*.html"))
+    assert "AIzaSy" not in stored.read_text(encoding="utf-8")

@@ -32,3 +32,8 @@ def test_cd_requires_aptplans_user() -> None:
     assert "review API token: ${" not in text
     assert "Brave search key: ${" not in text
     assert "Gemini search key: ${" not in text
+
+
+def test_bootstrap_defines_models_dir() -> None:
+    text = (ROOT / "scripts" / "host" / "bootstrap.sh").read_text(encoding="utf-8")
+    assert 'MODELS_DIR="${MODELS_DIR:-/var/lib/aptplans/models}"' in text
