@@ -1,5 +1,5 @@
 [Unit]
-Description=Monthly AptPlans NASR, NPIAS, and AIP grant refresh
+Description=Monthly AptPlans NASR, NPIAS, AIP grant, and airport fact-sheet refresh
 
 [Timer]
 OnCalendar=*-*-01 03:00:00 America/Los_Angeles
