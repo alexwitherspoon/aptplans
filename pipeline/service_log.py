@@ -57,6 +57,7 @@ def redact(text: str) -> str:
         "APTPLANS_GEMINI_KEY",
         "MEILI_MASTER_KEY",
         "CLOUDFLARE_ORIGIN_KEY",
+        "PIA_OPENVPN_PASSWORD",
         "PIA_SOCKS_PASSWORD",
     ):
         value = os.environ.get(name, "").strip()

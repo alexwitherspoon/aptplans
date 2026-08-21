@@ -1,14 +1,14 @@
-"""HTTP fetch for the serial worker. Fail closed if a configured SOCKS proxy is down."""
+"""HTTP fetch for the serial worker. Fail closed when egress is required."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from urllib.parse import urlparse, unquote
-from urllib.request import OpenerDirector, Request, build_opener, urlopen
-from urllib.error import HTTPError
-from urllib.robotparser import RobotFileParser
 import os
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.parse import urlparse, unquote
+from urllib.request import OpenerDirector, ProxyHandler, Request, build_opener, urlopen
+from urllib.robotparser import RobotFileParser
 
 from pipeline.gates import MAX_BYTES
 
@@ -20,10 +20,27 @@ def _user_agent() -> str:
     return os.environ.get("APTPLANS_USER_AGENT") or DEFAULT_UA
 
 
+def egress_required() -> bool:
+    flag = os.environ.get("APTPLANS_EGRESS_REQUIRED", "").strip().lower()
+    if flag in {"1", "true", "yes"}:
+        return True
+    if flag in {"0", "false", "no"}:
+        return False
+    return os.environ.get("APP_ENV", "").strip().lower() == "production"
+
+
+def _resolve_proxy(proxy_url: str | None) -> str:
+    proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    proxy = proxy.strip()
+    if egress_required() and not proxy:
+        raise RuntimeError("APTPLANS_FETCH_PROXY is required when egress is enforced")
+    return proxy
+
+
 def _socks_opener(proxy_url: str) -> OpenerDirector:
     parsed = urlparse(proxy_url)
     if parsed.scheme not in {"socks5", "socks5h"}:
-        raise RuntimeError(f"unsupported fetch proxy scheme {parsed.scheme}")
+        raise RuntimeError(f"unsupported SOCKS proxy scheme {parsed.scheme}")
     try:
         import socks
         from sockshandler import SocksiPyHandler
@@ -38,6 +55,24 @@ def _socks_opener(proxy_url: str) -> OpenerDirector:
         unquote(parsed.password) if parsed.password else None,
     )
     return build_opener(handler)
+
+
+def _http_opener(proxy_url: str) -> OpenerDirector:
+    parsed = urlparse(proxy_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise RuntimeError(f"unsupported HTTP proxy scheme {parsed.scheme}")
+    return build_opener(
+        ProxyHandler({"http": proxy_url, "https": proxy_url}),
+    )
+
+
+def _proxy_opener(proxy_url: str) -> OpenerDirector:
+    parsed = urlparse(proxy_url)
+    if parsed.scheme in {"socks5", "socks5h"}:
+        return _socks_opener(proxy_url)
+    if parsed.scheme in {"http", "https"}:
+        return _http_opener(proxy_url)
+    raise RuntimeError(f"unsupported fetch proxy scheme {parsed.scheme}")
 
 
 def _robots_ok(url: str, timeout: int, proxy_url: str | None) -> bool:
@@ -75,13 +110,13 @@ def fetch_bytes(
         path = Path(unquote(parsed.path))
         return path.read_bytes(), 200
 
-    proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    proxy = _resolve_proxy(proxy_url)
     if honor_robots and parsed.scheme in {"http", "https"} and not _robots_ok(url, timeout, proxy or None):
         raise PermissionError(f"robots.txt disallows {url}")
     headers = {"User-Agent": user_agent or _user_agent()}
     request = Request(url, headers=headers)
     if proxy:
-        opener = _socks_opener(proxy)
+        opener = _proxy_opener(proxy)
         response_cm = opener.open(request, timeout=timeout)
     else:
         response_cm = urlopen(request, timeout=timeout)
@@ -106,7 +141,7 @@ def fetch_meta(
         path = Path(unquote(parsed.path))
         return (200 if path.is_file() else 404), url
 
-    proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    proxy = _resolve_proxy(proxy_url)
     if honor_robots and parsed.scheme in {"http", "https"} and not _robots_ok(url, timeout, proxy or None):
         raise PermissionError(f"robots.txt disallows {url}")
     headers = {"User-Agent": _user_agent()}
@@ -115,7 +150,7 @@ def fetch_meta(
     request = Request(url, headers=headers, method=method)
     try:
         if proxy:
-            opener = _socks_opener(proxy)
+            opener = _proxy_opener(proxy)
             response_cm = opener.open(request, timeout=timeout)
         else:
             response_cm = urlopen(request, timeout=timeout)
@@ -138,14 +173,14 @@ def post_json(
     proxy_url: str | None = None,
 ) -> dict:
     body = json.dumps(payload).encode("utf-8")
-    proxy = proxy_url if proxy_url is not None else os.environ.get("APTPLANS_FETCH_PROXY", "")
+    proxy = _resolve_proxy(proxy_url)
     headers = {
         "User-Agent": user_agent or _user_agent(),
         "Content-Type": "application/json",
     }
     request = Request(url, data=body, headers=headers, method="POST")
     if proxy:
-        opener = _socks_opener(proxy)
+        opener = _proxy_opener(proxy)
         response_cm = opener.open(request, timeout=timeout)
     else:
         response_cm = urlopen(request, timeout=timeout)

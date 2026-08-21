@@ -34,6 +34,7 @@ CI (`.github/workflows/test.yml`) runs `make ci` on Python 3.12 for pushes and p
 - sshd drop-in allows only `aptplans` and disables remote root
 - Worker compose interpolates empty defaults for `APTPLANS_FETCH_PROXY`, `INTAKE_GITHUB_TOKEN`, `APTPLANS_SEARCH_KEY`, and `APTPLANS_GEMINI_KEY`. `APTPLANS_SEARCH_STATES` defaults to `OR`. Brave and Gemini billed spend each default to `$25/month`. Review compose interpolates `APTPLANS_REVIEW_TOKEN`. CD copies those from GitHub Actions secrets into origin `.env.secrets` without logging values.
 - Official URL checks mark live/moved/dead without live network in CI (injected probes)
+- Egress contract (`tests/test_egress.py`, `tests/test_compose_egress.py`): mock HTTP proxy proves worker fetches route through `APTPLANS_FETCH_PROXY`, fail closed when proxy is down, and production requires a proxy. CI does not run live PIA VPN.
 
 ## What is not covered yet
 
