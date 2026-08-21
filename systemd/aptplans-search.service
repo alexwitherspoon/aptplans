@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly AptPlans overlay discovery search
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aptplans
+EnvironmentFile=-/home/aptplans/.env.production
+EnvironmentFile=-/home/aptplans/.env.secrets
+ExecStart=/usr/bin/docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets --env-file /home/aptplans/.env.search -f docker/docker-compose.yml -f docker/docker-compose.prod.yml exec -T worker python3 -c "from pipeline.discover_overlay import discover_next_airports; from pipeline.refresh import overlay_dir_from_env; from pipeline.status import queue_dir_from_env; import json; print(json.dumps(discover_next_airports(overlay_dir_from_env(), queue_dir_from_env())))"
+Nice=10
