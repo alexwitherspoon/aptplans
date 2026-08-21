@@ -105,6 +105,7 @@ def test_reference_set_includes_standalone_alps() -> None:
     assert "alp" in kinds
     alp_lids = {doc["airport_lid"] for _, doc in _documents() if doc["kind"] == "alp"}
     assert "4S2" in alp_lids
+    assert "4S9" in alp_lids
     assert "BVY" in alp_lids
 
 
@@ -114,6 +115,16 @@ def test_mulino_and_pdx_are_link_only_hints_not_complete() -> None:
         docs = by_lid[lid]["documents"]
         assert docs
         assert all(doc["completeness"] == "link_only" for doc in docs)
+
+
+def test_mulino_2019_files_record_the_airport_page() -> None:
+    by_id = {doc["id"]: doc for _, doc in _documents()}
+    amp = by_id["4s9-2019-amp"]
+    alp = by_id["4s9-2019-alp"]
+    page = "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx"
+    assert amp["found_on"] == page
+    assert alp["found_on"] == page
+    assert amp["publisher"] == "Oregon Department of Aviation"
 
 
 def test_embedded_pdfs_match_manifest_hashes() -> None:

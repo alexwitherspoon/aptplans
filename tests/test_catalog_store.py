@@ -23,6 +23,9 @@ def test_seed_catalog_includes_reference_airports_and_states() -> None:
     assert pdx_docs
     assert all(doc.completeness == "link_only" for doc in pdx_docs)
     assert catalog.airports_by_lid["PDX"].name.startswith("Portland")
+    assert catalog.airports_by_lid["PDX"].city == "Portland"
+    assert catalog.airports_by_lid["PDX"].county == "Multnomah"
+    assert catalog.airports_by_lid["PDX"].website == "https://www.portofportland.com/PDX"
     oregon = catalog.states_by_code["OR"]
     assert oregon.agency == "Oregon Department of Aviation"
     assert oregon.agency_url == "https://www.oregon.gov/aviation"
@@ -116,6 +119,46 @@ def test_airport_completeness_prefers_alp_over_no_plan() -> None:
     )
     catalog = Catalog(airports=[airport], states=[], documents=[alp], changes=[])
     assert completeness_for_airport(catalog, "4S2") == "complete"
+
+
+def test_hashed_airport_page_does_not_complete_the_plan() -> None:
+    from catalog.models import Airport, Document
+
+    airport = Airport(lid="4S9", name="Mulino", city="Mulino", state="OR")
+    hub = Document(
+        id="4s9-site",
+        kind="other",
+        source_url="https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+        completeness="complete",
+        airport_lid="4S9",
+        media="html",
+    )
+    plan = Document(
+        id="4s9-2019-amp",
+        kind="master_plan",
+        source_url="https://example.com/2019.pdf",
+        completeness="link_only",
+        airport_lid="4S9",
+    )
+    catalog = Catalog(airports=[airport], documents=[hub, plan])
+    assert completeness_for_airport(catalog, "4S9") == "link_only"
+
+
+def test_unvetted_snapshot_does_not_complete_or_list() -> None:
+    from catalog.models import Airport, Document, visible_on_site
+
+    airport = Airport(lid="BVY", name="Beverly", city="Beverly", state="MA")
+    snap = Document(
+        id="bvy-minutes",
+        kind="master_plan",
+        source_url="https://example.com/minutes.pdf",
+        completeness="complete",
+        review_status="pending",
+        airport_lid="BVY",
+    )
+    catalog = Catalog(airports=[airport], documents=[snap])
+    assert visible_on_site(snap) is False
+    assert completeness_for_airport(catalog, "BVY") == "missing"
 
 
 def test_load_and_write_roundtrip(tmp_path: Path) -> None:

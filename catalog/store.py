@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from catalog.models import Airport, Budget, ChangeEvent, Document, Grant, State
+from catalog.models import Airport, Budget, ChangeEvent, Document, Grant, State, visible_on_site
 
 COMPLETENESS_RANK = {
     "complete": 4,
@@ -42,6 +42,7 @@ class Catalog:
     changes: list[ChangeEvent] = field(default_factory=list)
     grants: list[Grant] = field(default_factory=list)
     budgets: list[Budget] = field(default_factory=list)
+    overviews: dict[str, dict] = field(default_factory=dict)
     _airports_by_lid: dict[str, Airport] = field(init=False, repr=False, compare=False)
     _states_by_code: dict[str, State] = field(init=False, repr=False, compare=False)
     _documents_by_id: dict[str, Document] = field(init=False, repr=False, compare=False)
@@ -105,6 +106,9 @@ class Catalog:
     def grants_for_airport(self, lid: str) -> list[Grant]:
         return list(self._grants_by_lid.get(lid, []))
 
+    def overview_for(self, lid: str) -> dict | None:
+        return self.overviews.get(lid)
+
     def grants_for_state(self, code: str) -> list[Grant]:
         lids = {airport.lid for airport in self.airports_for_state(code)}
         by_lid: dict[str, list[Grant]] = {}
@@ -146,6 +150,7 @@ class Catalog:
         _write_jsonl(dest / "changes.jsonl", [item.to_dict() for item in self.changes])
         _write_jsonl(dest / "grants.jsonl", [item.to_dict() for item in self.grants])
         _write_jsonl(dest / "budgets.jsonl", [item.to_dict() for item in self.budgets])
+        write_overviews_overlay(dest, self.overviews)
 
     @classmethod
     def load(cls, source: Path) -> Catalog:
@@ -166,6 +171,7 @@ class Catalog:
             changes=changes,
             grants=grants,
             budgets=budgets,
+            overviews=load_overviews_overlay(source),
         )
 
     @classmethod
@@ -190,6 +196,7 @@ def merge_overlay(catalog: Catalog, overlay: dict[str, dict]) -> Catalog:
         changes=list(catalog.changes),
         grants=list(catalog.grants),
         budgets=list(catalog.budgets),
+        overviews=dict(catalog.overviews),
     )
 
 
@@ -250,6 +257,31 @@ def write_grants_overlay(overlay_dir: Path, grants: list[Grant]) -> None:
     _write_jsonl(overlay_dir / "grants.jsonl", rows)
 
 
+def load_overviews_overlay(overlay_dir: Path | None) -> dict[str, dict]:
+    if overlay_dir is None:
+        return {}
+    rows: dict[str, dict] = {}
+    for row in _read_jsonl(overlay_dir / "overviews.jsonl"):
+        lid = row.get("airport_lid")
+        if lid:
+            rows[lid] = row
+    return rows
+
+
+def write_overviews_overlay(overlay_dir: Path, overviews: dict[str, dict]) -> None:
+    rows = [overviews[lid] for lid in sorted(overviews)]
+    _write_jsonl(overlay_dir / "overviews.jsonl", rows)
+
+
+def upsert_overview_overlay(overlay_dir: Path, row: dict) -> None:
+    lid = row.get("airport_lid")
+    if not lid:
+        return
+    current = load_overviews_overlay(overlay_dir)
+    current[lid] = row
+    write_overviews_overlay(overlay_dir, current)
+
+
 def load_changes_overlay(overlay_dir: Path | None) -> list[ChangeEvent]:
     if overlay_dir is None:
         return []
@@ -279,7 +311,11 @@ def write_overlay_update(overlay_dir: Path, document_id: str, updates: dict) -> 
 
 
 def completeness_for_airport(catalog: Catalog, lid: str) -> str:
-    docs = catalog.documents_for_airport(lid)
+    docs = [
+        document
+        for document in catalog.documents_for_airport(lid)
+        if document.kind in {"master_plan", "alp"} and visible_on_site(document)
+    ]
     if not docs:
         return "missing"
     best = "missing"

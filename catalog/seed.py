@@ -15,6 +15,7 @@ from catalog.store import (
     load_changes_overlay,
     load_grants_overlay,
     load_overlay,
+    load_overviews_overlay,
     merge_overlay,
 )
 
@@ -51,20 +52,43 @@ def _apply_reference_cases(by_lid: dict[str, Airport], catalog_root: Path) -> li
             by_lid[lid] = Airport(
                 lid=lid,
                 name=case["name"],
-                city="",
+                city=case.get("city") or "",
                 state=case["state"],
+                county=case.get("county"),
                 npias_role=case.get("npias_role"),
                 icao=case.get("icao"),
+                elevation_ft=case.get("elevation_ft"),
+                website=case.get("website"),
+                ownership=case.get("ownership"),
+                facility_use=case.get("facility_use"),
                 in_npias=in_npias,
+                runways=list(case.get("runways") or []),
+                fuel=case.get("fuel"),
+                hangar_storage=bool(case.get("hangar_storage")),
+                tiedown_storage=bool(case.get("tiedown_storage")),
                 sources=["reference"],
             )
         else:
             by_lid[lid] = replace(
                 current,
                 name=case.get("name") or current.name,
+                city=current.city or case.get("city") or "",
+                county=current.county or case.get("county"),
                 npias_role=current.npias_role or case.get("npias_role"),
                 icao=case.get("icao") or current.icao,
+                elevation_ft=(
+                    current.elevation_ft
+                    if current.elevation_ft is not None
+                    else case.get("elevation_ft")
+                ),
+                website=current.website or case.get("website"),
+                ownership=current.ownership or case.get("ownership"),
+                facility_use=current.facility_use or case.get("facility_use"),
                 in_npias=current.in_npias or in_npias,
+                runways=list(current.runways or case.get("runways") or []),
+                fuel=current.fuel or case.get("fuel"),
+                hangar_storage=current.hangar_storage or bool(case.get("hangar_storage")),
+                tiedown_storage=current.tiedown_storage or bool(case.get("tiedown_storage")),
             )
         for row in case["documents"]:
             documents.append(Document.from_dict(row))
@@ -101,6 +125,7 @@ def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog
         changes=load_changes_overlay(overlay_dir),
         grants=overlay_grants or _reference_grants(catalog_root),
         budgets=overlay_budgets or _reference_budgets(catalog_root),
+        overviews=load_overviews_overlay(overlay_dir),
     )
     overlay = load_overlay(overlay_dir)
     if overlay:

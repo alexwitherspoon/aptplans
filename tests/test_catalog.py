@@ -16,6 +16,9 @@ def test_schema_has_notice_and_content_fingerprints() -> None:
     assert "images_sha256" in schema["properties"]
     assert "publisher" in schema["properties"]
     assert "published_at" in schema["properties"]
+    assert "found_on" in schema["properties"]
+    assert "part_of" in schema["properties"]
+    assert "media" in schema["properties"]
 
 
 def test_complete_requires_official_and_preserved_copy() -> None:

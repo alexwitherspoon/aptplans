@@ -81,16 +81,6 @@ def parse_appendix_a(xlsx_path: Path) -> list[dict]:
     return parse_appendix_a_bytes(xlsx_path.read_bytes())
 
 
-def load_npias(path: Path) -> list[dict]:
-    records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        records.append(json.loads(line))
-    return records
-
-
 def write_npias(records: list[dict], dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     lines = [json.dumps(item, ensure_ascii=True, separators=(",", ":")) for item in records]

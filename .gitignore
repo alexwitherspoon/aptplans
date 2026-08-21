@@ -23,6 +23,8 @@ htmlcov/
 *.PDF
 !catalog/references/files/
 !catalog/references/files/*.pdf
+!catalog/references/files/*.html
+*.facts.txt
 *.gguf
 *.GGUF
 *.warc
@@ -34,6 +36,9 @@ data/models/*
 !data/models/Modelfile.bonsai-27b
 data/text/
 data/search/
+data/reject/
+data/logs/
+data/score/
 catalog/data/*.jsonl
 /files/
 extracted/
@@ -51,6 +56,7 @@ extracted/
 # Environment / secrets
 .env
 .env.local
+.env.review
 .env.*.local
 .env.secrets
 .env.search

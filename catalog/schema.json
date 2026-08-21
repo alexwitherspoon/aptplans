@@ -51,6 +51,20 @@
     },
     "summary": { "type": ["string", "null"] },
     "publisher": { "type": ["string", "null"] },
-    "published_at": { "type": ["string", "null"] }
+    "published_at": { "type": ["string", "null"] },
+    "found_on": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Page that listed this file. Provenance of discovery, not a second official source."
+    },
+    "part_of": {
+      "type": ["string", "null"],
+      "description": "Document id of the edition this chapter or section update belongs to."
+    },
+    "media": {
+      "type": ["string", "null"],
+      "enum": ["pdf", "html", "other", null],
+      "description": "What we hashed. A webpage can be complete without a PDF."
+    }
   }
 }

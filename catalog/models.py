@@ -19,11 +19,13 @@ class Airport:
     name: str
     city: str
     state: str
+    county: str | None = None
     npias_role: str | None = None
     icao: str | None = None
     iata: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    elevation_ft: int | None = None
     website: str | None = None
     ownership: str | None = None
     service_level: str | None = None
@@ -32,6 +34,10 @@ class Airport:
     facility_use: str | None = None
     nasr_effective: str | None = None
     npias_edition: str | None = None
+    runways: list[dict[str, Any]] = field(default_factory=list)
+    fuel: str | None = None
+    hangar_storage: bool = False
+    tiedown_storage: bool = False
     sources: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -42,6 +48,8 @@ class Airport:
         payload = dict(data)
         if payload.get("sources") is None:
             payload.pop("sources", None)
+        if payload.get("runways") is None:
+            payload.pop("runways", None)
         return _from_dict(cls, payload)
 
 
@@ -168,6 +176,9 @@ class Document:
     summary: str | None = None
     publisher: str | None = None
     published_at: str | None = None
+    found_on: str | None = None
+    part_of: str | None = None
+    media: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -175,6 +186,16 @@ class Document:
     def overlay(self, updates: dict[str, Any]) -> Document:
         allowed = {key: value for key, value in updates.items() if key in self.__dataclass_fields__}
         return replace(self, **allowed)
+
+    def inferred_media(self) -> str:
+        if self.media in {"pdf", "html", "other"}:
+            return self.media
+        path = (self.source_url or "").split("?", 1)[0].lower()
+        if path.endswith(".pdf"):
+            return "pdf"
+        if path.endswith((".html", ".htm", ".aspx", ".shtml")) or path.endswith("/"):
+            return "html"
+        return "other"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Document:
@@ -204,9 +225,21 @@ def work_key(document: Document) -> tuple[str, str] | None:
     return (document.airport_lid, document.kind)
 
 
+def visible_on_site(document: Document) -> bool:
+    """Public pages list curated catalog rows and vetted snapshots only."""
+    review = document.review_status or "pending"
+    if review == "needs_human":
+        return False
+    if review in {"published", "auto_pass"}:
+        return True
+    return review == "pending" and document.completeness == "link_only"
+
+
 def looks_like_work_edition(document: Document) -> bool:
     """True for a whole plan or ALP file, not a named chapter of the same study."""
     if work_key(document) is None:
+        return False
+    if document.part_of:
         return False
     blob = f"{document.title or ''} {document.id}".lower().replace("_", " ").replace("-", " ")
     return not any(marker in blob for marker in _CHAPTER_MARKERS)

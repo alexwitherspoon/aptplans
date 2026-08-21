@@ -115,6 +115,13 @@ def is_planning(description: str) -> bool:
     return bool(_PLANNING_RE.search(description or ""))
 
 
+def grant_title(description: str) -> str:
+    text = " ".join((description or "").split())
+    if not text:
+        return "Grant"
+    return text.split(",", 1)[0].strip() or text
+
+
 def fain_from_grant_number(grant_number: str | None) -> str | None:
     if not grant_number:
         return None

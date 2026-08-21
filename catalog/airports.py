@@ -74,9 +74,23 @@ def _blank(value: str | None) -> str | None:
 def _display_name(nasr_name: str, npias_name: str | None) -> str:
     if npias_name:
         return npias_name
-    if nasr_name.isupper():
-        return nasr_name.title()
-    return nasr_name
+    return _place_name(nasr_name)
+
+
+def _place_name(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if text.isupper():
+        return text.title()
+    return text
+
+
+def _int(value: str | None) -> int | None:
+    number = _float(value)
+    if number is None:
+        return None
+    return int(round(number))
 
 
 def apt_csv_zip_url(day: str, month_abbr: str, year: str) -> str:
@@ -107,19 +121,82 @@ def current_apt_csv_url(listing_html: str) -> str:
     raise ValueError("NASR listing has no current APT CSV zip")
 
 
+def _flag(value: str | None) -> bool:
+    return (value or "").strip().upper() in {"Y", "YES", "TRUE", "1"}
+
+
+def _zip_csv_rows(archive: zipfile.ZipFile, suffix: str) -> list[dict]:
+    name = next(
+        (item for item in archive.namelist() if item.replace("\\", "/").endswith(suffix)),
+        None,
+    )
+    if name is None:
+        return []
+    text = archive.read(name).decode("utf-8", errors="replace")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def _fuel_types(raw: str | None) -> str | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    rest = f" {text.upper().replace(',', ' ')} "
+    labels: list[str] = []
+    for code, label in (
+        ("A1+", "Jet A-1+"),
+        ("A+", "Jet A+"),
+        ("A1", "Jet A-1"),
+        ("JET A", "Jet A"),
+        (" A ", "Jet A"),
+        (" B ", "Jet B"),
+        ("100LL", "100LL"),
+        ("MOGAS", "mogas"),
+        ("100", "100"),
+        ("80", "80"),
+    ):
+        token = code if code.startswith(" ") else f" {code} "
+        if token not in rest:
+            continue
+        labels.append(label)
+        rest = rest.replace(token, " ", 1)
+    return " · ".join(labels) if labels else text
+
+
+def _runway_rows(rows: list[dict]) -> dict[str, list[dict]]:
+    by_lid: dict[str, list[dict]] = {}
+    for row in rows:
+        lid = (row.get("ARPT_ID") or "").strip().upper()
+        ident = re.sub(r"\s+", "", (row.get("RWY_ID") or "").replace("-", "/"))
+        if not lid or "/" not in ident:
+            continue
+        status = (row.get("RWY_STATUS") or row.get("RWY_STAT") or "").strip().upper()
+        if status in {"CLSD", "CLOSED"}:
+            continue
+        length = _int(row.get("RWY_LEN") or row.get("LENGTH"))
+        width = _int(row.get("RWY_WIDTH") or row.get("WIDTH"))
+        if not length or not width or length < 500 or width < 20 or width > 400:
+            continue
+        item = {
+            "id": ident,
+            "length_ft": length,
+            "width_ft": width,
+        }
+        surface = (row.get("SURFACE_TYPE_CODE") or row.get("SURFACE") or "").strip()
+        if surface:
+            item["surface"] = surface
+        by_lid.setdefault(lid, []).append(item)
+    return by_lid
+
+
 def parse_nasr_apt_zip(data: bytes) -> list[dict]:
-    """Public-use airports and seaplane bases from APT_BASE.csv."""
+    """Public-use airports and seaplane bases from APT_BASE.csv, with APT_RWY dimensions."""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        name = next(
-            (item for item in archive.namelist() if item.replace("\\", "/").endswith("APT_BASE.csv")),
-            None,
-        )
-        if name is None:
+        base_rows = _zip_csv_rows(archive, "APT_BASE.csv")
+        if not base_rows:
             raise ValueError("NASR zip has no APT_BASE.csv")
-        text = archive.read(name).decode("utf-8", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
+        runways = _runway_rows(_zip_csv_rows(archive, "APT_RWY.csv"))
     records: list[dict] = []
-    for row in reader:
+    for row in base_rows:
         lid = (row.get("ARPT_ID") or "").strip().upper()
         if not lid:
             continue
@@ -132,15 +209,21 @@ def parse_nasr_apt_zip(data: bytes) -> list[dict]:
             {
                 "lid": lid,
                 "name": (row.get("ARPT_NAME") or "").strip(),
-                "city": (row.get("CITY") or "").strip(),
+                "city": _place_name(row.get("CITY")),
                 "state": (row.get("STATE_CODE") or "").strip().upper(),
+                "county": _place_name(row.get("COUNTY_NAME")) or None,
                 "icao": _blank(row.get("ICAO_ID")),
                 "latitude": _float(row.get("LAT_DECIMAL")),
                 "longitude": _float(row.get("LONG_DECIMAL")),
+                "elevation_ft": _int(row.get("ELEV")),
                 "ownership": _blank(row.get("OWNERSHIP_TYPE_CODE")),
                 "facility_use": PUBLIC_USE,
                 "site_type": site,
                 "effective": _blank(row.get("EFF_DATE")),
+                "runways": runways.get(lid, []),
+                "fuel": _fuel_types(row.get("FUEL_TYPES") or row.get("FUEL_TYPE")),
+                "hangar_storage": _flag(row.get("TRNS_STRG_HGR_FLAG")),
+                "tiedown_storage": _flag(row.get("TRNS_STRG_TIE_FLAG")),
             }
         )
     return records
@@ -167,16 +250,22 @@ def merge_airports(
             name=_display_name(row.get("name") or row["lid"], npias_row["name"] if npias_row else None),
             city=(npias_row.get("city") if npias_row else None) or row.get("city") or "",
             state=row.get("state") or (npias_row["state"] if npias_row else ""),
+            county=row.get("county"),
             npias_role=npias_row.get("npias_role") if npias_row else None,
             icao=row.get("icao"),
             latitude=row.get("latitude"),
             longitude=row.get("longitude"),
+            elevation_ft=row.get("elevation_ft"),
             ownership=(npias_row.get("ownership") if npias_row else None) or row.get("ownership"),
             service_level=npias_row.get("service_level") if npias_row else None,
             in_npias=npias_row is not None,
             facility_use=row.get("facility_use"),
             nasr_effective=effective,
             npias_edition=npias_edition if npias_row else None,
+            runways=list(row.get("runways") or []),
+            fuel=row.get("fuel"),
+            hangar_storage=bool(row.get("hangar_storage")),
+            tiedown_storage=bool(row.get("tiedown_storage")),
             sources=sources,
         )
     for lid, npias_row in npias_by_lid.items():
