@@ -1,5 +1,5 @@
-# Dependabot version updates. Requires Dependabot alerts enabled under
-# Settings → Code security (see .github/SECURITY_FEATURES.md).
+# Dependabot version updates (weekly pip, Actions, Docker).
+# Alerts and security-update PRs are separate UI settings — see SECURITY_FEATURES.md.
 version: 2
 updates:
   - package-ecosystem: pip
