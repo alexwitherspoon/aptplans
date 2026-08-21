@@ -223,8 +223,7 @@ grep -q '^EGRESS_PATH=' /home/aptplans/.env.production || \
 $COMPOSE_PROD up -d --force-recreate egress
 $COMPOSE_PROD logs -f egress   # wait for Initialization Sequence Completed
 
-# 4. If UDP still fails, try TCP (some networks block UDP 1197)
-#    Set in compose or one-shot: OPENVPN_PROTOCOL=tcp
+# 4. If UDP still fails, the origin network may block UDP 1197; production uses TCP OpenVPN.
 ```
 
 After `egress` is healthy, `worker` starts automatically (`depends_on: service_healthy`).

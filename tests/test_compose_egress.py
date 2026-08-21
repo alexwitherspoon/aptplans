@@ -35,5 +35,6 @@ def test_prod_egress_uses_pia_openvpn_env() -> None:
     assert "VPN_SERVICE_PROVIDER: private internet access" in prod
     assert "PIA_OPENVPN_USER" in prod
     assert "PIA_OPENVPN_PASSWORD" in prod
+    assert "OPENVPN_PROTOCOL: tcp" in prod
     assert "HEALTH_TARGET_ADDRESS: 1.1.1.1:443" in prod
     assert ":/gluetun" in prod
