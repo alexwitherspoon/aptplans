@@ -30,6 +30,9 @@ services:
 
   worker:
     depends_on:
+      egress:
+        condition: service_healthy
+        required: true
       ollama:
         condition: service_healthy
         required: true
@@ -55,7 +58,7 @@ services:
       - APTPLANS_USER_AGENT=aptplans.org
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=bonsai-27b
-      - APTPLANS_FETCH_PROXY=${APTPLANS_FETCH_PROXY:-}
+      - APTPLANS_FETCH_PROXY=http://egress:8888
       - INTAKE_GITHUB_TOKEN=${INTAKE_GITHUB_TOKEN:-}
       - INTAKE_GITHUB_REPO=${INTAKE_GITHUB_REPO:-}
       - APTPLANS_SEARCH_KEY=${APTPLANS_SEARCH_KEY:-}
@@ -101,3 +104,35 @@ services:
     volumes:
       - ${OLLAMA_PATH:-/var/lib/aptplans/ollama}:/root/.ollama
       - ${MODELS_PATH:-/var/lib/aptplans/models}:/models:ro
+
+  egress:
+    image: qmcgaw/gluetun:v3.40.0
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cpuset: ${WORKER_CPUSET:-0-3,16-19}
+    environment:
+      VPN_SERVICE_PROVIDER: private internet access
+      VPN_TYPE: openvpn
+      OPENVPN_USER: ${PIA_OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${PIA_OPENVPN_PASSWORD:-}
+      SERVER_REGIONS: ${PIA_SERVER_REGIONS:-US East}
+      HTTPPROXY: "on"
+      HTTPPROXY_LOG: "off"
+      HTTPPROXY_LISTENING_ADDRESS: :8888
+      HEALTH_VPN_DURATION_INITIAL: 60s
+    expose:
+      - "8888"
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

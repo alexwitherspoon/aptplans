@@ -289,7 +289,7 @@ ensure_secrets_file() {
         return
     fi
     as_root tee "${secrets_file}" >/dev/null <<EOF
-# Written by GitHub Actions Deploy (PIA SOCKS + intake + review tokens). Do not commit.
+# Written by GitHub Actions Deploy (PIA VPN + intake + review tokens). Do not commit.
 EOF
     as_root chown "${APP_USER}:${APP_USER}" "${secrets_file}"
     as_root chmod 600 "${secrets_file}"

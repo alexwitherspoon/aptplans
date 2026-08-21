@@ -1,0 +1,43 @@
+# Optional local overlay: PIA VPN egress for worker scrape testing.
+# Requires gitignored .env with PIA_OPENVPN_USER and PIA_OPENVPN_PASSWORD.
+#
+#   docker compose --env-file .env \
+#     -f docker/docker-compose.yml \
+#     -f docker/docker-compose.local.yml \
+#     -f docker/docker-compose.egress-local.yml up --build
+
+services:
+  worker:
+    depends_on:
+      egress:
+        condition: service_healthy
+        required: true
+    environment:
+      - APTPLANS_FETCH_PROXY=http://egress:8888
+      - APTPLANS_EGRESS_REQUIRED=1
+
+  egress:
+    image: qmcgaw/gluetun:v3.40.0
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: private internet access
+      VPN_TYPE: openvpn
+      OPENVPN_USER: ${PIA_OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${PIA_OPENVPN_PASSWORD:-}
+      SERVER_REGIONS: ${PIA_SERVER_REGIONS:-US East}
+      HTTPPROXY: "on"
+      HTTPPROXY_LOG: "off"
+      HTTPPROXY_LISTENING_ADDRESS: :8888
+      HEALTH_VPN_DURATION_INITIAL: 60s
+    expose:
+      - "8888"
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s

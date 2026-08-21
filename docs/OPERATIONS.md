@@ -149,6 +149,60 @@ docker compose --env-file /home/aptplans/.env.production \
 
 User-Agent is `aptplans.org`. One request at a time per host. Honor robots.txt. Back off on errors. Matching the slow parse rate is a feature.
 
+Production scrapes egress through the internal `egress` service (Gluetun + PIA OpenVPN). The worker uses `APTPLANS_FETCH_PROXY=http://egress:8888`; scrape targets must not see the origin host IP.
+
+After deploy or egress changes, confirm VPN health and that fetches use the tunnel. On origin, set a shell alias once per session:
+
+```bash
+export COMPOSE_PROD='docker compose --env-file /home/aptplans/.env.production --env-file /home/aptplans/.env.secrets -f docker/docker-compose.yml -f docker/docker-compose.prod.yml'
+```
+
+**1. Egress container health**
+
+```bash
+$COMPOSE_PROD ps egress
+$COMPOSE_PROD exec -T egress /gluetun-entrypoint healthcheck && echo egress_ok
+$COMPOSE_PROD logs --tail=30 egress
+```
+
+`egress` should be `healthy`. Logs should show OpenVPN `Initialization Sequence Completed` and a public IP that is not the origin host.
+
+**2. Tunnel IP vs origin host IP**
+
+```bash
+curl -fsS https://ifconfig.me/ip ; echo    # origin host (direct)
+$COMPOSE_PROD exec -T worker python3 -c \
+  "from pipeline.fetch import fetch_bytes; print(fetch_bytes('https://ifconfig.me/ip', timeout=20)[0].decode().strip())"
+```
+
+The worker IP must differ from the host IP. If they match, or the worker command errors, egress is not working.
+
+**3. Known scrape targets (worker path through `APTPLANS_FETCH_PROXY`)**
+
+```bash
+$COMPOSE_PROD exec -T worker python3 <<'PY'
+from catalog.airports import NASR_LISTING_URL
+from catalog.grants import GRANT_HISTORIES_URL
+from catalog.npias import NPIAS_SOURCE
+from catalog.ourairports import OURAIRPORTS_CSV_URL
+from pipeline.fetch import fetch_meta
+
+targets = [
+    ("nasr_listing", NASR_LISTING_URL),
+    ("npias", NPIAS_SOURCE),
+    ("ourairports", OURAIRPORTS_CSV_URL),
+    ("grant_histories", GRANT_HISTORIES_URL),
+]
+for name, url in targets:
+    status, final = fetch_meta(url, method="HEAD", timeout=60)
+    print(f"{name}: {status} {final}")
+PY
+```
+
+Expect `200` or `301`/`302` for each. Any `URLError`, `RuntimeError` (missing proxy), or timeout means the tunnel or target is broken.
+
+If `egress` is unhealthy or VPN creds are missing, worker fetches fail closed rather than falling back to the host IP.
+
 ## Disk
 
 PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files` and `/var/lib/aptplans/reject`. Expected corpus is on the order of 0.25-1 TB, with headroom on an 8 TB mirror. Reject copies age out after 90 days. There is no offsite replica of the bytes in the first deployment.

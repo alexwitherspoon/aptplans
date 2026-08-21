@@ -52,7 +52,7 @@ The document worker is not exposed to the internet. It is a Compose service on t
 
 Caddy may proxy `POST /search/query` to Meilisearch on the Compose network. That path is search-only: no host port, 8 KB body cap, no dumps or settings API. Extracted full text is not under the Caddy docroot. Do not bind 7700 on the host.
 
-Crawlers identify as `aptplans.org`. Fetch egress may use Private Internet Access SOCKS5 via `APTPLANS_FETCH_PROXY` on the worker only. That value is assembled from GitHub Actions secrets and written to `/home/aptplans/.env.secrets`. Do not install a host VPN. GitHub issue comments use `INTAKE_GITHUB_TOKEN` on the origin IP, not through the proxy. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository. Do not log `APTPLANS_FETCH_PROXY`, `INTAKE_GITHUB_TOKEN`, `APTPLANS_REVIEW_TOKEN`, `APTPLANS_SEARCH_KEY`, or `APTPLANS_GEMINI_KEY`.
+Crawlers identify as `aptplans.org`. Production worker scrapes egress through an internal HTTP proxy (`APTPLANS_FETCH_PROXY=http://egress:8888`) backed by a Compose `egress` service (Gluetun + PIA OpenVPN). The origin host public IP must not reach scrape targets. CD writes `PIA_OPENVPN_USER`, `PIA_OPENVPN_PASSWORD`, and optional `PIA_SERVER_REGIONS` to `/home/aptplans/.env.secrets`. Do not install a host VPN. GitHub issue comments use `INTAKE_GITHUB_TOKEN` on the origin IP, not through the proxy. Do not scrape authenticated or paywalled portals. Do not store credentials for airport CMS logins in this repository. Do not log `APTPLANS_FETCH_PROXY`, `PIA_OPENVPN_PASSWORD`, `INTAKE_GITHUB_TOKEN`, `APTPLANS_REVIEW_TOKEN`, `APTPLANS_SEARCH_KEY`, or `APTPLANS_GEMINI_KEY`.
 
 ## If something sensitive lands in git
 

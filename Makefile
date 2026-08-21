@@ -4,7 +4,9 @@
 
 .PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes
 
-COMPOSE := docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml
+COMPOSE_ENV_FILE := $(wildcard .env)
+COMPOSE := docker compose $(if $(COMPOSE_ENV_FILE),--env-file .env,) -f docker/docker-compose.yml -f docker/docker-compose.local.yml
+COMPOSE_EGRESS := docker compose $(if $(COMPOSE_ENV_FILE),--env-file .env,) -f docker/docker-compose.yml -f docker/docker-compose.local.yml -f docker/docker-compose.egress-local.yml
 PY ?= python3
 HOST ?= 127.0.0.1
 PORT ?= 8080
@@ -70,8 +72,13 @@ stack: site ## Build the site and start local Caddy, search, worker, and Ollama
 	mkdir -p data/files data/queue data/catalog data/models data/text data/search data/reject
 	$(COMPOSE) up --build
 
+stack-egress: site ## Like stack, but worker scrapes through PIA VPN egress (needs .env VPN creds)
+	mkdir -p data/files data/queue data/catalog data/models data/text data/search data/reject
+	$(COMPOSE_EGRESS) up --build
+
 down: ## Stop local Docker services
-	$(COMPOSE) down
+	-$(COMPOSE) down
+	-$(COMPOSE_EGRESS) down
 
 down-clean: ## Stop local Docker services and remove named volumes
 	$(COMPOSE) down -v

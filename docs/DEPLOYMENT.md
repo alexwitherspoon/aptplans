@@ -41,7 +41,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - daily official-URL check (dead, moved, or live; Wayback rediscovery on origin)
    - monthly NASR/NPIAS airport, grant, and fact-sheet refresh (1st of the month, Pacific)
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
-   - Worker secrets in `/home/aptplans/.env.secrets` (PIA SOCKS, intake GitHub token, review API token, Brave search key, and optional Gemini key if those Actions secrets are set)
+   - Worker secrets in `/home/aptplans/.env.secrets` (PIA VPN creds for the `egress` service, intake GitHub token, review API token, Brave search key, and optional Gemini key if those Actions secrets are set)
    - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
    - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
 
@@ -62,7 +62,7 @@ Host layout:
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
 | `/var/lib/aptplans/models` | source GGUF used to `ollama create` |
 | `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
-| `/home/aptplans/.env.secrets` | PIA SOCKS + intake GitHub token + review token + Brave/Gemini search keys (CD; bootstrap does not overwrite) |
+| `/home/aptplans/.env.secrets` | PIA VPN (`PIA_OPENVPN_*`) + intake GitHub token + review token + Brave/Gemini search keys (CD; bootstrap does not overwrite) |
 | `/home/aptplans/.env.search` | Meilisearch master key (bootstrap writes once; CD does not overwrite) |
 
 ## Manual deploy
