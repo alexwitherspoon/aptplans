@@ -47,6 +47,33 @@ def test_seed_without_overlay_is_reference_airports_only() -> None:
     assert catalog.airports_by_lid["PDX"].in_npias is True
 
 
+def test_production_overlay_skips_git_reference_rows(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    monkeypatch.delenv("APTPLANS_DEV_PREVIEW", raising=False)
+    monkeypatch.delenv("APTPLANS_REFERENCE_SEED", raising=False)
+    catalog = seed_catalog(ROOT / "catalog", overlay_dir=tmp_path)
+    assert catalog.airports == []
+    assert catalog.grants == []
+    assert catalog.budgets == []
+    assert not any(doc.airport_lid for doc in catalog.documents)
+    assert any(doc.id == "or-ors-836" for doc in catalog.documents)
+
+
+def test_dev_preview_keeps_reference_rows_with_overlay(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    monkeypatch.setenv("APTPLANS_DEV_PREVIEW", "1")
+    catalog = seed_catalog(ROOT / "catalog", overlay_dir=tmp_path)
+    assert "PDX" in catalog.airports_by_lid
+
+
+def test_reference_seed_override(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    monkeypatch.delenv("APTPLANS_DEV_PREVIEW", raising=False)
+    monkeypatch.setenv("APTPLANS_REFERENCE_SEED", "1")
+    catalog = seed_catalog(ROOT / "catalog", overlay_dir=tmp_path)
+    assert "PDX" in catalog.airports_by_lid
+
+
 def test_seed_overlay_adds_nasr_airports(tmp_path: Path) -> None:
     from catalog.models import Airport
     from catalog.store import write_airports_overlay
