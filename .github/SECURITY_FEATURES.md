@@ -54,7 +54,7 @@ Installs `.[dev,worker]` before analysis so imports resolve the same way as orig
 
 ### `.github/workflows/dependency-review.yml`
 
-On every pull request, flags newly introduced dependencies with known vulnerabilities or high license risk. Lightweight; no secrets required.
+On every pull request, flags newly introduced dependencies with known vulnerabilities (default severity gate; no license policy configured). Lightweight; no secrets required.
 
 ## Settings to enable in GitHub UI
 
