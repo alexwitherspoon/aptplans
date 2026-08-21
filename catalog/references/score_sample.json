@@ -1,0 +1,6 @@
+{
+  "description": "Training corpus index for evidence scoring. Gold JSON stores labels and official URLs only. Full original bytes are catalog/references/files (committed PDFs and hub HTML) or local data/score after scripts/fetch_score_sources.py. Do not store excerpts. OurAirports identity is not this set.",
+  "gold": "score_gold.json",
+  "committed_dir": "files",
+  "cache_dir": "data/score"
+}

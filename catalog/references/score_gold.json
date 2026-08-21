@@ -1,0 +1,502 @@
+{
+  "description": "Gold labels for official URLs. Do not store excerpts. Full source bytes are catalog/references/files (fixture) or local data/score/{id}.pdf|.html after scripts/fetch_score_sources.py. Hits are not a publish.",
+  "cases": [
+    {
+      "id": "4s9-2019-amp",
+      "shape": "bound_amp",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/airports/Documents/4S9/Master%20Plan/2019/Mulino%20Final%20AMP%20July%202019.pdf",
+      "label": "Master Plan",
+      "gold": {"same_airport": true, "kind": "master_plan", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "4s9-alp-abstract-name",
+      "shape": "alp_abstract_filename",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf",
+      "label": "Airport Diagram",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "4s9-2008-inventory",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%202%20-%20Inventory.pdf",
+      "label": "Chapter 2 Inventory",
+      "fixture": "4s9-2008-inventory",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-strategic-analysis",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%201%20-%20Strategic%20Analysis.pdf",
+      "label": "Chapter 1 Strategic Analysis",
+      "fixture": "4s9-2008-strategic-analysis",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-facility-requirements",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%204%20-%20Facility%20Requirements.pdf",
+      "label": "Chapter 4 Facility Requirements",
+      "fixture": "4s9-2008-facility-requirements",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-alternatives",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%205%20-%20Alternatives.pdf",
+      "label": "Chapter 5 Alternatives",
+      "fixture": "4s9-2008-alternatives",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-hub-sharepoint",
+      "shape": "sharepoint_hub",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx",
+      "label": "Mulino State Airport [4S9]",
+      "source": "catalog/references/files/4s9-hub-sharepoint.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "4s9-draft-ea",
+      "shape": "nepa_ea",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Projects/Draft%20EA%206-11-2019%20completePart-2.pdf",
+      "label": "Draft Environmental Assessment",
+      "gold": {"same_airport": true, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "4s9-county-appendix",
+      "shape": "county_appendix",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://dochub.clackamas.us/documents/drupal/ce55dda2-3240-47ff-a5cc-9084415b5723",
+      "label": "Appendix A.6",
+      "gold": {"same_airport": false, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "4s9-wikipedia",
+      "shape": "encyclopedia",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://en.wikipedia.org/wiki/Mulino_State_Airport",
+      "label": "Mulino State Airport",
+      "gold": {"same_airport": true, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "4s9-wrong-airport-uao",
+      "shape": "wrong_lid",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/UAO/Master%20Plan/6.%20Chapter%203%20-%20Forecasts.pdf",
+      "label": "Chapter Three Forecasts",
+      "gold": {"same_airport": false, "kind": "chapter", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "4s9-news",
+      "shape": "notice",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/agency/about/pages/be-informed.aspx",
+      "label": "Notice - Mulino State Airport - Waterline and Hangar Construction",
+      "gold": {"same_airport": true, "kind": "notice", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "pdx-microsite",
+      "shape": "plan_microsite",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "state": "OR",
+      "url": "https://pdx2045.org/",
+      "label": "PDX 2045 Master Plan Update",
+      "source": "catalog/references/files/pdx-microsite.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "pdx-existing-conditions",
+      "shape": "named_volume",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "state": "OR",
+      "url": "https://pdx2045.org/wp-content/uploads/2025/06/PDX-2045-Exisiting-Conditions-Report-Full-Size.pdf",
+      "label": "Existing Conditions Report",
+      "fixture": "pdx-2045-existing-conditions",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "pdx-ssi",
+      "shape": "ssi_filename",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "state": "OR",
+      "url": "https://example.com/PDX_ALP_SSI_sheet.pdf",
+      "label": "ALP sheet",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "pdx-lab-budget",
+      "shape": "agency_budget",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/example/2025-27-LAB.pdf",
+      "label": "Legislatively Adopted Budget",
+      "gold": {"same_airport": false, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "hio-hub",
+      "shape": "sponsor_plan_hub",
+      "lid": "HIO",
+      "name": "Hillsboro Airport",
+      "state": "OR",
+      "url": "https://www.portofportland.com/HIO/Masterplan",
+      "label": "Hillsboro Airport Master Plan",
+      "source": "catalog/references/files/hio-hub.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "hio-inventory",
+      "shape": "cdn_chapter",
+      "lid": "HIO",
+      "name": "Hillsboro Airport",
+      "state": "OR",
+      "url": "https://cdn.portofportland.com/pdfs/HIO_Ch1_Inventory.pdf",
+      "label": "Inventory",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "ttd-bound",
+      "shape": "bound_pac_report",
+      "lid": "TTD",
+      "name": "Portland-Troutdale Airport",
+      "state": "OR",
+      "url": "https://cdn.portofportland.com/pdfs/TTD-PAC-report.pdf",
+      "label": "Shaping Our Future",
+      "fixture": "ttd-2016-shaping-our-future",
+      "gold": {"same_airport": true, "kind": "master_plan", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "4s2-hub",
+      "shape": "port_plan_page",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "state": "OR",
+      "url": "https://www.portofhoodriver.com/airport-master-plan",
+      "label": "Airport Master Plan",
+      "source": "catalog/references/files/4s2-hub.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "4s2-alp-hash-path",
+      "shape": "cms_hash_alp",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "state": "OR",
+      "url": "https://www.portofhoodriver.com/files/c0434eac6/03-Hood-River-ALP.pdf",
+      "label": "Airport Layout Plan",
+      "fixture": "4s2-2018-alp-sheet",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "4s2-chapters",
+      "shape": "bound_chapters",
+      "lid": "4S2",
+      "name": "Ken Jernstedt Airfield",
+      "state": "OR",
+      "url": "https://www.portofhoodriver.com/files/2289d2744/Chapters-1-4.pdf",
+      "label": "Chapters 1-4",
+      "fixture": "4s2-2018-chapters-1-4",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "bvy-dump",
+      "shape": "document_dump",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/documents/",
+      "label": "Documents",
+      "source": "catalog/references/files/bvy-dump.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "bvy-alp",
+      "shape": "signed_alp",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/wp-content/uploads/2024/03/ALP.pdf",
+      "label": "Airport Layout Plan",
+      "fixture": "bvy-2022-alp",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "bvy-introduction",
+      "shape": "named_chapter",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Chapter-1-Introduction.pdf",
+      "label": "Chapter 1 Introduction",
+      "fixture": "bvy-2022-introduction",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "bvy-minutes",
+      "shape": "meeting_minutes",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Commission-minutes.pdf",
+      "label": "Commission minutes",
+      "gold": {"same_airport": true, "kind": "notice", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "den-hub-botwall",
+      "shape": "bot_wall_hub",
+      "lid": "DEN",
+      "name": "Denver International Airport",
+      "state": "CO",
+      "url": "https://www.flydenver.com/about-den/master-plan/",
+      "label": "Denver International Airport Master Plan",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "anc-hub",
+      "shape": "state_dot_hub",
+      "lid": "ANC",
+      "name": "Ted Stevens Anchorage International Airport",
+      "state": "AK",
+      "url": "https://dot.alaska.gov/anc/passengers-master-plan.shtml",
+      "label": "Master Plan",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "anc-2026-exec-summary",
+      "shape": "exec_summary",
+      "lid": "ANC",
+      "name": "Ted Stevens Anchorage International Airport",
+      "state": "AK",
+      "url": "https://dot.alaska.gov/anc/documents/master-plan/2026%20Airport%20Master%20Plan%20-%20Executive%20Summary.pdf",
+      "label": "2026 Airport Master Plan - Executive Summary",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "anc-2014-alp-appendix",
+      "shape": "alp_as_appendix",
+      "lid": "ANC",
+      "name": "Ted Stevens Anchorage International Airport",
+      "state": "AK",
+      "url": "https://dot.alaska.gov/anc/about/docs/Appendix%20K_Airport%20Layout%20Plan_Final.pdf",
+      "label": "Appendix K Airport Layout Plan",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "aus-hub",
+      "shape": "city_plan_hub",
+      "lid": "AUS",
+      "name": "Austin-Bergstrom International Airport",
+      "state": "TX",
+      "url": "https://www.flyaustin.com/aus-master-plan",
+      "label": "AUS Master Plan",
+      "source": "catalog/references/files/aus-hub.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "aus-alp-existing",
+      "shape": "alp_sheet",
+      "lid": "AUS",
+      "name": "Austin-Bergstrom International Airport",
+      "state": "TX",
+      "url": "https://www.austintexas.gov/sites/default/files/images/Airport/business/AUS_Master_Plan/03-M3343-RC-1-01-Airport%20Layout%20Plan%20-%20Existing.pdf",
+      "label": "Airport Layout Plan - Existing",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "aus-ch7-environmental-path",
+      "shape": "chapter_in_environmental_folder",
+      "lid": "AUS",
+      "name": "Austin-Bergstrom International Airport",
+      "state": "TX",
+      "url": "https://www.austintexas.gov/sites/default/files/images/Airport/Environmental/Master_Plan/Master_Plan_Chp7_Part1.pdf",
+      "label": "Chapter 7 Implementation Plan and Schedule",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "lex-economic-impact",
+      "shape": "economic_impact",
+      "lid": "LEX",
+      "name": "Blue Grass Airport",
+      "state": "KY",
+      "url": "https://www.bluegrassairport.com/wp-content/uploads/2024/08/Economic-Impact-Study-Comprehensive-Report.pdf",
+      "label": "Economic Impact Study Comprehensive Report",
+      "gold": {"same_airport": true, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "mkc-aeis-under-master-plan",
+      "shape": "econ_impact_during_amp",
+      "lid": "MKC",
+      "name": "Kansas City Wheeler Downtown Airport",
+      "state": "MO",
+      "url": "https://mkc.airportstudy.net/wp-content/uploads/sites/48/2024/03/MKC-AEIS-Technical-Report-FINAL-Feb-2024.pdf",
+      "label": "Airport Economic Impact Study",
+      "gold": {"same_airport": true, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "al-sasp-econ",
+      "shape": "statewide_sasp",
+      "lid": "BHM",
+      "name": "Birmingham-Shuttlesworth International Airport",
+      "state": "AL",
+      "url": "https://www.dot.state.al.us/publications/Aero/pdf/aldoteconomicimpactstudytechnicalreport.pdf",
+      "label": "ALDOT Aviation System Plan and Economic Impact Study",
+      "gold": {"same_airport": false, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "hnl-passenger-site",
+      "shape": "facility_page",
+      "lid": "HNL",
+      "name": "Daniel K. Inouye International Airport",
+      "state": "HI",
+      "url": "https://airports.hawaii.gov/hnl/",
+      "label": "Daniel K. Inouye International Airport",
+      "source": "catalog/references/files/hnl-passenger-site.html",
+      "gold": {"same_airport": true, "kind": "hub", "confirm": false, "explore": true, "publish": false}
+    },
+    {
+      "id": "hnl-pfc-decision",
+      "shape": "pfc_agency_decision",
+      "lid": "HNL",
+      "name": "Daniel K. Inouye International Airport",
+      "state": "HI",
+      "url": "https://hidot.hawaii.gov/airports/files/2013/01/PFC-App-Final-Agency-Decision.pdf",
+      "label": "FAA Final Agency Decision",
+      "gold": {"same_airport": false, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "4s9-2008-introduction",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Introduction.pdf",
+      "label": "Introduction",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-forecasts",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%203%20-%20Forecasts.pdf",
+      "label": "Chapter 3 Forecasts",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-alp-narrative",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%206%20-%20ALP%20Narrative.pdf",
+      "label": "Chapter 6 ALP Narrative",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-2008-cip",
+      "shape": "stale_chapter",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Master%20Plan/2008/Chapter%207%20-%20CIP.pdf",
+      "label": "Chapter 7 CIP",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true, "current": false}
+    },
+    {
+      "id": "4s9-draft-ea-part1",
+      "shape": "nepa_ea",
+      "lid": "4S9",
+      "name": "Mulino State Airport",
+      "state": "OR",
+      "url": "https://www.oregon.gov/aviation/Airports/Documents/4S9/Projects/Draft%20EA%206-11-2019%20completePart-1.pdf",
+      "label": "Draft Environmental Assessment Part 1",
+      "gold": {"same_airport": true, "kind": "not_plan", "confirm": false, "explore": false, "publish": false}
+    },
+    {
+      "id": "hio-introduction",
+      "shape": "cdn_chapter",
+      "lid": "HIO",
+      "name": "Hillsboro Airport",
+      "state": "OR",
+      "url": "https://cdn.portofportland.com/pdfs/HIO_Ch0_Introduction.pdf",
+      "label": "Introduction",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "hio-summary-report",
+      "shape": "bound_summary",
+      "lid": "HIO",
+      "name": "Hillsboro Airport",
+      "state": "OR",
+      "url": "https://cdn.portofportland.com/pdfs/HIO_Summary_Report_Final.pdf",
+      "label": "Master Plan Summary Report",
+      "gold": {"same_airport": true, "kind": "master_plan", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "pdx-forecast-exec",
+      "shape": "exec_summary",
+      "lid": "PDX",
+      "name": "Portland International Airport",
+      "state": "OR",
+      "url": "https://cdn.portofportland.com/pdfs/PDX-2045-Forecast-Report-Executive-Summary.pdf",
+      "label": "Forecast Report Executive Summary",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "bvy-inventory",
+      "shape": "named_chapter",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Chapter-2-Inventory.pdf",
+      "label": "Chapter 2 Inventory",
+      "gold": {"same_airport": true, "kind": "chapter", "confirm": true, "explore": false, "publish": true}
+    },
+    {
+      "id": "bvy-alp-chapter",
+      "shape": "alp_as_chapter",
+      "lid": "BVY",
+      "name": "Beverly Regional Airport",
+      "state": "MA",
+      "url": "https://beverlyairport.com/wp-content/uploads/2024/03/Chapter-6-Airport-Layout-Plan.pdf",
+      "label": "Chapter 6 Airport Layout Plan",
+      "gold": {"same_airport": true, "kind": "alp", "confirm": true, "explore": false, "publish": true}
+    }
+  ]
+}
