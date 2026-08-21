@@ -5,8 +5,10 @@ from pipeline.search_client import (
     gemini_escalate,
     gemini_query_cap,
     hits_from_gemini_payload,
+    live_search_enabled,
     load_search_meter,
     brave_query_cap,
+    search_provider,
 )
 from pipeline.search_plan import (
     SearchHit,
@@ -166,3 +168,26 @@ def test_gemini_escalate_noop_without_key(monkeypatch) -> None:
         signals=SearchSignals(),
     )
     assert gemini_escalate(MULINO, empty) == []
+
+
+def test_live_search_enabled_on_production(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("APTPLANS_LIVE_SEARCH", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    assert live_search_enabled() is True
+    assert search_provider() == "brave"
+
+
+def test_live_search_disabled_in_ci(monkeypatch) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.delenv("APTPLANS_LIVE_SEARCH", raising=False)
+    assert live_search_enabled() is False
+    assert search_provider() == "fixture"
+
+
+def test_live_search_local_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setenv("APTPLANS_LIVE_SEARCH", "1")
+    assert live_search_enabled() is True

@@ -65,7 +65,7 @@ python3 scripts/train_evidence.py --outcomes data/score/review/gold.json
 
 `--llm` on `eval_search_plan.py` adds one gated Ollama query-hint round when a whole plan or ALP is still missing. The model never hits the search API.
 
-Set `APTPLANS_SEARCH_KEY` and `--provider brave` to replace the fixture with live Brave Search. Live overlay search is Oregon-only until you change `APTPLANS_SEARCH_STATES` (default `OR`; use `OR,WA` or `*` to widen):
+Set `APTPLANS_LIVE_SEARCH=1` and `--provider brave` to hit live Brave Search from a laptop. Production uses `APP_ENV=production` and reads the token from `.env.secrets`. Live overlay search is Oregon-only until you change `APTPLANS_SEARCH_STATES` (default `OR`; use `OR,WA` or `*` to widen):
 
 ```bash
 python3 scripts/eval_search_plan.py --overlay --provider brave --limit 10
