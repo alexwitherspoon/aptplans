@@ -10,6 +10,7 @@ from catalog.grants import (
     apply_award_status,
     faa_year_summary_url,
     fain_from_grant_number,
+    grant_spend_category,
     parse_aip_grants_bytes,
     remaining_obligation,
     usaspending_award_url,
@@ -292,6 +293,31 @@ def test_fain_and_remaining_obligation() -> None:
     assert remaining_obligation(grant) == 100
     assert remaining_obligation(Grant(airport_lid="PDX", amount=100, outlayed=0)) == 100
     assert remaining_obligation(Grant(airport_lid="PDX", amount=100)) is None
+
+
+def test_grant_spend_category() -> None:
+    assert grant_spend_category(
+        Grant(airport_lid="PDX", description="Reconstruct Taxiway", is_planning=False)
+    ) == "maintenance"
+    assert grant_spend_category(
+        Grant(airport_lid="PDX", description="Rehabilitate Runway 10L/28R", is_planning=False)
+    ) == "maintenance"
+    assert grant_spend_category(
+        Grant(airport_lid="PDX", description="Construct New Runway 3", is_planning=False)
+    ) == "growth"
+    assert grant_spend_category(
+        Grant(airport_lid="PDX", description="Expand Terminal Concourse", is_planning=False)
+    ) == "growth"
+    assert grant_spend_category(
+        Grant(
+            airport_lid="PDX",
+            description="Update Airport Master Plan Study",
+            is_planning=True,
+        )
+    ) == "planning"
+    assert grant_spend_category(
+        Grant(airport_lid="PDX", description="Zero Emissions Infrastructure", is_planning=False)
+    ) == "other"
 
 
 def test_apply_award_status_merges_usaspending_fields() -> None:

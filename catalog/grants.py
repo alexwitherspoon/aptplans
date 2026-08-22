@@ -115,6 +115,46 @@ def is_planning(description: str) -> bool:
     return bool(_PLANNING_RE.search(description or ""))
 
 
+_GROWTH_RE = re.compile(
+    r"\b(?:"
+    r"new\s+(?:runway|terminal|hangar|apron|taxiway|building|gate|facility)|"
+    r"(?:add|adding)\s+(?:a\s+)?(?:new\s+)?(?:runway|terminal|gate|hangar|apron)|"
+    r"expand(?:ing|s|ion)?|extension|extend(?:ing)?|lengthen(?:ing)?|widen(?:ing)?|"
+    r"additional\s+(?:runway|terminal|gate|hangar|apron)"
+    r")\b",
+    re.I,
+)
+_MAINTENANCE_RE = re.compile(
+    r"\b(?:"
+    r"rehabilitat(?:e|ion)|reseal(?:ing)?|resurface|repav(?:e|ing)?|"
+    r"overlay|reconstruct(?:ion)?|repair(?:ing)?|"
+    r"replace(?:ment)?|maintain(?:ance|ing)?|"
+    r"pavement\s+(?:rehab|overlay|treatment)|improve(?:ment)?"
+    r")\b",
+    re.I,
+)
+
+SPEND_CATEGORIES = ("maintenance", "growth", "planning", "other")
+SPEND_CATEGORY_LABELS = {
+    "maintenance": "Maintenance",
+    "growth": "Growth and expansion",
+    "planning": "Planning studies",
+    "other": "Other",
+}
+
+
+def grant_spend_category(grant: Grant) -> str:
+    """Classify grant spend as maintenance, growth, planning, or other."""
+    if grant.is_planning:
+        return "planning"
+    description = grant.description or ""
+    if _GROWTH_RE.search(description):
+        return "growth"
+    if _MAINTENANCE_RE.search(description):
+        return "maintenance"
+    return "other"
+
+
 def grant_title(description: str) -> str:
     text = " ".join((description or "").split())
     if not text:
