@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlparse
+import argparse
 import json
 import logging
 import os
@@ -278,9 +279,21 @@ def run_check_pass(
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Check official document URLs")
+    parser.add_argument(
+        "--enqueue",
+        action="store_true",
+        help="Enqueue link_check on the worker queue instead of running now",
+    )
+    args = parser.parse_args()
     overlay = overlay_dir_from_env()
     queue = Path(os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue"))
     catalog_root = ROOT / "catalog"
+    if args.enqueue:
+        from pipeline.boot_jobs import enqueue_job
+
+        enqueue_job(queue, "link_check")
+        return 0
     with worker_lock(queue):
         count = run_check_pass(overlay_dir=overlay, catalog_root=catalog_root, queue_dir=queue)
     if count:

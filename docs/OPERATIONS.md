@@ -205,7 +205,7 @@ If `egress` is unhealthy or VPN creds are missing, worker fetches fail closed ra
 
 ## Deploy and background jobs
 
-CD restarts the worker and returns once Caddy answers. HTML rebuild, FAA overlay refresh, search sync, and LLM warm-up run as **queue jobs** (`site_build`, `overlay_refresh`, `grant_spend`, `budget_enrich`, `overview_refresh`, `search_sync`, `ollama_warm`). Inspect pending work:
+CD restarts the worker and returns once Caddy answers. HTML rebuild, FAA overlay refresh, search sync, and LLM warm-up run as **queue jobs** (`pipeline_snapshot`, `site_build`, `overlay_refresh`, `grant_spend`, `budget_enrich`, `overview_refresh`, `search_sync`, `ollama_warm`, `discovery`, `link_check`). Inspect pending work:
 
 ```bash
 ls -1 /var/lib/aptplans/queue/pending/

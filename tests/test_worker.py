@@ -171,7 +171,6 @@ def test_main_boot_enqueue_failure_keeps_worker(monkeypatch) -> None:
         raise RuntimeError("queue down")
 
     monkeypatch.setattr(worker, "enqueue_boot_jobs", boom)
-    monkeypatch.setattr(worker, "_refresh_pipeline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(worker, "run_loop", lambda: called.append("loop"))
     worker.main()
     assert called == ["loop"]

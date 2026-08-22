@@ -23,11 +23,14 @@ log = logging.getLogger("aptplans.overviews")
 
 
 def _build_mod():
+    import sys
+
     spec = importlib.util.spec_from_file_location(
         "aptplans_build_overviews", ROOT / "site" / "build.py"
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

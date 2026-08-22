@@ -1,6 +1,6 @@
 The serial worker is a Compose service in the same stack as Caddy, Meilisearch, and Ollama.
 
-The worker drains the on-disk queue with airport-scoped slots (default one airport at a time: finish PDX explore/fetch/vet before starting TTD). `APTPLANS_AIRPORT_CONCURRENCY` raises how many distinct airports may have jobs in `active/` at once; `APTPLANS_JOB_PAUSE_SEC` (default 2) sleeps after each successful job to pace Brave and Ollama. Idle poll is `APTPLANS_WORKER_IDLE_SEC` (default 60). GitHub intake is listed at most hourly while the disk queue is empty (`APTPLANS_INTAKE_IDLE_SEC`, default 3600), and not under the flock. Crawlers identify themselves as `aptplans.org`. A crash leaves the job in `active/` so the loop retries it. After three uncaught failures the job completes as `needs_human`. Daily link checks and the monthly FAA refresh take the flock only for claim/complete; job bodies run outside it so multiple airport slots can overlap when concurrency is above 1. The HTML rebuild runs after complete, and `site/build.py` skips generate when the catalog and templates match the last output.
+The worker drains the on-disk queue with airport-scoped slots (default one airport at a time: finish PDX explore/fetch/vet before starting TTD). `APTPLANS_AIRPORT_CONCURRENCY` raises how many distinct airports may have jobs in `active/` at once; `APTPLANS_JOB_PAUSE_SEC` (default 2) sleeps after each successful job to pace Brave and Ollama. Idle poll is `APTPLANS_WORKER_IDLE_SEC` (default 60). GitHub intake is listed at most hourly while the disk queue is empty (`APTPLANS_INTAKE_IDLE_SEC`, default 3600), and not under the flock. Weekly discovery and daily link checks enqueue `discovery` and `link_check` jobs; the worker loop, deploy boot, and systemd timers never run FAA fetch, search sync, or HTML generation inline. After airport jobs complete, `pipeline_snapshot` and `site_build` queue jobs refresh `pipeline.json` and static HTML (`site/build.py` skips generate when inputs are unchanged).
 
 Manual extra job:
 
@@ -18,12 +18,13 @@ Rebuild the visitor index:
 python3 -m pipeline.search --reindex
 ```
 
-A daily link check (`python3 -m pipeline.check`) HEADs due official URLs (tiny GET if HEAD is unsupported), one host at a time. 404/410/451 mark the URL dead. A preserved copy stays; completeness becomes `preserved_only`. No copy becomes `missing`, then mirrors and optional Wayback CDX (`APTPLANS_WAYBACK=1`) may queue a fetch. Redirects to a new path mark `moved` and queue a fetch. 5xx is not dead. Live URLs are due again after 7 days; dead after 30. CI injects probes and must not hit the live web. `APTPLANS_CHECK_LIMIT` caps how many URLs one pass probes (default 40).
+A daily link check (`python3 -m pipeline.check --enqueue` on the timer; `python3 -m pipeline.check` for a manual pass) HEADs due official URLs (tiny GET if HEAD is unsupported), one host at a time. 404/410/451 mark the URL dead. A preserved copy stays; completeness becomes `preserved_only`. No copy becomes `missing`, then mirrors and optional Wayback CDX (`APTPLANS_WAYBACK=1`) may queue a fetch. Redirects to a new path mark `moved` and queue a fetch. 5xx is not dead. Live URLs are due again after 7 days; dead after 30. CI injects probes and must not hit the live web. `APTPLANS_CHECK_LIMIT` caps how many URLs one pass probes (default 40).
 
-Refresh airports, grants, and unofficial airport fact sheets without a document job:
+Refresh airports, grants, and unofficial airport fact sheets without a document job (manual; monthly timer enqueues `overlay_refresh`):
 
 ```
 python3 -m pipeline.refresh_airports
+python3 -m pipeline.boot_jobs --monthly   # enqueue only
 ```
 
 Fact sheets (`overviews.jsonl`) generate when missing and again if last written in a prior calendar month, for search and the review API. Airport HTML extracts the same sheet on every `site/build.py` generate (cached PDF text plus regex; no model). Listed files first; NASR fills runway dimensions, elevation, and fuel/storage when those files have no figure. Grants stay on Funding. CI must not run that against live FAA. Tests inject tiny zip/xlsx fixtures.

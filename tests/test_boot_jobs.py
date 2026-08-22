@@ -17,6 +17,7 @@ def test_enqueue_boot_jobs_dedupes(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "local")
     first = enqueue_boot_jobs(tmp_path / "queue")
     second = enqueue_boot_jobs(tmp_path / "queue")
+    assert "pipeline_snapshot" in first
     assert "site_build" in first
     assert second == []
     queue = JobQueue(queue_dir_from_env(tmp_path / "queue"))

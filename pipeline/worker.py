@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import time
-from pathlib import Path
 
 from pipeline.boot_jobs import enqueue_boot_jobs
 from pipeline.pace import airport_concurrency, job_pause_seconds
 from pipeline.queue import JobRetry
-from pipeline.run_once import _refresh_pipeline, process_next
-from pipeline.refresh import ROOT, overlay_dir_from_env
+from pipeline.run_once import process_next
 from pipeline.service_log import attach_jsonl_handler
 from pipeline.status import queue_dir_from_env
 
@@ -129,12 +126,7 @@ def main() -> None:
         job_pause_seconds(),
     )
     attach_jsonl_handler(logging.getLogger("aptplans"), name="worker")
-    overlay = overlay_dir_from_env()
     queue = queue_dir_from_env()
-    try:
-        _refresh_pipeline(overlay, queue, ROOT / "catalog")
-    except Exception:
-        log.exception("pipeline snapshot failed; worker stays up")
     try:
         enqueued = enqueue_boot_jobs(queue)
         if enqueued:

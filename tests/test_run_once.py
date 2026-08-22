@@ -9,6 +9,7 @@ import pytest
 from catalog import REFERENCE_FILES
 from catalog.seed import seed_catalog
 from pipeline.lock import worker_lock
+from pipeline.boot_jobs import MAINTENANCE_JOB_KINDS
 from pipeline.queue import JobQueue, JobRetry, QueueJob
 from pipeline.run_once import process_next, run_once
 
@@ -467,6 +468,10 @@ def test_process_next_explore_html_preserves_page_and_queues_pdfs(tmp_path: Path
     fetch_urls = []
     vet_ids = []
     while child is not None:
+        if child.kind in MAINTENANCE_JOB_KINDS:
+            pending.complete(child)
+            child = pending.claim()
+            continue
         if child.kind == "fetch":
             fetch_urls.append(child.source_url)
             assert child.found_on == html_path.resolve().as_uri()
@@ -511,24 +516,10 @@ def test_process_fetch_strips_html_api_keys(tmp_path: Path) -> None:
 
 
 def test_process_next_pull_discovery_enqueues_job(tmp_path: Path, monkeypatch) -> None:
-    from pipeline.queue import JobQueue, QueueJob
+    from pipeline.queue import JobQueue
 
+    monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
     monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
-
-    def fake_discover(overlay_dir, queue_dir, **kwargs):
-        JobQueue(queue_dir).enqueue(
-            QueueJob(
-                kind="explore",
-                document_id="4s9-site",
-                source_url="https://example.com/hub",
-                airport_lid="4S9",
-                state="OR",
-            )
-        )
-        return {"explore_jobs": 1, "fetch_jobs": 0}
-
-    monkeypatch.setattr("pipeline.discover_overlay.discover_next_airports", fake_discover)
-    monkeypatch.setattr("pipeline.run_once.process_explore", lambda *_args, **_kwargs: "dead")
 
     assert (
         process_next(
@@ -540,4 +531,6 @@ def test_process_next_pull_discovery_enqueues_job(tmp_path: Path, monkeypatch) -
         )
         is True
     )
-    assert len(list((tmp_path / "queue" / "done").glob("*.json"))) == 1
+    queue = JobQueue(tmp_path / "queue")
+    assert queue.has_kind("discovery")
+    assert not list((tmp_path / "queue" / "done").glob("*.json"))
