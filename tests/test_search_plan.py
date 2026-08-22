@@ -66,7 +66,7 @@ def test_pdx_snippet_host_locks_followup_search() -> None:
         )
     ]
     signals = extract_signals(hits, PDX)
-    assert "pdx2045.org" in signals.hosts
+    assert "pdx2045.org" in signals.hosts  # codeql[py/incomplete-url-substring-sanitization]
     ran = {step.query for step in seed_steps(PDX)}
     follow = followup_steps(PDX, signals, ran)
     assert any("site:pdx2045.org" in step.query and "PDX" in step.query for step in follow)

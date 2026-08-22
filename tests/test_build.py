@@ -144,7 +144,7 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert 'href="#law"' in pdx
     assert "official link listed" in pdx.lower()
     assert "Official source" in pdx
-    assert "pdx2045.org" in pdx
+    assert "pdx2045.org" in pdx  # codeql[py/incomplete-url-substring-sanitization]
     assert "Reconstruct Taxiway" in pdx
     assert "$61,876,159" in pdx
     assert "24 Jul 2025" in pdx
