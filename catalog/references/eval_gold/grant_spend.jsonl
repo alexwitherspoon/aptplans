@@ -5,3 +5,39 @@
 {"description":"Improve Terminal","lid":"PDX","gold":"maintenance"}
 {"description":"Rehabilitate Runway 10L/28R","lid":"PDX","gold":"maintenance"}
 {"description":"Expand Terminal Concourse B","lid":"PDX","gold":"growth"}
+{"description":"Resurface Runway 8/26","lid":"SEA","gold":"maintenance"}
+{"description":"Replace Runway Lighting","lid":"SEA","gold":"maintenance"}
+{"description":"Construct New Terminal Gates","lid":"SEA","gold":"growth"}
+{"description":"Lengthen Runway 16L/34R","lid":"SEA","gold":"growth"}
+{"description":"Airport Layout Plan Update","lid":"SEA","gold":"planning"}
+{"description":"Master Plan Environmental Assessment","lid":"SEA","gold":"planning"}
+{"description":"Acquire Land for Runway Protection","lid":"SEA","gold":"other"}
+{"description":"Reconstruct Apron","lid":"SFO","gold":"maintenance"}
+{"description":"Widen Taxiway A","lid":"SFO","gold":"growth"}
+{"description":"Rehabilitate Runway 28L","lid":"SFO","gold":"maintenance"}
+{"description":"Construct Hangar Complex","lid":"SFO","gold":"growth"}
+{"description":"Noise Mitigation Program","lid":"SFO","gold":"other"}
+{"description":"Planning Study for Cargo Area","lid":"SFO","gold":"planning"}
+{"description":"Repave General Aviation Ramp","lid":"DEN","gold":"maintenance"}
+{"description":"Upgrade Terminal HVAC","lid":"DEN","gold":"maintenance"}
+{"description":"Build New Concourse","lid":"DEN","gold":"growth"}
+{"description":"Construct Snow Removal Equipment Building","lid":"DEN","gold":"other"}
+{"description":"ALP Drawing Update","lid":"DEN","gold":"planning"}
+{"description":"Repair Taxiway Edge Lights","lid":"ATL","gold":"maintenance"}
+{"description":"Reseal Runway 9R/27L","lid":"ATL","gold":"maintenance"}
+{"description":"Expand Baggage Claim Area","lid":"ATL","gold":"growth"}
+{"description":"New Air Traffic Control Tower","lid":"ATL","gold":"growth"}
+{"description":"Strategic Airport Planning","lid":"ATL","gold":"planning"}
+{"description":"Purchase Aircraft Rescue Firefighting Vehicle","lid":"ATL","gold":"other"}
+{"description":"Reconstruct Runway 18/36","lid":"ORD","gold":"maintenance"}
+{"description":"Improve Runway Safety Area","lid":"ORD","gold":"maintenance"}
+{"description":"Construct Runway 10C/28C","lid":"ORD","gold":"growth"}
+{"description":"Terminal Expansion Phase 2","lid":"ORD","gold":"growth"}
+{"description":"Integrated Airport System Plan","lid":"ORD","gold":"planning"}
+{"description":"Electric Ground Support Equipment","lid":"ORD","gold":"other"}
+{"description":"Rehabilitate Terminal Apron","lid":"DFW","gold":"maintenance"}
+{"description":"Upgrade Baggage Handling System","lid":"DFW","gold":"maintenance"}
+{"description":"Construct New Runway 7","lid":"DFW","gold":"growth"}
+{"description":"Add Remote Concourse","lid":"DFW","gold":"growth"}
+{"description":"Airport Capital Improvement Plan Study","lid":"DFW","gold":"planning"}
+{"description":"Land Acquisition Easement","lid":"DFW","gold":"other"}

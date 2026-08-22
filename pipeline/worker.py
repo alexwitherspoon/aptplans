@@ -15,6 +15,8 @@ from pipeline.queue import JobRetry
 from pipeline.overviews import refresh_overviews
 from pipeline.refresh import ROOT, overlay_dir_from_env, overlays_need_fetch
 from pipeline.refresh_airports import maybe_refresh
+from pipeline.refresh_budgets import maybe_enrich_budgets
+from pipeline.grant_classify import reclassify_grants_overlay
 from pipeline.run_once import process_next, refresh_public_site
 from pipeline.search import boot_sync
 from pipeline.service_log import attach_jsonl_handler
@@ -52,6 +54,29 @@ def cold_start_overlays(
         sleep(pause_before)
     maybe_refresh(overlay, fetch=fetch, sleep=sleep, post_json=post_json)
     return True
+
+
+def cold_start_grant_spend(overlay_dir: Path | None = None) -> bool:
+    """Classify overlay grant spend when LLM is enabled (no FAA fetch)."""
+    if os.environ.get("APTPLANS_LLM") != "1":
+        return False
+    overlay = overlay_dir or overlay_dir_from_env()
+    try:
+        return reclassify_grants_overlay(overlay, sleep=time.sleep) > 0
+    except Exception:
+        log.exception("grant spend reclassify failed")
+        return False
+
+
+def cold_start_budget_lines(overlay_dir: Path | None = None) -> bool:
+    """Classify budget overlay rows when LLM is enabled."""
+    overlay = overlay_dir or overlay_dir_from_env()
+    try:
+        count = maybe_enrich_budgets(overlay)
+        return bool(count)
+    except Exception:
+        log.exception("budget line enrich failed")
+        return False
 
 
 def cold_start_overviews(overlay_dir: Path | None = None) -> bool:
@@ -186,6 +211,16 @@ def main() -> None:
             rebuilt = True
     except Exception:
         log.exception("FAA overlay fetch failed; worker stays up")
+    try:
+        if cold_start_grant_spend():
+            rebuilt = True
+    except Exception:
+        log.exception("grant spend classification failed; worker stays up")
+    try:
+        if cold_start_budget_lines():
+            rebuilt = True
+    except Exception:
+        log.exception("budget line classification failed; worker stays up")
     try:
         if cold_start_overviews():
             rebuilt = True
