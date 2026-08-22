@@ -30,45 +30,84 @@
     Subscribe via <a href="/feeds/">RSS</a>.
   </p>
   <section class="about-hero">
-    <p class="about-hero-kicker">Compiled corpus</p>
-    <ul class="about-highlights">
-      <li>
-        <strong>{% if counts.pct_reviewed is not none %}{{ counts.pct_reviewed }}%{% else %}—{% endif %}</strong>
-        airports reviewed
-      </li>
-      <li>
-        <strong>{% if counts.pct_master_plan is not none %}{{ counts.pct_master_plan }}%{% else %}—{% endif %}</strong>
-        with master plan
-      </li>
-      <li>
-        <strong>{% if counts.pct_alp is not none %}{{ counts.pct_alp }}%{% else %}—{% endif %}</strong>
-        with {{ "ALP"|abbr("alp") }}
-      </li>
-    </ul>
-    <ul class="about-stats">
-      <li><strong>{{ counts.airports }}</strong> airports indexed</li>
-      <li><strong>{{ counts.saved_copies }}</strong> saved copies on site</li>
-      <li><strong>{{ counts.listed_documents }}</strong> catalog records</li>
-      <li><strong>{{ counts.grants }}</strong> grant rows cited</li>
-      <li><strong>{{ counts.states }}</strong> states</li>
-      {% if classification_counts and classification_counts.month_total %}
-      <li><strong>{{ classification_counts.month_total }}</strong> rubric classifications this month</li>
-      {% endif %}
-    </ul>
-    <ul class="about-funding">
-      <li>
-        <strong>{% if counts.funding_federal_obligated %}{{ counts.funding_federal_obligated|usd }}{% else %}—{% endif %}</strong>
-        federal AIP obligated · {{ counts.funding_federal_airports }} airports
-      </li>
-      <li>
-        <strong>{% if counts.funding_state_budget_total %}{{ counts.funding_state_budget_total|usd }}{% else %}—{% endif %}</strong>
-        state aviation budgets · {{ counts.funding_states_with_budgets }} states
-      </li>
-      <li>
-        <strong>{% if counts.funding_local_total %}{{ counts.funding_local_total|usd }}{% else %}—{% endif %}</strong>
-        local municipal cited · {{ counts.funding_local_airports }} airports
-      </li>
-    </ul>
+    <h2 class="about-hero-title">Compiled corpus</h2>
+
+    <div class="about-panel">
+      <h3 class="about-panel-title">Coverage</h3>
+      <dl class="about-grid about-grid-3">
+        <div class="about-stat">
+          <dt>Airports reviewed</dt>
+          <dd>{% if counts.pct_reviewed is not none %}{{ counts.pct_reviewed }}%{% else %}—{% endif %}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>With master plan</dt>
+          <dd>{% if counts.pct_master_plan is not none %}{{ counts.pct_master_plan }}%{% else %}—{% endif %}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>With {{ "ALP"|abbr("alp") }}</dt>
+          <dd>{% if counts.pct_alp is not none %}{{ counts.pct_alp }}%{% else %}—{% endif %}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="about-panel">
+      <h3 class="about-panel-title">Index</h3>
+      <dl class="about-grid about-grid-3">
+        <div class="about-stat">
+          <dt>Airports indexed</dt>
+          <dd>{{ counts.airports|intcomma }}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>Saved copies on site</dt>
+          <dd>{{ counts.saved_copies|intcomma }}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>Catalog records</dt>
+          <dd>{{ counts.listed_documents|intcomma }}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>Grant rows cited</dt>
+          <dd>{{ counts.grants|intcomma }}</dd>
+        </div>
+        <div class="about-stat">
+          <dt>States</dt>
+          <dd>{{ counts.states|intcomma }}</dd>
+        </div>
+        {% if classification_counts and classification_counts.month_total %}
+        <div class="about-stat">
+          <dt>Rubric classifications this month</dt>
+          <dd>{{ classification_counts.month_total|intcomma }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="about-panel about-panel-last">
+      <h3 class="about-panel-title">Funding cited</h3>
+      <dl class="about-grid about-grid-3">
+        <div class="about-stat about-stat-wide">
+          <dt>Federal AIP obligated</dt>
+          <dd class="about-stat-value-compact">
+            {% if counts.funding_federal_obligated %}{{ counts.funding_federal_obligated|usd }}{% else %}—{% endif %}
+          </dd>
+          <p class="about-stat-note">{{ counts.funding_federal_airports|intcomma }} airports</p>
+        </div>
+        <div class="about-stat about-stat-wide">
+          <dt>State aviation budgets</dt>
+          <dd class="about-stat-value-compact">
+            {% if counts.funding_state_budget_total %}{{ counts.funding_state_budget_total|usd }}{% else %}—{% endif %}
+          </dd>
+          <p class="about-stat-note">{{ counts.funding_states_with_budgets|intcomma }} states</p>
+        </div>
+        <div class="about-stat about-stat-wide">
+          <dt>Local municipal cited</dt>
+          <dd class="about-stat-value-compact">
+            {% if counts.funding_local_total %}{{ counts.funding_local_total|usd }}{% else %}—{% endif %}
+          </dd>
+          <p class="about-stat-note">{{ counts.funding_local_airports|intcomma }} airports</p>
+        </div>
+      </dl>
+    </div>
   </section>
 
   <section class="review-pipeline">

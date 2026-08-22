@@ -857,6 +857,7 @@ def _env(*, asset=None) -> Environment:
     )
     env.filters["kind_label"] = lambda value: KIND_LABELS.get(value, value)
     env.filters["usd"] = lambda value: "" if value is None else f"${int(value):,}"
+    env.filters["intcomma"] = lambda value: f"{int(value):,}"
     env.filters["role_label"] = role_label
     env.filters["completeness_phrase"] = completeness_phrase
     env.filters["abbr"] = abbr

@@ -33,8 +33,8 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "Airport Layout Plan" in about
     assert "not legal advice" in about.lower()
     assert "class=\"about-hero\"" in about
-    assert "compiled corpus" in about.lower()
-    assert "about-highlights" in about
+    assert "about-panel" in about
+    assert "about-grid" in about
     assert "airports reviewed" in about.lower()
     assert "federal aip obligated" in about.lower()
     assert "review pipeline" in about.lower()
