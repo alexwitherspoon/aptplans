@@ -121,11 +121,11 @@ def _paths(
 
 
 def _llm_generate():
-    if os.environ.get("APTPLANS_LLM") != "1":
+    from pipeline.ollama import generate, llm_calls_enabled
+
+    if not llm_calls_enabled():
         return None
     try:
-        from pipeline.ollama import generate
-
         return generate
     except Exception:
         log.exception("Ollama unavailable for explore LLM")
@@ -391,11 +391,11 @@ def process_fetch(
                 unofficial_note=note,
             ),
         )
-    if os.environ.get("APTPLANS_LLM") == "1" and media == "pdf":
-        try:
-            from pipeline.ollama import unofficial_note_from_text
-            from pipeline.parse import extract_text
+    from pipeline.ollama import llm_calls_enabled, unofficial_note_from_text
+    from pipeline.parse import extract_text
 
+    if llm_calls_enabled() and media == "pdf":
+        try:
             text = extract_text(data)
             if text.strip():
                 updates["summary"] = unofficial_note_from_text(text)
@@ -556,10 +556,12 @@ def process_vet(
     document = catalog.documents_by_id.get(job.document_id)
     if document is None or not document.content_sha256:
         return "pending"
+    from pipeline.ollama import llm_calls_enabled
+
     if document.review_status == "published":
         return "published"
-    if os.environ.get("APTPLANS_LLM") != "1":
-        log.info("vet deferred; APTPLANS_LLM unset document=%s", job.document_id)
+    if not llm_calls_enabled():
+        log.info("vet deferred; LLM disabled document=%s", job.document_id)
         return "pending"
     stored = files_dir / f"{document.content_sha256}.pdf"
     if not stored.is_file():

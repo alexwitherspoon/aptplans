@@ -60,7 +60,9 @@ def compute_overview_row(catalog, lid: str, build=None, *, overlay_dir=None) -> 
     airport = catalog.airports_by_lid.get(lid)
     latest_alp, latest_plan, earlier = build.featured_and_earlier(docs)
     generate_fn = None
-    if os.environ.get("APTPLANS_LLM") == "1":
+    from pipeline.ollama import llm_calls_enabled
+
+    if llm_calls_enabled():
         from catalog.store import has_verified_plans
 
         if has_verified_plans(catalog, lid):

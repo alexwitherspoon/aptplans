@@ -17,6 +17,7 @@ from catalog.grants import (
 from catalog.models import Grant
 from catalog.store import load_grants_overlay, write_grants_overlay
 from pipeline.classifications import record_classification
+from pipeline.ollama import llm_calls_enabled
 from pipeline.queries import classify_grant_spend
 
 log = logging.getLogger("aptplans.grant_classify")
@@ -31,7 +32,7 @@ def _grant_id(grant: Grant) -> str:
 
 
 def _llm_generate():
-    if os.environ.get("APTPLANS_LLM") != "1":
+    if not llm_calls_enabled():
         return None
     try:
         from pipeline.ollama import generate
@@ -78,7 +79,7 @@ def enrich_grant_spend(
         return grant
 
     rule_category = grant_spend_category(grant)
-    use_llm = llm_enabled if llm_enabled is not None else os.environ.get("APTPLANS_LLM") == "1"
+    use_llm = llm_enabled if llm_enabled is not None else llm_calls_enabled()
     if not use_llm or generate_fn is None or not (grant.description or "").strip():
         return _classified_grant(grant, category=rule_category, classifier="rules")
 

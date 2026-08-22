@@ -19,6 +19,7 @@ from catalog.models import Grant
 from catalog.store import load_grants_overlay, write_grants_overlay
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.grant_classify import enrich_grants, reclassify_grants_overlay
+from pipeline.ollama import llm_calls_enabled
 from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path, should_refresh
 from pipeline.usaspending import fetch_award_status
 
@@ -68,7 +69,7 @@ def refresh_grants(
         except Exception:
             log.exception("USAspending outlays failed; keeping FAA award amounts")
     generate_fn = None
-    if os.environ.get("APTPLANS_LLM") == "1":
+    if llm_calls_enabled():
         try:
             from pipeline.ollama import generate as ollama_generate
 

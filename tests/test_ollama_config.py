@@ -97,6 +97,24 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "${FILES_PATH:-../data/files}:/srv/files:ro" in local
 
 
+def test_llm_calls_enabled_defaults(monkeypatch) -> None:
+    import pipeline.ollama as ollama
+
+    monkeypatch.delenv("APTPLANS_LLM", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    assert ollama.llm_calls_enabled() is False
+
+    monkeypatch.setenv("APP_ENV", "production")
+    assert ollama.llm_calls_enabled() is True
+
+    monkeypatch.setenv("APTPLANS_LLM", "0")
+    assert ollama.llm_calls_enabled() is False
+
+    monkeypatch.setenv("APTPLANS_LLM", "1")
+    monkeypatch.delenv("APP_ENV", raising=False)
+    assert ollama.llm_calls_enabled() is True
+
+
 def test_generate_honors_predict_and_ctx_env(monkeypatch) -> None:
     import pipeline.ollama as ollama
 

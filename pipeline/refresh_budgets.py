@@ -8,6 +8,7 @@ import time
 
 from catalog.store import load_budgets_overlay, write_budgets_overlay
 from pipeline.budget_classify import enrich_budget
+from pipeline.ollama import llm_calls_enabled
 from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env
 
 log = logging.getLogger("aptplans.budgets")
@@ -22,8 +23,8 @@ def enrich_budgets_overlay(
     budgets = load_budgets_overlay(overlay_dir)
     if not budgets:
         return 0
-    if os.environ.get("APTPLANS_LLM") != "1":
-        log.info("budget line classification skipped; APTPLANS_LLM unset")
+    if not llm_calls_enabled():
+        log.info("budget line classification skipped; LLM disabled")
         return 0
     try:
         from pipeline.ollama import generate

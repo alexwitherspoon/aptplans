@@ -12,6 +12,7 @@ from pathlib import Path
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.pace import airport_concurrency, job_pause_seconds
 from pipeline.queue import JobRetry
+from pipeline.ollama import llm_calls_enabled
 from pipeline.overviews import refresh_overviews
 from pipeline.refresh import ROOT, overlay_dir_from_env, overlays_need_fetch
 from pipeline.refresh_airports import maybe_refresh
@@ -58,7 +59,7 @@ def cold_start_overlays(
 
 def cold_start_grant_spend(overlay_dir: Path | None = None) -> bool:
     """Classify overlay grant spend when LLM is enabled (no FAA fetch)."""
-    if os.environ.get("APTPLANS_LLM") != "1":
+    if not llm_calls_enabled():
         return False
     overlay = overlay_dir or overlay_dir_from_env()
     try:

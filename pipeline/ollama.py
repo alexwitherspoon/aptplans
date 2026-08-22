@@ -19,6 +19,20 @@ def ollama_model() -> str:
     return os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
 
 
+def llm_calls_enabled() -> bool:
+    """Whether rubric verify/classify paths may call Ollama.
+
+    ``APTPLANS_LLM=1`` enables; ``APTPLANS_LLM=0`` disables. When unset, enabled
+    on production (``APP_ENV=production``) and disabled elsewhere (CI, local).
+    """
+    raw = os.environ.get("APTPLANS_LLM", "").strip().lower()
+    if raw in {"0", "false", "no"}:
+        return False
+    if raw in {"1", "true", "yes"}:
+        return True
+    return os.environ.get("APP_ENV", "").strip().lower() == "production"
+
+
 def think_enabled(think: bool | None = None) -> bool:
     """Thinking is off unless APTPLANS_LLM_THINK=1. /api/generate currently puts CoT in `response`."""
     if think is not None:

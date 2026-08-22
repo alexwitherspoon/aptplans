@@ -67,7 +67,7 @@ If JSON is missing or invalid, return a safe default (`other`, `not_plan`, `need
 
 | Control | Meaning |
 | --- | --- |
-| `APTPLANS_LLM=1` | Origin may call Ollama. CI and default local Compose leave this unset. |
+| `APTPLANS_LLM` | `1`/`0` override. When unset, LLM is on for `APP_ENV=production`, off in CI and local Compose. |
 | `APTPLANS_LLM_THINK=0` | Default. Thinking on pollutes `response` with chain-of-thought. |
 | `APTPLANS_LLM_TIMEOUT` | Per-call wait (default 3600s on origin). |
 | `APTPLANS_JOB_PAUSE_SEC` / `PAUSE_SECONDS` | Pace serial work between LLM calls. |
