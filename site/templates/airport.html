@@ -87,8 +87,18 @@
   {% if airport.website|public_website %}
   <p class="airport-site"><a href="{{ airport.website|public_website }}">{{ airport.website|website_label }}</a></p>
   {% endif %}
+  <p class="airport-status">
+    <span class="badge badge-coverage{% if coverage_stage == 'untouched' %} badge-coverage-unreviewed{% endif %}">{{ coverage_label }}</span>
+    {% if coverage_stage == 'untouched' %}
+    <span class="meta">Plan coverage not reviewed yet.</span>
+    {% elif coverage_stage == 'no_plan_found' %}
+    <span class="meta">Searched; no official plan listed yet.</span>
+    {% else %}
+    <span class="meta">{{ completeness|completeness_phrase }}</span>
+    {% endif %}
+  </p>
   {% if coverage_banner %}
-  <p class="coverage-banner">{{ coverage_banner }}</p>
+  <p class="coverage-banner {{ coverage_banner_class }}">{{ coverage_banner }}</p>
   {% endif %}
   <p class="on-page">
     Sections:
@@ -97,7 +107,7 @@
     {% if airport.state %}· <a href="#law">Law</a>{% endif %}
   </p>
 
-  {% if overview and (overview.facts or overview.trajectory) %}
+  {% if show_plan_insights and overview and (overview.facts or overview.trajectory) %}
   <aside class="plan-brief">
     <div class="plan-brief-row{% if overview.trajectory %} has-outlook{% endif %}">
       <div class="plan-brief-facts">
@@ -117,18 +127,14 @@
   {% endif %}
 
   <div id="plans" class="featured">
-    {{ featured_panel("Airport Layout Plan", latest_alp, "No Airport Layout Plan is listed yet. That does not mean none exists.") }}
+    {{ featured_panel("Airport Layout Plan", latest_alp, alp_empty) }}
     {{ featured_panel(
       "Master plan",
       latest_plan,
       plan_empty
     ) }}
   </div>
-  <p class="meta">
-    <span class="badge badge-coverage">{{ coverage_label }}</span>
-    · {{ completeness|completeness_phrase }}
-    {% if documents %} · <a href="/feeds/airports/{{ airport.lid }}.xml">RSS</a>{% endif %}
-  </p>
+  <p class="meta"><a href="/feeds/airports/{{ airport.lid }}.xml">RSS</a> for this airport</p>
   {% if pending_docs %}
   <section class="pending-panel">
     <h3>Preserved, awaiting review</h3>
@@ -143,7 +149,7 @@
     </ul>
   </section>
   {% endif %}
-  {% if earlier %}
+  {% if show_plan_insights and earlier %}
   <h3>Earlier editions</h3>
   <ul class="edition-list">
     {% for work in earlier %}
@@ -160,6 +166,7 @@
     {% endfor %}
   </ul>
   {% endif %}
+  {% if show_plan_insights %}
   {% set other_docs = documents | rejectattr("kind", "in", ["alp", "master_plan", "notice"]) | list %}
   {% if other_docs %}
   <h3>Other planning records</h3>
@@ -172,6 +179,7 @@
     </li>
     {% endfor %}
   </ul>
+  {% endif %}
   {% endif %}
 
   <h2 id="funding">Funding</h2>

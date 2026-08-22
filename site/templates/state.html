@@ -6,10 +6,10 @@
 {% block content %}
   <p class="crumb"><a href="/states/">States</a></p>
   <h1>{{ state.name }}</h1>
-  <p class="lede">Airports, aviation law, the state aviation budget, and grants we can cite.</p>
+  <p class="lede">Airports, aviation law, the state aviation budget, and federal grant allocations.</p>
   <p class="on-page">
     <a href="#budget">Budget</a>
-    · <a href="#projects">Projects</a>
+    · <a href="#allocations">Grants</a>
     · <a href="#law">Law</a>
     · <a href="#airports">Airports</a>
     · <a href="/feeds/states/{{ state.code }}.xml">RSS</a>
@@ -53,57 +53,102 @@
   {% else %}
   <p>No statewide aviation budget is listed yet. Know of an official one? <a href="{{ intake_url }}">Send a link</a>.</p>
   {% endif %}
-  <h2 id="projects">Projects and allocations</h2>
-  <p class="meta">Airport grants, usually federal. Not the budget totals above. Full lists are on each airport page.</p>
-  {% if projects %}
+  <h2 id="allocations">Federal airport grants</h2>
+  <p class="meta">How federal {{ "AIP"|abbr("aip") }} and related awards are allocated across airports by fiscal year. Individual projects are on each airport page.</p>
+  {% if allocations.stats.count %}
   <p class="totals">
-    {% if project_stats.total %}{{ project_stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
-    in {{ project_stats.count }} grant{% if project_stats.count != 1 %}s{% endif %}
-    at {{ projects|length }} airport{% if projects|length != 1 %}s{% endif %}{% if project_stats.year_min %}
-    (FY {{ project_stats.year_min }}{% if project_stats.year_max and project_stats.year_max != project_stats.year_min %}-{{ project_stats.year_max }}{% endif %}){% endif %}.
+    {% if allocations.stats.total %}{{ allocations.stats.total|usd }} awarded{% else %}Amounts not listed{% endif %}
+    in {{ allocations.stats.count }} grant{% if allocations.stats.count != 1 %}s{% endif %}
+    at {{ allocations.by_airport|length }} airport{% if allocations.by_airport|length != 1 %}s{% endif %}{% if allocations.stats.year_min %}
+    (FY {{ allocations.stats.year_min }}{% if allocations.stats.year_max and allocations.stats.year_max != allocations.stats.year_min %}-{{ allocations.stats.year_max }}{% endif %}){% endif %}.
   </p>
-  {% if project_stats.spent is not none or project_stats.remaining is not none %}
+  {% if allocations.stats.spent is not none or allocations.stats.remaining is not none %}
   <p class="totals">
-    {% if project_stats.spent is not none %}{{ project_stats.spent|usd }} spent{% endif %}
-    {% if project_stats.spent is not none and project_stats.remaining is not none %} · {% endif %}
-    {% if project_stats.remaining is not none %}{{ project_stats.remaining|usd }} not yet spent{% endif %}
+    {% if allocations.stats.spent is not none %}{{ allocations.stats.spent|usd }} spent{% endif %}
+    {% if allocations.stats.spent is not none and allocations.stats.remaining is not none %} · {% endif %}
+    {% if allocations.stats.remaining is not none %}{{ allocations.stats.remaining|usd }} not yet spent{% endif %}
   </p>
   {% endif %}
-  {% for group in projects %}
-  <h3><a href="/airports/{{ group.lid }}/">{{ group.lid }}</a> {{ group.name }}</h3>
-  <p class="meta">{% if group.stats.total %}{{ group.stats.total|usd }} awarded{% endif %}{% if group.stats.count %} · {{ group.stats.count }} grant{% if group.stats.count != 1 %}s{% endif %}{% endif %}</p>
-  <ul class="grant-list">
-    {% for grant in group.grants %}
+  {% if allocations.bars %}
+  <h3>By fiscal year</h3>
+  <ul class="year-bars">
+    {% for row in allocations.bars %}
     <li>
-      <p class="grant-when">{{ grant|grant_date }}{% if grant.amount %} · {{ grant.amount|usd }} awarded{% endif %}</p>
-      {% if grant.outlayed is not none and grant|grant_remaining is not none %}
-      <p class="meta">{{ grant.outlayed|usd }} spent · {{ grant|grant_remaining|usd }} not yet spent</p>
-      {% endif %}
-      <p class="grant-title">{{ grant.description|grant_title }}</p>
-      {% if grant.description|grant_brief %}
-      <p class="grant-brief">{{ grant.description|grant_brief }}</p>
-      {% endif %}
-      <p class="meta">
-        {% if grant.entity %}{{ grant.entity }}{% endif %}
-        {% if grant.programs %}{% if grant.entity %} · {% endif %}{{ grant.programs|join(", ") }}{% endif %}
-        {% if grant.grant_number %}{% if grant.entity or grant.programs %} · {% endif %}{{ grant.grant_number }}{% endif %}
-        {% if grant.is_planning %} · planning{% endif %}
-        {% if grant.fiscal_year and grant.award_date %} · FY {{ grant.fiscal_year }}{% endif %}
-      </p>
-      {% if grant.grant_number|usaspending_url or grant.fiscal_year|faa_year_url or grant.source_url %}
-      <p class="meta">
-        {% if grant.grant_number|usaspending_url %}<a href="{{ grant.grant_number|usaspending_url }}">USAspending award</a>{% endif %}
-        {% if grant.level == "federal" and grant.fiscal_year|faa_year_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.fiscal_year|faa_year_url }}">FAA FY {{ grant.fiscal_year }} summary</a>
-        {% elif grant.source_url %}{% if grant.grant_number|usaspending_url %} · {% endif %}<a href="{{ grant.source_url }}">Official source</a>{% endif %}
-      </p>
-      {% endif %}
+      <span class="year-label">FY {{ row.year }}</span>
+      <span class="year-track"><span class="year-fill" style="width: {{ row.pct }}%"></span></span>
+      <span class="year-amt">{% if row.total %}{{ row.total|usd }}{% else %}Amounts not listed{% endif %} · {{ row.count }} grant{% if row.count != 1 %}s{% endif %}</span>
     </li>
     {% endfor %}
   </ul>
-  {% if group.more %}
-  <p class="meta"><a href="/airports/{{ group.lid }}/#funding">{{ group.more }} more award{% if group.more != 1 %}s{% endif %} on the {{ group.lid }} page</a></p>
   {% endif %}
+  {% if allocations.purpose_rows %}
+  <h3>Maintenance vs growth</h3>
+  <p class="meta">Maintenance covers rehab, reconstruction, and similar work on existing facilities. Growth covers new runways, expansions, and similar capacity adds. Planning studies are separate.</p>
+  <div class="purpose-bar" role="img" aria-label="Grant spend by purpose">
+    {% for row in allocations.purpose_rows %}
+    <span class="purpose-segment purpose-{{ row.key }}" style="width: {{ row.pct }}%" title="{{ row.label }}: {{ row.total|usd }}"></span>
+    {% endfor %}
+  </div>
+  <ul class="purpose-legend">
+    {% for row in allocations.purpose_rows %}
+    <li><span class="purpose-swatch purpose-{{ row.key }}"></span> {{ row.label }} · {{ row.total|usd }} · {{ row.count }} grant{% if row.count != 1 %}s{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% for year_row in allocations.by_year %}
+  <h3>FY {{ year_row.year }} · {% if year_row.total %}{{ year_row.total|usd }}{% else %}Amounts not listed{% endif %}</h3>
+  <table class="allocation-table">
+    <thead>
+      <tr>
+        <th>Airport</th>
+        <th>Awarded</th>
+        <th>Maintenance</th>
+        <th>Growth</th>
+        <th>Grants</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for airport in year_row.airports %}
+      <tr>
+        <td><a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a> {{ airport.name }}</td>
+        <td>{% if airport.total %}{{ airport.total|usd }}{% else %}-{% endif %}</td>
+        <td>{% if airport.purposes.maintenance.total %}{{ airport.purposes.maintenance.total|usd }}{% else %}-{% endif %}</td>
+        <td>{% if airport.purposes.growth.total %}{{ airport.purposes.growth.total|usd }}{% else %}-{% endif %}</td>
+        <td>{{ airport.count }}</td>
+        <td><a href="/airports/{{ airport.lid }}/#funding">Projects</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% endfor %}
+  <h3>By airport</h3>
+  <table class="allocation-table">
+    <thead>
+      <tr>
+        <th>Airport</th>
+        <th>Awarded</th>
+        <th>Years</th>
+        <th>Maintenance</th>
+        <th>Growth</th>
+        <th>Grants</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for airport in allocations.by_airport %}
+      <tr>
+        <td><a href="/airports/{{ airport.lid }}/">{{ airport.lid }}</a> {{ airport.name }}</td>
+        <td>{% if airport.total %}{{ airport.total|usd }}{% else %}-{% endif %}</td>
+        <td>{% if airport.year_min %}FY {{ airport.year_min }}{% if airport.year_max and airport.year_max != airport.year_min %}-{{ airport.year_max }}{% endif %}{% else %}-{% endif %}</td>
+        <td>{% if airport.purposes.maintenance.total %}{{ airport.purposes.maintenance.total|usd }}{% else %}-{% endif %}</td>
+        <td>{% if airport.purposes.growth.total %}{{ airport.purposes.growth.total|usd }}{% else %}-{% endif %}</td>
+        <td>{{ airport.count }}</td>
+        <td><a href="/airports/{{ airport.lid }}/#funding">Projects</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% else %}
   <p>No grants listed yet for this state. Know of an official list? <a href="{{ intake_url }}">Send a link</a>.</p>
   {% endif %}

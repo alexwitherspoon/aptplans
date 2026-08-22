@@ -30,73 +30,105 @@
     Subscribe via <a href="/feeds/">RSS</a>.
   </p>
   <section class="about-hero">
+    <p class="about-hero-kicker">Compiled corpus</p>
+    <ul class="about-highlights">
+      <li>
+        <strong>{% if counts.pct_reviewed is not none %}{{ counts.pct_reviewed }}%{% else %}—{% endif %}</strong>
+        airports reviewed
+      </li>
+      <li>
+        <strong>{% if counts.pct_master_plan is not none %}{{ counts.pct_master_plan }}%{% else %}—{% endif %}</strong>
+        with master plan
+      </li>
+      <li>
+        <strong>{% if counts.pct_alp is not none %}{{ counts.pct_alp }}%{% else %}—{% endif %}</strong>
+        with {{ "ALP"|abbr("alp") }}
+      </li>
+    </ul>
     <ul class="about-stats">
-      <li><strong>{{ counts.documents }}</strong> documents</li>
-      <li><strong>{{ counts.queue_pending }}</strong> queued</li>
-      <li><strong>{{ counts.queue_active }}</strong> active</li>
-      <li><strong>{{ counts.saved_copies }}</strong> published saved copies</li>
-      <li><strong>{{ counts.snapshot_pending }}</strong> snapshots awaiting review</li>
-      <li><strong>{{ counts.airports }}</strong> airports</li>
-      <li><strong>{{ counts.grants }}</strong> grants</li>
+      <li><strong>{{ counts.airports }}</strong> airports indexed</li>
+      <li><strong>{{ counts.saved_copies }}</strong> saved copies on site</li>
+      <li><strong>{{ counts.listed_documents }}</strong> catalog records</li>
+      <li><strong>{{ counts.grants }}</strong> grant rows cited</li>
       <li><strong>{{ counts.states }}</strong> states</li>
+    </ul>
+    <ul class="about-funding">
+      <li>
+        <strong>{% if counts.funding_federal_obligated %}{{ counts.funding_federal_obligated|usd }}{% else %}—{% endif %}</strong>
+        federal AIP obligated · {{ counts.funding_federal_airports }} airports
+      </li>
+      <li>
+        <strong>{% if counts.funding_state_budget_total %}{{ counts.funding_state_budget_total|usd }}{% else %}—{% endif %}</strong>
+        state aviation budgets · {{ counts.funding_states_with_budgets }} states
+      </li>
+      <li>
+        <strong>{% if counts.funding_local_total %}{{ counts.funding_local_total|usd }}{% else %}—{% endif %}</strong>
+        local municipal cited · {{ counts.funding_local_airports }} airports
+      </li>
     </ul>
   </section>
 
-  <section class="pipeline-panel">
-    <h2>Pipeline</h2>
-    <p class="meta">What the origin worker is doing. Updated after each job.</p>
+  <section class="review-pipeline">
+    <h2>Review Pipeline</h2>
+    <p class="meta">
+      How airports move from FAA index rows to published plans. Counts are airports, not documents.
+      {% if pipeline and pipeline.generated_at %}Updated {{ pipeline.generated_at }}.{% endif %}
+    </p>
+    {% if pipeline_stages %}
+    <ol class="pipeline-stages">
+      {% for stage in pipeline_stages %}
+      <li class="pipeline-stage">
+        <div class="pipeline-stage-head">
+          <span class="pipeline-stage-count">{{ stage.count }}</span>
+          <span class="pipeline-stage-label">{{ stage.label }}</span>
+        </div>
+        <p class="pipeline-stage-desc">{{ stage.description }}</p>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p>No pipeline snapshot yet. The worker writes one after the first discovery or queue job.</p>
+    {% endif %}
+
     {% if pipeline %}
-    <dl class="pipeline-dl">
-      <dt>Generated</dt>
-      <dd>{{ pipeline.generated_at or "unknown" }}</dd>
-      <dt>Queue</dt>
-      <dd>{{ pipeline.queue.pending }} pending · {{ pipeline.queue.active }} active · {{ pipeline.queue.done }} done</dd>
+    <div class="pipeline-ops">
+      <h3>Worker queue</h3>
+      <p class="meta">
+        {{ pipeline.queue.pending }} queued · {{ pipeline.queue.active }} active ·
+        {{ pipeline.queue.done }} completed jobs
+      </p>
+      {% if pipeline.discovery %}
+      <p class="meta">
+        Discovery scope: {{ pipeline.discovery.scoped_airports }} airports
+        {% if pipeline.discovery.scope_states %}({{ pipeline.discovery.scope_states|join(", ") }}){% endif %}
+      </p>
+      {% endif %}
+      {% if pipeline.active_jobs %}
+      <h4>Running now</h4>
+      <ul class="pipeline-jobs">
+        {% for job in pipeline.active_jobs %}
+        <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if pipeline.next_jobs %}
+      <h4>Next 10 airports in line</h4>
+      <ul class="pipeline-jobs">
+        {% for job in pipeline.next_jobs %}
+        <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
       {% if pipeline.last_job and pipeline.last_job.at %}
-      <dt>Last job</dt>
-      <dd>
+      <p class="meta">
+        Last job:
         {% if pipeline.last_job.airport_lid %}{{ pipeline.last_job.airport_lid }}{% else %}—{% endif %}
         {{ pipeline.last_job.kind or "" }}
         {% if pipeline.last_job.status %}({{ pipeline.last_job.status }}){% endif %}
         · {{ pipeline.last_job.at }}
-      </dd>
+      </p>
       {% endif %}
-      {% if pipeline.discovery %}
-      <dt>Discovery scope</dt>
-      <dd>
-        {{ pipeline.discovery.scoped_airports }} airports
-        {% if pipeline.discovery.scope_states %}in {{ pipeline.discovery.scope_states|join(", ") }}{% endif %}
-        · cursor {{ pipeline.discovery.cursor_index }}
-      </dd>
-      {% endif %}
-      {% if pipeline.coverage %}
-      <dt>Coverage</dt>
-      <dd>
-        {{ pipeline.coverage.untouched }} not searched ·
-        {{ pipeline.coverage.searched }} searched ·
-        {{ pipeline.coverage.explored }} explored ·
-        {{ pipeline.coverage.snapshot_pending }} pending review ·
-        {{ pipeline.coverage.published }} published
-      </dd>
-      {% endif %}
-    </dl>
-    {% if pipeline.active_jobs %}
-    <h3>Active</h3>
-    <ul class="pipeline-jobs">
-      {% for job in pipeline.active_jobs %}
-      <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-    {% if pipeline.next_jobs %}
-    <h3>Next in queue</h3>
-    <ul class="pipeline-jobs">
-      {% for job in pipeline.next_jobs %}
-      <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-    {% else %}
-    <p>No pipeline snapshot yet. The worker writes one after the first discovery or queue job.</p>
+    </div>
     {% endif %}
   </section>
 {% endblock %}

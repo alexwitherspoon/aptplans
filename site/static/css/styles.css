@@ -269,6 +269,39 @@ h1 {
   margin: 1.75rem -1.25rem 0;
 }
 
+.about-hero-kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b8c9be;
+}
+
+.about-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  list-style: none;
+  margin: 0 0 1.1rem;
+  padding: 0 0 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.about-highlights li {
+  flex: 1 1 28%;
+  color: #d4cec4;
+  font-size: 0.9rem;
+}
+
+.about-highlights strong {
+  display: block;
+  color: var(--bg);
+  font-size: 2.1rem;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
 .about-stats {
   display: flex;
   flex-wrap: wrap;
@@ -293,6 +326,32 @@ h1 {
   letter-spacing: -0.03em;
 }
 
+.about-funding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 1rem 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.about-funding li {
+  flex: 1 1 30%;
+  color: #c5d5cb;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.about-funding strong {
+  display: block;
+  color: var(--bg);
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 0.1rem;
+}
+
 .badge {
   display: inline-block;
   font-size: 0.8rem;
@@ -307,6 +366,20 @@ h1 {
   border-color: #b8c9be;
 }
 
+.badge-coverage-unreviewed {
+  color: #6b5340;
+  border-color: #c4a574;
+  background: #f3ead8;
+}
+
+.airport-status {
+  margin: 0.35rem 0 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
 .coverage-banner {
   margin: 0 0 1rem;
   padding: 0.75rem 0.9rem;
@@ -314,6 +387,26 @@ h1 {
   background: #ebe6dc;
   color: var(--fg);
   font-size: 0.95rem;
+}
+
+.coverage-banner--unreviewed {
+  border-left-color: #9a7b42;
+  background: #f3ead8;
+}
+
+.coverage-banner--in-progress {
+  border-left-color: #5c7a8a;
+  background: #e8eef1;
+}
+
+.coverage-banner--searched {
+  border-left-color: var(--accent);
+  background: #e8ede9;
+}
+
+.coverage-banner--pending {
+  border-left-color: #7a6a8a;
+  background: #eee8f0;
 }
 
 .pending-panel {
@@ -326,6 +419,67 @@ h1 {
   margin-top: 2rem;
   padding-top: 1rem;
   border-top: 1px solid var(--rule);
+}
+
+.review-pipeline {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.pipeline-stages {
+  list-style: none;
+  margin: 1rem 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pipeline-stage {
+  border: 1px solid var(--rule);
+  border-radius: 0.25rem;
+  padding: 0.75rem 0.9rem;
+  background: #f0ebe3;
+}
+
+.pipeline-stage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 0.35rem;
+}
+
+.pipeline-stage-count {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 3rem;
+}
+
+.pipeline-stage-label {
+  font-weight: 600;
+}
+
+.pipeline-stage-desc {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.pipeline-ops {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--rule);
+}
+
+.pipeline-ops h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.pipeline-ops h4 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.95rem;
 }
 
 .pipeline-dl {
@@ -747,6 +901,81 @@ code {
 .year-amt {
   color: var(--muted);
   text-align: right;
+}
+
+.allocation-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1.5rem;
+  font-size: 0.92rem;
+}
+
+.allocation-table th,
+.allocation-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.allocation-table th:not(:first-child),
+.allocation-table td:not(:first-child):not(:last-child) {
+  text-align: right;
+}
+
+.allocation-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.purpose-bar {
+  display: flex;
+  height: 0.65rem;
+  margin: 0.5rem 0 0.75rem;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.purpose-segment {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+}
+
+.purpose-maintenance {
+  background: #5a8f6e;
+}
+
+.purpose-growth {
+  background: #3d6b8a;
+}
+
+.purpose-planning {
+  background: #8a7a4d;
+}
+
+.purpose-other {
+  background: #a3b5aa;
+}
+
+.purpose-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.purpose-legend li {
+  margin: 0.25rem 0;
+}
+
+.purpose-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.35rem;
+  vertical-align: -0.1rem;
 }
 
 @media (max-width: 36rem) {

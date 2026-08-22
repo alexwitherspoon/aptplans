@@ -26,7 +26,7 @@
     </li>
     <li>
       <strong>One airport</strong>
-      <p class="meta">Plans for that airport, only if we have a document. Example: <a href="/feeds/airports/PDX.xml">PDX</a>.</p>
+      <p class="meta">Every airport has a feed with FAA identity and review status. Verified plans, overview, and grants appear as items when published.</p>
     </li>
   </ul>
 
@@ -38,7 +38,7 @@
     {% endfor %}
   </ul>
 
-  <h2>Airports with a feed</h2>
+  <h2>Airport feeds</h2>
   {% if airport_feed_count %}
   <p class="meta">{{ airport_feed_count }} airport feeds.</p>
   {% for state in states %}
@@ -55,6 +55,6 @@
     {% endif %}
   {% endfor %}
   {% else %}
-  <p>No airport feeds yet. They appear when we list a plan for that airport.</p>
+  <p>No airports indexed yet.</p>
   {% endif %}
 {% endblock %}
