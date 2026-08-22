@@ -283,12 +283,10 @@ def main() -> int:
     catalog_root = ROOT / "catalog"
     with worker_lock(queue):
         count = run_check_pass(overlay_dir=overlay, catalog_root=catalog_root, queue_dir=queue)
-    site_dir = os.environ.get("APTPLANS_SITE", "").strip()
-    if count and site_dir:
-        from subprocess import run
-        import sys
+    if count:
+        from pipeline.site_build import enqueue_site_build
 
-        run([sys.executable, str(ROOT / "site" / "build.py"), "--out", site_dir], check=True, cwd=str(ROOT))
+        enqueue_site_build(queue)
     return 0
 
 

@@ -242,7 +242,7 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
         order.append("rebuild")
 
     monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
-    monkeypatch.setattr("pipeline.run_once._maybe_rebuild_site", rebuild)
+    monkeypatch.setattr("pipeline.site_build.enqueue_site_build", lambda *_args, **_kwargs: rebuild())
     queue = JobQueue(tmp_path / "queue")
     queue.enqueue(
         QueueJob(
@@ -280,7 +280,7 @@ def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> 
         order.append("rebuild")
 
     monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
-    monkeypatch.setattr("pipeline.run_once._maybe_rebuild_site", rebuild)
+    monkeypatch.setattr("pipeline.site_build.enqueue_site_build", lambda *_args, **_kwargs: rebuild())
     monkeypatch.setattr("pipeline.run_once.process_vet", lambda *_args, **_kwargs: "auto_pass")
     queue = JobQueue(tmp_path / "queue")
     queue.enqueue(

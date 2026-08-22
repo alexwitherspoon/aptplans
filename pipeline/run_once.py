@@ -34,11 +34,15 @@ from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.pipeline_status import build_public_snapshot, record_discovery, record_job
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
+from pipeline.boot_jobs import BOOT_JOB_KINDS
 from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.reject import purge_expired, store_reject
 from pipeline.sanitize import redact_html_secrets
 
 log = logging.getLogger("aptplans.job")
+
+# Airport jobs that change published HTML; explore only updates pipeline.json.
+SITE_BUILD_TRIGGER_KINDS = frozenset({"fetch", "vet", "check"})
 
 
 def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
@@ -177,15 +181,45 @@ def _intake_job_from_github() -> QueueJob | None:
 
 
 def _maybe_rebuild_site() -> None:
-    site_dir = os.environ.get("APTPLANS_SITE", "").strip()
-    if not site_dir:
-        return
-    builder = ROOT / "site" / "build.py"
-    subprocess.run(
-        [sys.executable, str(builder), "--out", site_dir],
-        check=True,
-        cwd=str(ROOT),
+    from pipeline.site_build import run_site_build
+
+    run_site_build()
+
+
+def process_site_build(
+    overlay_dir: Path,
+    queue_dir: Path,
+    catalog_root: Path,
+) -> str:
+    _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
+    from pipeline.site_build import run_site_build
+
+    return run_site_build()
+
+
+def _run_maintenance_job(job: QueueJob, overlay_dir: Path) -> str:
+    from pipeline.boot_jobs import (
+        run_budget_enrich,
+        run_grant_spend,
+        run_ollama_warm,
+        run_overlay_refresh,
+        run_overview_refresh,
+        run_search_sync,
     )
+
+    if job.kind == "overlay_refresh":
+        return run_overlay_refresh(overlay_dir)
+    if job.kind == "grant_spend":
+        return run_grant_spend(overlay_dir)
+    if job.kind == "budget_enrich":
+        return run_budget_enrich(overlay_dir)
+    if job.kind == "overview_refresh":
+        return run_overview_refresh(overlay_dir)
+    if job.kind == "search_sync":
+        return run_search_sync()
+    if job.kind == "ollama_warm":
+        return run_ollama_warm()
+    return "skipped"
 
 
 def _refresh_pipeline(overlay_dir: Path, queue_dir: Path, catalog_root: Path) -> None:
@@ -200,12 +234,14 @@ def refresh_public_site(
     queue_dir: Path,
     catalog_root: Path,
 ) -> None:
-    """Write pipeline.json and rebuild HTML so the About page stays current."""
+    """Write pipeline.json and queue an HTML rebuild for the worker."""
     _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
     try:
-        _maybe_rebuild_site()
+        from pipeline.site_build import enqueue_site_build
+
+        enqueue_site_build(queue_dir)
     except Exception:
-        log.exception("site rebuild failed; pipeline snapshot already written")
+        log.exception("site build enqueue failed; pipeline snapshot already written")
 
 
 def process_fetch(
@@ -654,6 +690,22 @@ def _run_claimed_job(
         except Exception:
             log.exception("pipeline status failed job=%s", job.id)
         return status in {"dead", "moved", "live"}
+    if job.kind == "site_build":
+        status = process_site_build(overlay_dir, queue.root, catalog_root)
+        _observe_job(overlay_dir, job, status)
+        try:
+            record_job(overlay_dir, job, status)
+        except Exception:
+            log.exception("pipeline status failed job=%s", job.id)
+        return False
+    if job.kind in BOOT_JOB_KINDS:
+        status = _run_maintenance_job(job, overlay_dir)
+        _observe_job(overlay_dir, job, status)
+        try:
+            record_job(overlay_dir, job, status)
+        except Exception:
+            log.exception("pipeline status failed job=%s", job.id)
+        return False
     if job.kind == "explore":
         status = process_explore(job, files_dir, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
@@ -745,7 +797,7 @@ def _finish_job(
     overlay_dir: Path,
     catalog_root: Path,
 ) -> None:
-    rebuild = _execute_claimed(
+    _execute_claimed(
         JobQueue(queue_dir),
         job,
         files_dir,
@@ -754,7 +806,21 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
-    refresh_public_site(overlay_dir, queue_dir, catalog_root)
+    if job.kind == "site_build" or job.kind in BOOT_JOB_KINDS:
+        if job.kind == "overlay_refresh":
+            from pipeline.boot_jobs import enqueue_post_overlay_refresh
+
+            try:
+                followups = enqueue_post_overlay_refresh(queue_dir)
+                if followups:
+                    log.info("post-overlay jobs enqueued: %s", ",".join(followups))
+            except Exception:
+                log.exception("post-overlay enqueue failed")
+        return
+    if job.kind in SITE_BUILD_TRIGGER_KINDS:
+        refresh_public_site(overlay_dir, queue_dir, catalog_root)
+    else:
+        _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
 
 
 def process_next(

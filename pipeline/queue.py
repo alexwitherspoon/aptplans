@@ -124,6 +124,17 @@ class JobQueue:
                 lids.add(lid)
         return frozenset(lids)
 
+    def has_kind(self, kind: str) -> bool:
+        for folder in (self.pending, self.active):
+            for path in folder.glob("*.json"):
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, TypeError):
+                    continue
+                if data.get("kind") == kind:
+                    return True
+        return False
+
     def _cursor_path(self) -> Path:
         return self.root / ".airport_cursor"
 
@@ -168,7 +179,11 @@ class JobQueue:
                 return True
             return len(active_lids) < airport_limit
         if airport_limit <= 1:
-            return lid == focus_lid if focus_lid else False
+            if not lid:
+                return not active_lids
+            if focus_lid:
+                return lid == focus_lid
+            return not active_lids
         return True
 
     def _focus_lid(self, airport_limit: int, active_lids: frozenset[str]) -> str | None:
@@ -184,15 +199,17 @@ class JobQueue:
             pending = sorted(self.pending.glob("*.json"))
             if not pending:
                 return None
-            try:
-                focus = _normalize_lid(
-                    json.loads(pending[0].read_text(encoding="utf-8")).get("airport_lid")
-                )
-            except (OSError, json.JSONDecodeError, TypeError):
-                focus = None
-            if focus:
-                self._write_cursor(focus)
-            return focus
+            for path in pending:
+                try:
+                    focus = _normalize_lid(
+                        json.loads(path.read_text(encoding="utf-8")).get("airport_lid")
+                    )
+                except (OSError, json.JSONDecodeError, TypeError):
+                    continue
+                if focus:
+                    self._write_cursor(focus)
+                    return focus
+            return None
 
         pending = sorted(self.pending.glob("*.json"))
         if not pending:
@@ -204,17 +221,28 @@ class JobQueue:
         except (OSError, json.JSONDecodeError, TypeError):
             return None
 
-    def _pick_pending(self, airport_limit: int, active_lids: frozenset[str]) -> QueueJob | None:
+    def _pick_pending(
+        self,
+        airport_limit: int,
+        active_lids: frozenset[str],
+        *,
+        maintenance: bool = False,
+    ) -> QueueJob | None:
         pending = sorted(self.pending.glob("*.json"))
         if not pending:
             return None
-        focus_lid = self._focus_lid(airport_limit, active_lids)
+        focus_lid = self._focus_lid(airport_limit, active_lids) if not maintenance else None
         for path in pending:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError, TypeError):
                 continue
             lid = _normalize_lid(data.get("airport_lid"))
+            if maintenance:
+                if lid:
+                    continue
+            elif not lid:
+                continue
             if self._claimable(lid, active_lids, airport_limit, focus_lid):
                 job = self._activate(path)
                 if airport_limit <= 1 and lid:
@@ -233,9 +261,13 @@ class JobQueue:
         if len(active_lids) >= airport_limit:
             return None
 
-        picked = self._pick_pending(airport_limit, active_lids)
+        picked = self._pick_pending(airport_limit, active_lids, maintenance=False)
         if picked is not None:
             return picked
+        if not active_lids:
+            picked = self._pick_pending(airport_limit, active_lids, maintenance=True)
+            if picked is not None:
+                return picked
 
         if len(active) == 1 and airport_limit == 1:
             return self._activate(active[0])

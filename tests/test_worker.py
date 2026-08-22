@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.worker import cold_start_overlays, cold_start_overviews, run_loop
+from pipeline.boot_jobs import run_overlay_refresh, run_overview_refresh
+from pipeline.worker import run_loop
 from tests.test_airports import PDX_NASR, _nasr_zip, _npias_xlsx, _ourairports_csv
 from tests.test_grants import grant_bytes_for
 
@@ -44,25 +45,34 @@ def _fetch_ok() -> tuple:
     return fetch, urls
 
 
-def test_cold_start_fetches_when_overlay_missing(tmp_path: Path, monkeypatch) -> None:
+def test_overlay_refresh_fetches_when_overlay_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APTPLANS_REFRESH_AIRPORTS", "1")
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
     fetch, urls = _fetch_ok()
-    assert cold_start_overlays(tmp_path, fetch=fetch, sleep=lambda _s: None, pause_before=0) is True
+    monkeypatch.setattr("pipeline.boot_jobs.fetch_bytes", fetch)
+    monkeypatch.setattr("pipeline.boot_jobs.post_json", None)
+    monkeypatch.setattr("pipeline.boot_jobs.time.sleep", lambda _s: None)
+    assert run_overlay_refresh(tmp_path) == "ok"
     assert any("NASR_Subscription" in url for url in urls)
     assert (tmp_path / "airports.jsonl").is_file()
 
 
-def test_cold_start_fetches_when_overlay_empty(tmp_path: Path, monkeypatch) -> None:
+def test_overlay_refresh_fetches_when_overlay_empty(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APTPLANS_REFRESH_AIRPORTS", "1")
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
     (tmp_path / "airports.jsonl").write_text("", encoding="utf-8")
     (tmp_path / "grants.jsonl").write_text("\n", encoding="utf-8")
     fetch, urls = _fetch_ok()
-    assert cold_start_overlays(tmp_path, fetch=fetch, sleep=lambda _s: None, pause_before=0) is True
+    monkeypatch.setattr("pipeline.boot_jobs.fetch_bytes", fetch)
+    monkeypatch.setattr("pipeline.boot_jobs.post_json", None)
+    monkeypatch.setattr("pipeline.boot_jobs.time.sleep", lambda _s: None)
+    assert run_overlay_refresh(tmp_path) == "ok"
     assert any("NASR_Subscription" in url for url in urls)
 
 
-def test_cold_start_skips_when_overlays_current(tmp_path: Path, monkeypatch) -> None:
+def test_overlay_refresh_skips_when_overlays_current(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APTPLANS_REFRESH_AIRPORTS", "1")
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
     (tmp_path / "airports.jsonl").write_text(
         '{"lid":"PDX","name":"Portland Intl","city":"Portland","state":"OR"}\n',
         encoding="utf-8",
@@ -75,28 +85,21 @@ def test_cold_start_skips_when_overlays_current(tmp_path: Path, monkeypatch) -> 
     def fake_fetch(url: str, timeout: int = 60) -> tuple[bytes, int]:
         raise AssertionError(f"must not fetch {url}")
 
-    assert (
-        cold_start_overlays(tmp_path, fetch=fake_fetch, sleep=lambda _s: None, pause_before=0)
-        is False
-    )
+    monkeypatch.setattr("pipeline.boot_jobs.fetch_bytes", fake_fetch)
+    assert run_overlay_refresh(tmp_path) == "skipped"
 
 
-def test_cold_start_off_without_env(tmp_path: Path, monkeypatch) -> None:
+def test_overlay_refresh_off_without_env(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("APTPLANS_REFRESH_AIRPORTS", raising=False)
-
-    def fake_fetch(url: str, timeout: int = 60) -> tuple[bytes, int]:
-        raise AssertionError(f"must not fetch {url}")
-
-    assert (
-        cold_start_overlays(tmp_path, fetch=fake_fetch, sleep=lambda _s: None, pause_before=0)
-        is False
-    )
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    assert run_overlay_refresh(tmp_path) == "skipped"
 
 
-def test_cold_start_overviews_writes_missing_then_skips(tmp_path: Path) -> None:
-    assert cold_start_overviews(tmp_path) is True
+def test_overview_refresh_writes_missing_then_skips(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    assert run_overview_refresh(tmp_path) == "ok"
     assert (tmp_path / "overviews.jsonl").is_file()
-    assert cold_start_overviews(tmp_path) is False
+    assert run_overview_refresh(tmp_path) == "skipped"
 
 
 def test_run_loop_sleeps_only_when_idle() -> None:
@@ -159,18 +162,16 @@ def test_run_loop_polls_intake_hourly(monkeypatch) -> None:
     assert pulls.count((True, False)) == 2
 
 
-def test_main_search_failure_keeps_worker(monkeypatch) -> None:
+def test_main_boot_enqueue_failure_keeps_worker(monkeypatch) -> None:
     from pipeline import worker
 
     called: list[str] = []
-    monkeypatch.setattr(worker, "cold_start_overlays", lambda **_kwargs: False)
-    monkeypatch.setattr(worker, "cold_start_overviews", lambda: False)
-    monkeypatch.setattr(worker, "_rebuild_site", lambda: called.append("rebuild"))
 
-    def boom() -> None:
-        raise RuntimeError("search down")
+    def boom() -> list[str]:
+        raise RuntimeError("queue down")
 
-    monkeypatch.setattr(worker, "boot_sync", boom)
+    monkeypatch.setattr(worker, "enqueue_boot_jobs", boom)
+    monkeypatch.setattr(worker, "_refresh_pipeline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(worker, "run_loop", lambda: called.append("loop"))
     worker.main()
     assert called == ["loop"]
