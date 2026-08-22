@@ -106,28 +106,40 @@ def score_job_signal(*, lid: str = "", name: str = "", url: str = "", label: str
     }
 
 
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
 def record_outcome(
     overlay_dir: Path | None,
     row: dict,
 ) -> dict:
     """Append one observation. Never raises into the worker drain."""
-    payload = {
-        "at": utc_now(),
-        "bucket": row.get("bucket") or bucket_for(
-            job_status=row.get("job_status"),
-            review_status=row.get("review_status"),
-            scored=row.get("scored") if isinstance(row.get("scored"), dict) else None,
-        ),
-        **{key: value for key, value in row.items() if key != "bucket"},
-    }
-    payload["bucket"] = payload["bucket"] if payload["bucket"] in BUCKETS else "uncertain"
-    dest = outcomes_path(overlay_dir)
     try:
+        scored = row.get("scored") if isinstance(row.get("scored"), dict) else None
+        payload = {
+            "at": utc_now(),
+            "bucket": row.get("bucket") or bucket_for(
+                job_status=row.get("job_status"),
+                review_status=row.get("review_status"),
+                scored=scored,
+            ),
+            **{key: value for key, value in row.items() if key != "bucket"},
+        }
+        payload["bucket"] = payload["bucket"] if payload["bucket"] in BUCKETS else "uncertain"
+        payload = _json_safe(payload)
+        dest = outcomes_path(overlay_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
         with dest.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, default=str) + "\n")
-    except OSError:
-        return payload
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return _json_safe(row)
     return payload
 
 
