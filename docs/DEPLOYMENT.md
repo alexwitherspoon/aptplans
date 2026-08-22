@@ -22,9 +22,8 @@ See [`.github/SETUP.md`](../.github/SETUP.md). Required: `HOST`, `USER=aptplans`
 
 On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
 
-1. Build `dist/` on the runner.
-2. Rsync this repo to `/opt/aptplans` and `dist/` to `/var/lib/aptplans/site`.
-3. Run [`scripts/host/remote-deploy.sh`](../scripts/host/remote-deploy.sh), which is idempotent:
+1. Rsync this repo to `/opt/aptplans` (not `dist/`; HTML is built on origin).
+2. Run [`scripts/host/remote-deploy.sh`](../scripts/host/remote-deploy.sh), which is idempotent:
    - Confirms Debian 13
    - Installs the small host package set (no Python, no Caddy, no nginx on the host)
    - Installs Docker Engine from Docker's Debian repo
@@ -43,7 +42,13 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - Origin TLS in `/var/lib/aptplans/tls` (Cloudflare Origin CA if secrets are set, otherwise self-signed)
    - Worker secrets in `/home/aptplans/.env.secrets` (PIA VPN creds for the `egress` service, intake GitHub token, review API token, Brave search key, and optional Gemini key if those Actions secrets are set)
    - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
-   - Ollama stays on an internal Compose network (no host port). CD downloads 1-bit Bonsai 27B and `ollama create`s it if missing.
+   - Waits for VPN egress and Caddy to answer on :80 (deploy succeeds when the stack is healthy, not when background work finishes)
+   - Schedules Ollama GGUF import in the background when needed (`nohup provision-ollama.sh`)
+   - Restarts the worker, which enqueues background jobs: overlay refresh (when stale), grant/budget LLM classify, overview refresh, search sync, Ollama warm, and HTML rebuild (`site_build`)
+
+A successful deploy means **services are up and serving** (possibly stale HTML until `site_build` runs). Long work runs asynchronously in the worker queue.
+
+GitHub Actions SSH uses `ServerAliveInterval=30`. Values with spaces in `.env.secrets` (for example `PIA_SERVER_REGIONS="US East"`) are quoted by CD.
 
 Host layout:
 

@@ -203,6 +203,23 @@ Expect `200` or `301`/`302` for each. Any `URLError`, `RuntimeError` (missing pr
 
 If `egress` is unhealthy or VPN creds are missing, worker fetches fail closed rather than falling back to the host IP.
 
+## Deploy and background jobs
+
+CD restarts the worker and returns once Caddy answers. HTML rebuild, FAA overlay refresh, search sync, and LLM warm-up run as **queue jobs** (`site_build`, `overlay_refresh`, `grant_spend`, `budget_enrich`, `overview_refresh`, `search_sync`, `ollama_warm`). Inspect pending work:
+
+```bash
+ls -1 /var/lib/aptplans/queue/pending/
+$COMPOSE_PROD logs --tail=80 worker
+```
+
+**Stuck `docker compose run` containers** from an old deploy (names like `aptplans-worker-run-*`) can be removed:
+
+```bash
+sudo docker rm -f $(sudo docker ps -aq --filter name=worker-run) 2>/dev/null || true
+```
+
+**`.env.secrets` sourcing errors** (for example `East: command not found`) mean an unquoted value has spaces. Redeploy from GitHub Actions (CD now quotes values) or fix `/home/aptplans/.env.secrets` manually, e.g. `PIA_SERVER_REGIONS="US East"`.
+
 **Troubleshooting stuck `egress`**
 
 Symptoms: `health: starting` forever, logs show `UDPv4 link remote` without `Initialization Sequence Completed`, or healthcheck DNS errors (`operation not permitted` on `1.1.1.1:53`). Worker stays down because it waits for healthy egress.

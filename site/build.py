@@ -24,6 +24,12 @@ REPO = ROOT.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+BUILD_PROGRESS_EVERY = 250
+
+
+def _progress(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
 from catalog.grants import (
     SPEND_CATEGORY_LABELS,
     SPEND_CATEGORIES,
@@ -1297,7 +1303,13 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     year = date.today().year
     source_sha = _inputs_sha256(catalog, year)
     if _previous_source_sha(out_dir) == source_sha:
+        _progress("site build: unchanged (inputs match last build)")
         return False
+
+    _progress(
+        f"site build: starting out={out_dir} airports={len(catalog.airports)} "
+        f"documents={len(catalog.documents)} grants={len(catalog.grants)}"
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     emitted: set[str] = set()
@@ -1392,7 +1404,9 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         rss_links=[RSS_LAWS, RSS_ALL],
     )
 
-    for airport in catalog.airports:
+    for index, airport in enumerate(catalog.airports, start=1):
+        if index == 1 or index % BUILD_PROGRESS_EVERY == 0 or index == len(catalog.airports):
+            _progress(f"site build: airports {index}/{len(catalog.airports)} ({airport.lid})")
         docs = sorted(
             [
                 doc
@@ -1798,6 +1812,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         )
     emit(out_dir / "data" / "catalog.csv", buf.getvalue())
     _prune_unemitted(out_dir, emitted)
+    _progress(f"site build: wrote {len(emitted)} files to {out_dir}")
     return True
 
 
@@ -1811,7 +1826,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if not build(args.out):
-        print("site unchanged")
+        _progress("site unchanged")
 
 
 if __name__ == "__main__":
