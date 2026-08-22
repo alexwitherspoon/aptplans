@@ -30,6 +30,7 @@ from pipeline.intake import IntakeHint, hint_can_queue, parse_issue_body, resolv
 from pipeline.parse import change_note, content_changed, content_fingerprint
 from pipeline.stages import review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
+from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
 from pipeline.refresh import ROOT, overlay_dir_from_env
@@ -581,30 +582,25 @@ def _run_claimed_job(
     overlay_dir: Path,
     catalog_root: Path,
 ) -> bool:
-    """Process a claimed job. True if the public HTML should rebuild after unlock."""
+    """Process a claimed job. True if the public HTML should rebuild after complete."""
     if job.kind == "check":
         status = process_check(job, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
-        queue.complete()
         return status in {"dead", "moved", "live"}
     if job.kind == "explore":
         status = process_explore(job, files_dir, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
-        queue.complete()
         return False
     if job.kind == "vet":
         status = process_vet(job, files_dir, overlay_dir, catalog_root)
         _observe_job(overlay_dir, job, status)
-        queue.complete()
         return status in {"auto_pass", "published"}
     if job.kind != "fetch":
         log.info("skip unsupported job kind %s", job.kind)
         _observe_job(overlay_dir, job, "skipped")
-        queue.complete()
         return False
     status = process_fetch(job, files_dir, overlay_dir, catalog_root, queue=queue)
     _observe_job(overlay_dir, job, status)
-    queue.complete()
     if status != "preserved":
         return False
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
@@ -639,24 +635,14 @@ def _execute_claimed(
                 _reply(job, "needs_human", None)
             except Exception:
                 log.exception("intake reply failed after giving up")
-            queue.complete()
             return False
         raise JobRetry(job.attempts)
 
 
-def process_next(
-    queue_dir: Path | None = None,
-    files_dir: Path | None = None,
-    overlay_dir: Path | None = None,
-    catalog_root: Path | None = None,
-    *,
-    pull_intake: bool = False,
-) -> bool:
-    """Claim and finish one job. True if work ran; False if the queue was idle."""
-    queue_dir, files_dir, overlay_dir, catalog_root = _paths(
-        queue_dir, files_dir, overlay_dir, catalog_root
-    )
-    rebuild = False
+def _claim_next_job(
+    queue_dir: Path,
+    files_dir: Path,
+) -> QueueJob | None:
     with worker_lock(queue_dir):
         try:
             purged = purge_expired(files_dir=files_dir)
@@ -669,17 +655,59 @@ def process_next(
                 )
         except Exception:
             log.exception("reject purge failed")
-        queue = JobQueue(queue_dir)
-        job = queue.claim()
-        if job is not None:
-            rebuild = _execute_claimed(queue, job, files_dir, overlay_dir, catalog_root)
-            worked = True
-        else:
-            worked = False
+        return JobQueue(queue_dir).claim(airport_limit=airport_concurrency())
 
-    if worked:
-        _rebuild_if_needed(rebuild)
+
+def _finish_job(
+    queue_dir: Path,
+    job: QueueJob,
+    files_dir: Path,
+    overlay_dir: Path,
+    catalog_root: Path,
+) -> None:
+    rebuild = _execute_claimed(
+        JobQueue(queue_dir),
+        job,
+        files_dir,
+        overlay_dir,
+        catalog_root,
+    )
+    with worker_lock(queue_dir):
+        JobQueue(queue_dir).complete(job)
+    _rebuild_if_needed(rebuild)
+
+
+def process_next(
+    queue_dir: Path | None = None,
+    files_dir: Path | None = None,
+    overlay_dir: Path | None = None,
+    catalog_root: Path | None = None,
+    *,
+    pull_intake: bool = False,
+    pull_discovery: bool = False,
+) -> bool:
+    """Claim and finish one job. True if work ran; False if the queue was idle."""
+    queue_dir, files_dir, overlay_dir, catalog_root = _paths(
+        queue_dir, files_dir, overlay_dir, catalog_root
+    )
+    job = _claim_next_job(queue_dir, files_dir)
+    if job is not None:
+        _finish_job(queue_dir, job, files_dir, overlay_dir, catalog_root)
         return True
+
+    if pull_discovery:
+        try:
+            from pipeline.discover_overlay import discover_next_airports
+
+            result = discover_next_airports(overlay_dir, queue_dir)
+            if result.get("explore_jobs") or result.get("fetch_jobs"):
+                job = _claim_next_job(queue_dir, files_dir)
+                if job is not None:
+                    _finish_job(queue_dir, job, files_dir, overlay_dir, catalog_root)
+                    return True
+        except Exception:
+            log.exception("discovery enqueue failed")
+        return False
 
     if not pull_intake:
         return False
@@ -692,19 +720,17 @@ def process_next(
     if incoming is None:
         return False
 
-    rebuild = False
     with worker_lock(queue_dir):
         queue = JobQueue(queue_dir)
         if incoming.issue_number is not None and queue.has_issue(incoming.issue_number):
             log.info("intake issue %s already queued; skip", incoming.issue_number)
             return False
         queue.enqueue(incoming)
-        job = queue.claim()
-        if job is None:
-            return False
-        rebuild = _execute_claimed(queue, job, files_dir, overlay_dir, catalog_root)
 
-    _rebuild_if_needed(rebuild)
+    job = _claim_next_job(queue_dir, files_dir)
+    if job is None:
+        return False
+    _finish_job(queue_dir, job, files_dir, overlay_dir, catalog_root)
     return True
 
 

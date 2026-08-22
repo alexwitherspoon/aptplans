@@ -262,7 +262,7 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
         )
         is True
     )
-    assert order == ["lock", "unlock"]
+    assert order == ["lock", "unlock", "lock", "unlock"]
 
 
 def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:
@@ -301,7 +301,7 @@ def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> 
         )
         is True
     )
-    assert order == ["lock", "unlock", "rebuild"]
+    assert order == ["lock", "unlock", "lock", "unlock", "rebuild"]
 
 
 def test_process_next_retries_then_gives_up(tmp_path: Path, monkeypatch) -> None:
@@ -474,7 +474,7 @@ def test_process_next_explore_html_preserves_page_and_queues_pdfs(tmp_path: Path
             vet_ids.append(child.document_id)
         else:
             assert child.kind == "explore"
-        pending.complete()
+        pending.complete(child)
         child = pending.claim()
     assert AMP in fetch_urls
     assert "4s9-site" in vet_ids
@@ -507,3 +507,36 @@ def test_process_fetch_strips_html_api_keys(tmp_path: Path) -> None:
     )
     stored = next((tmp_path / "files").glob("*.html"))
     assert "AIzaSy" not in stored.read_text(encoding="utf-8")
+
+
+def test_process_next_pull_discovery_enqueues_job(tmp_path: Path, monkeypatch) -> None:
+    from pipeline.queue import JobQueue, QueueJob
+
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
+
+    def fake_discover(overlay_dir, queue_dir, **kwargs):
+        JobQueue(queue_dir).enqueue(
+            QueueJob(
+                kind="explore",
+                document_id="4s9-site",
+                source_url="https://example.com/hub",
+                airport_lid="4S9",
+                state="OR",
+            )
+        )
+        return {"explore_jobs": 1, "fetch_jobs": 0}
+
+    monkeypatch.setattr("pipeline.discover_overlay.discover_next_airports", fake_discover)
+    monkeypatch.setattr("pipeline.run_once.process_explore", lambda *_args, **_kwargs: "dead")
+
+    assert (
+        process_next(
+            queue_dir=tmp_path / "queue",
+            files_dir=tmp_path / "files",
+            overlay_dir=tmp_path / "overlay",
+            catalog_root=ROOT / "catalog",
+            pull_discovery=True,
+        )
+        is True
+    )
+    assert len(list((tmp_path / "queue" / "done").glob("*.json"))) == 1
