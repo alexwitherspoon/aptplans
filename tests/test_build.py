@@ -30,9 +30,13 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "Airport Layout Plan" in about
     assert "not legal advice" in about.lower()
     assert "class=\"about-hero\"" in about
-    assert "queued" in about.lower()
-    assert "pipeline-panel" in about
-    assert "published saved copies" in about.lower()
+    assert "compiled corpus" in about.lower()
+    assert "about-highlights" in about
+    assert "airports reviewed" in about.lower()
+    assert "federal aip obligated" in about.lower()
+    assert "review pipeline" in about.lower()
+    assert "pipeline-stages" in about
+    assert "published saved copies" in about.lower() or "saved copies on site" in about.lower()
     assert css.is_file()
     assert "canonical" in index.lower() or 'rel="canonical"' in index
     assert (out / "robots.txt").is_file()
@@ -72,6 +76,9 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "No state funding is listed yet for this airport" in pdx
     assert "Airport Layout Plan" in pdx
     assert "Master plan" in pdx
+    assert "coverage-banner--unreviewed" in pdx
+    assert "Not reviewed yet" in pdx
+    assert "has not searched this airport yet" in pdx
     assert "State aviation law" in pdx
     assert "Oregon Department of Aviation" in pdx
     assert "Airports and Landing Fields" in pdx
@@ -79,13 +86,17 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "Oregon Department of Aviation" in oregon
     assert "Aviation budget" in oregon
     assert 'id="budget"' in oregon
-    assert 'id="projects"' in oregon
+    assert 'id="projects"' not in oregon
+    assert 'id="allocations"' in oregon
     assert "$45,874,157" in oregon
     assert "Aviation System Action Program" in oregon
     assert "By fund type" in oregon
-    assert "Projects and allocations" in oregon
-    assert "Improve Terminal" in oregon
-    assert "more award" in oregon
+    assert "Federal airport grants" in oregon
+    assert "Maintenance vs growth" in oregon
+    assert "allocation-table" in oregon
+    assert "Improve Terminal" not in oregon
+    assert "Reconstruct Taxiway" not in oregon
+    assert "$61,876,159" in oregon
     assert "/airports/PDX/#funding" in oregon
     assert "No grants listed yet for this state" in (
         out / "states" / "CO" / "index.html"
@@ -99,13 +110,12 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "class=\"home-stats\"" not in home
     assert "class=\"state-index\"" not in home
     assert "New documents" in home
-    assert "Planned growth" in home
-    assert "Planned decline" in home
-    assert home.find("New documents") < home.find("Planned growth") < home.find("Planned decline")
-    assert 'href="/airports/TTD/"' in home
-    assert "Troutdale" in home
-    assert 'href="/search/?outlook=growing"' in home
-    assert 'href="/search/?outlook=declining"' in home
+    assert "Planned growth" not in home
+    assert "Planned decline" not in home
+    airports_page = (out / "airports" / "index.html").read_text(encoding="utf-8")
+    assert 'href="/search/?outlook=growing"' in airports_page
+    assert 'href="/search/?outlook=declining"' in airports_page
+    assert ">Catalog<" not in airports_page
     sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
     assert "/feeds/laws.xml" in sitemap
     assert "<loc>https://aptplans.org/feeds/</loc>" in sitemap
@@ -142,9 +152,9 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert 'href="#plans"' in pdx
     assert 'href="#funding"' in pdx
     assert 'href="#law"' in pdx
-    assert "official link listed" in pdx.lower()
-    assert "Official source" in pdx
-    assert "pdx2045.org" in pdx  # codeql[py/incomplete-url-substring-sanitization]
+    assert "plan coverage not reviewed yet" in pdx.lower()
+    assert "not reviewed yet" in pdx.lower()
+    assert "has not searched this airport yet" in pdx.lower()
     assert "Reconstruct Taxiway" in pdx
     assert "$61,876,159" in pdx
     assert "24 Jul 2025" in pdx
@@ -164,8 +174,8 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert (out / "data" / "catalog.csv").is_file()
     assert (out / "data" / "search.json").is_file()
     search_blob = (out / "data" / "search.json").read_text(encoding="utf-8")
-    assert "planning outlook declining" in search_blob
-    assert '"outlook": "declining"' in search_blob
+    assert "planning outlook declining" not in search_blob
+    assert '"outlook": "declining"' not in search_blob
     assert "/js/suggest.js" in index
     assert (out / "js" / "suggest.js").is_file()
     suggest = (out / "js" / "suggest.js").read_text(encoding="utf-8")
@@ -193,45 +203,20 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "if (!q && !outlook) return;" in search_page
     assert "slice(0, 25)" not in search_page
     mulino = (out / "airports" / "4S9" / "index.html").read_text(encoding="utf-8")
-    assert "Mulino State Airport Master Plan" in mulino
-    assert "Mulino State Airport Layout Plan" in mulino
-    assert 'href="/documents/4s9-2019-amp/"' in mulino
-    assert 'href="/documents/4s9-2019-alp/"' in mulino
-    assert "No Airport Layout Plan is listed yet" not in mulino
-    assert "Chapter 5 Alternatives" in mulino
-    assert "<h3><a href=\"/documents/4s9-2008-alternatives/\">Mulino Airport Master Plan Update Chapter 5 Alternatives</a></h3>" not in mulino
-    assert "Earlier editions" in mulino
-    assert "Mulino Airport Master Plan Update" in mulino
-    assert "plan-brief" in mulino
-    assert "Working toward" not in mulino
-    assert "3,425" in mulino
-    assert "14/32, 3,425 by 100 ft" in mulino
-    assert "1 · Runway" not in mulino
-    assert "260 ft" in mulino
-    assert "T-hangars" in mulino
+    assert "Not reviewed yet" in mulino
+    assert "has not searched this airport yet" in mulino
+    assert 'href="/feeds/airports/4S9.xml"' in mulino
+    assert "plan-brief" not in mulino
+    assert "Mulino State Airport Master Plan" not in mulino
+    assert 'href="/documents/4s9-2019-amp/"' not in mulino
+    assert "Earlier editions" not in mulino
     pdx_page = (out / "airports" / "PDX" / "index.html").read_text(encoding="utf-8")
-    assert "plan-brief" in pdx_page
-    assert "Working toward" not in pdx_page
-    assert "31 ft" in pdx_page
-    assert "11,000" in pdx_page
-    assert "10R/28L, 11,000 by 150 ft · Concrete" in pdx_page
-    assert "10L/28R, 9,825 by 150 ft · Asphalt" in pdx_page
-    pdx_brief = pdx_page.split('class="plan-brief', 1)[1].split("</aside>", 1)[0]
-    assert "<br>" in pdx_brief
-    assert "outlook-growing" in pdx_page
+    assert "plan-brief" not in pdx_page
+    assert "outlook-growing" not in pdx_page
     ttd = (out / "airports" / "TTD" / "index.html").read_text(encoding="utf-8")
-    assert "outlook-declining" in ttd
+    assert "plan-brief" not in ttd
+    assert "outlook-declining" not in ttd
     hood = (out / "airports" / "4S2" / "index.html").read_text(encoding="utf-8")
-    assert "638 ft" in hood
-    assert "3,040" in hood
-    assert "7/25, 3,040 by 75 ft · Asphalt" in hood
-    assert "plan-brief-row" in ttd
-    assert "has-outlook" in ttd
-    outlook_html = ttd.split('class="outlook', 1)[1].split("</figure>", 1)[0]
-    assert "Planning Outlook" in outlook_html
-    assert "may not come to pass" in outlook_html
-    assert "<p>" not in outlook_html
-    assert "Alternative C" not in outlook_html
     ttd_doc = (out / "documents" / "ttd-2016-shaping-our-future" / "index.html").read_text(
         encoding="utf-8"
     )
@@ -242,8 +227,95 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     amp_page = (out / "documents" / "4s9-2019-amp" / "index.html").read_text(encoding="utf-8")
     assert "Listed on" in amp_page
     assert "mulino-4s9.aspx" in amp_page
-    assert "Existing Conditions Report" in pdx
-    assert "Earlier editions" not in pdx
+    mulino_feed = (out / "feeds" / "airports" / "4S9.xml").read_text(encoding="utf-8")
+    assert "Mulino State Airport (4S9)" in mulino_feed
+    assert "Not reviewed yet" in mulino_feed
+    assert "/documents/4s9-2019-alp/" not in mulino_feed
+    pdx_feed = (out / "feeds" / "airports" / "PDX.xml").read_text(encoding="utf-8")
+    assert "Portland International Airport (PDX)" in pdx_feed
+    assert "Not reviewed yet" in pdx_feed
+    assert "Reconstruct Taxiway" in pdx_feed
+    assert "/documents/pdx-" not in pdx_feed
+
+
+def test_airport_rss_items_unreviewed_and_verified() -> None:
+    from catalog.models import Airport, Document
+    from catalog.seed import seed_catalog
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog")
+    airport = catalog.airports_by_lid["4S9"]
+    grants = catalog.grants_for_airport("4S9")
+    items, desc = build.airport_rss_items(
+        airport,
+        state=catalog.states_by_code.get("OR"),
+        stage="untouched",
+        status_message="Not reviewed yet.",
+        grants=grants,
+        docs=[],
+        overview=None,
+        show_plan_insights=False,
+    )
+    assert "Mulino State Airport (4S9)" in items[0]["title"]
+    assert "Not reviewed yet" in items[0]["description"]
+    assert "Mulino" in items[0]["description"]
+    assert not any("/documents/" in item["link"] for item in items)
+    verified = Document(
+        id="4s9-2019-alp",
+        kind="alp",
+        airport_lid="4S9",
+        title="Mulino ALP",
+        source_url="https://example.com/alp.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+        content_sha256="abc",
+        preserved_url="/files/abc.pdf",
+        source_retrieved_at="2026-01-15T00:00:00Z",
+    )
+    items, desc = build.airport_rss_items(
+        airport,
+        state=catalog.states_by_code.get("OR"),
+        stage="published",
+        status_message=None,
+        grants=[],
+        docs=[verified],
+        overview=None,
+        show_plan_insights=True,
+    )
+    assert any("/documents/4s9-2019-alp/" in item["link"] for item in items)
+    identity = next(item for item in items if item.get("guid", "").endswith("#airport"))
+    assert "Coverage: Published" in identity["description"]
+
+
+def test_verified_airport_shows_plan_insights(tmp_path: Path, monkeypatch) -> None:
+    from catalog.seed import seed_catalog
+    from catalog.store import write_overlay_update
+
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(overlay))
+    monkeypatch.setenv("APTPLANS_REFERENCE_SEED", "1")
+    write_overlay_update(
+        overlay,
+        "4s9-2019-alp",
+        {
+            "completeness": "complete",
+            "review_status": "auto_pass",
+            "content_sha256": "abc123",
+            "preserved_url": "/files/abc123.pdf",
+            "source_status": "live",
+        },
+    )
+    build = _load_build()
+    out = tmp_path / "dist"
+    build.build(out, catalog=seed_catalog(ROOT / "catalog", overlay_dir=overlay))
+    mulino = (out / "airports" / "4S9" / "index.html").read_text(encoding="utf-8")
+    assert "plan-brief" in mulino
+    assert 'href="/documents/4s9-2019-alp/"' in mulino
+    mulino_feed = (out / "feeds" / "airports" / "4S9.xml").read_text(encoding="utf-8")
+    assert "/documents/4s9-2019-alp/" in mulino_feed
+    assert "Planning overview" in mulino_feed or "Mulino ALP" in mulino_feed
+    assert "Not reviewed yet" not in mulino_feed
 
 
 def test_page_overview_ignores_current_overlay() -> None:
@@ -706,6 +778,48 @@ def test_year_bars_scale_to_peak_year() -> None:
     assert bars[0]["count"] == 2
     assert bars[0]["pct"] == 100
     assert bars[1]["pct"] == 33
+
+
+def test_state_grant_allocations_groups_by_year_and_airport() -> None:
+    from catalog.models import Airport, Grant
+    from catalog.store import Catalog
+
+    build = _load_build()
+    catalog = Catalog(
+        airports=[
+            Airport(lid="PDX", name="Portland Intl", city="Portland", state="OR"),
+            Airport(lid="HIO", name="Hillsboro", city="Hillsboro", state="OR"),
+        ]
+    )
+    allocations = build.state_grant_allocations(
+        catalog,
+        [
+            Grant(
+                airport_lid="PDX",
+                fiscal_year=2025,
+                amount=100,
+                description="Reconstruct Taxiway",
+            ),
+            Grant(
+                airport_lid="HIO",
+                fiscal_year=2025,
+                amount=40,
+                description="Construct New Hangar",
+            ),
+            Grant(
+                airport_lid="PDX",
+                fiscal_year=2024,
+                amount=60,
+                description="Rehabilitate Runway",
+            ),
+        ],
+    )
+    assert allocations["stats"]["total"] == 200
+    assert [row["year"] for row in allocations["by_year"]] == [2025, 2024]
+    assert allocations["by_year"][0]["airports"][0]["lid"] == "PDX"
+    assert allocations["by_airport"][0]["lid"] == "PDX"
+    assert allocations["purpose"]["maintenance"]["total"] == 160
+    assert allocations["purpose"]["growth"]["total"] == 40
 
 
 def test_project_groups_sort_by_lid() -> None:

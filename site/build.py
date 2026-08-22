@@ -24,20 +24,32 @@ REPO = ROOT.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from catalog.grants import faa_year_summary_url, grant_title, remaining_obligation, usaspending_award_url
-from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, looks_like_work_edition, visible_on_site
+from catalog.grants import (
+    SPEND_CATEGORY_LABELS,
+    SPEND_CATEGORIES,
+    faa_year_summary_url,
+    grant_spend_category,
+    grant_title,
+    remaining_obligation,
+    usaspending_award_url,
+)
+from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, feed_visible, looks_like_work_edition, visible_on_site
 from catalog.ourairports import http_url
 from catalog.seed import reference_seed_enabled, seed_catalog
-from catalog.store import Catalog, completeness_for_airport, counts
+from catalog.store import Catalog, completeness_for_airport, counts, has_verified_plans
 from pipeline.brief import airport_overview
 from pipeline.pipeline_status import (
     coverage_banner,
+    coverage_banner_class,
     coverage_label,
     coverage_stage,
     load_public_snapshot,
     load_status,
     pending_documents,
+    plan_panel_empty,
+    stage_rows,
 )
+from pipeline.refresh import overlay_dir_from_env
 from pipeline.search import airport_record
 
 TEMPLATES = ROOT / "templates"
@@ -349,6 +361,122 @@ def funding_sections(grants: list) -> list[dict]:
 
 
 PROJECT_PREVIEW = 3
+
+
+def _grant_amount(grant) -> int:
+    return grant.amount or 0
+
+
+def _empty_purpose_totals() -> dict[str, dict]:
+    return {category: {"total": 0, "count": 0} for category in SPEND_CATEGORIES}
+
+
+def state_grant_allocations(catalog: Catalog, grants: list) -> dict:
+    """State dashboard: annual totals, airport carve-up, maintenance vs growth."""
+    stats = grant_briefing(grants)
+    purpose = _empty_purpose_totals()
+    by_year: dict[int, dict] = {}
+    by_airport: dict[str, dict] = {}
+
+    for grant in grants:
+        category = grant_spend_category(grant)
+        amount = _grant_amount(grant)
+        purpose[category]["total"] += amount
+        purpose[category]["count"] += 1
+
+        lid = grant.airport_lid
+        airport = catalog.airports_by_lid.get(lid)
+        airport_row = by_airport.setdefault(
+            lid,
+            {
+                "lid": lid,
+                "name": airport.name if airport else lid,
+                "total": 0,
+                "count": 0,
+                "year_min": None,
+                "year_max": None,
+                "purposes": _empty_purpose_totals(),
+            },
+        )
+        airport_row["total"] += amount
+        airport_row["count"] += 1
+        airport_row["purposes"][category]["total"] += amount
+        airport_row["purposes"][category]["count"] += 1
+        if grant.fiscal_year is not None:
+            year_min = airport_row["year_min"]
+            year_max = airport_row["year_max"]
+            airport_row["year_min"] = (
+                grant.fiscal_year if year_min is None else min(year_min, grant.fiscal_year)
+            )
+            airport_row["year_max"] = (
+                grant.fiscal_year if year_max is None else max(year_max, grant.fiscal_year)
+            )
+
+        if grant.fiscal_year is None:
+            continue
+        year_row = by_year.setdefault(
+            grant.fiscal_year,
+            {"year": grant.fiscal_year, "total": 0, "count": 0, "airports": {}},
+        )
+        year_row["total"] += amount
+        year_row["count"] += 1
+        airport_bucket = year_row["airports"].setdefault(
+            lid,
+            {
+                "lid": lid,
+                "name": airport.name if airport else lid,
+                "total": 0,
+                "count": 0,
+                "purposes": _empty_purpose_totals(),
+            },
+        )
+        airport_bucket["total"] += amount
+        airport_bucket["count"] += 1
+        airport_bucket["purposes"][category]["total"] += amount
+        airport_bucket["purposes"][category]["count"] += 1
+
+    purpose_parts = [
+        (category, purpose[category]["total"])
+        for category in SPEND_CATEGORIES
+        if purpose[category]["total"]
+    ]
+    purpose_total = sum(amount for _, amount in purpose_parts) or 1
+    purpose_rows = []
+    offset = 0
+    for category in SPEND_CATEGORIES:
+        row = purpose[category]
+        if not row["total"]:
+            continue
+        pct = round(100 * row["total"] / purpose_total)
+        purpose_rows.append(
+            {
+                "key": category,
+                "label": SPEND_CATEGORY_LABELS[category],
+                "total": row["total"],
+                "count": row["count"],
+                "pct": pct,
+                "offset": offset,
+            }
+        )
+        offset += pct
+
+    year_rows = []
+    for year in sorted(by_year, reverse=True):
+        row = by_year[year]
+        airports = sorted(row["airports"].values(), key=lambda item: (-item["total"], item["lid"]))
+        year_rows.append({**row, "airports": airports})
+
+    airport_rows = sorted(by_airport.values(), key=lambda item: (-item["total"], item["lid"]))
+
+    return {
+        "stats": stats,
+        "bars": year_bars(grants),
+        "purpose": purpose,
+        "purpose_rows": purpose_rows,
+        "purpose_total": sum(row["total"] for row in purpose_rows) or None,
+        "by_year": year_rows,
+        "by_airport": airport_rows,
+    }
 
 
 def project_groups(catalog: Catalog, grants: list, preview: int = PROJECT_PREVIEW) -> list[dict]:
@@ -916,15 +1044,24 @@ def _rfc822(value: str | None) -> str | None:
     return parsed.strftime("%a, %d %b %Y %H:%M:%S +0000")
 
 
-def _rss(title: str, path: str, items: list[dict], page: str | None = None) -> str:
+def _rss(
+    title: str,
+    path: str,
+    items: list[dict],
+    page: str | None = None,
+    *,
+    description: str | None = None,
+) -> str:
     rows = []
     for item in items[:50]:
         pub = _rfc822(item.get("date"))
+        link = item["link"]
+        guid = item.get("guid") or link
         lines = [
             "    <item>",
             f"      <title>{xml_escape(item['title'])}</title>",
-            f"      <link>{xml_escape(item['link'])}</link>",
-            f"      <guid>{xml_escape(item['link'])}</guid>",
+            f"      <link>{xml_escape(link)}</link>",
+            f"      <guid>{xml_escape(guid)}</guid>",
         ]
         if pub:
             lines.append(f"      <pubDate>{pub}</pubDate>")
@@ -933,17 +1070,141 @@ def _rss(title: str, path: str, items: list[dict], page: str | None = None) -> s
         rows.append("\n".join(lines))
     body = "\n".join(rows)
     html_page = page or path
+    channel_desc = description or "New documents on AptPlans. Unofficial. Follow the official source on each item."
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<rss version="2.0">\n'
         "  <channel>\n"
         f"    <title>{xml_escape(title)}</title>\n"
         f"    <link>{CANONICAL}{html_page}</link>\n"
-        "    <description>New documents on AptPlans. Unofficial. Follow the official source on each item.</description>\n"
+        f"    <description>{xml_escape(channel_desc)}</description>\n"
         f"{body}\n"
         "  </channel>\n"
         "</rss>\n"
     )
+
+
+def _rss_item(
+    title: str,
+    link: str,
+    description: str,
+    *,
+    date: str | None = None,
+    guid: str | None = None,
+) -> dict:
+    return {
+        "title": title,
+        "link": link,
+        "date": date,
+        "description": description,
+        "guid": guid,
+    }
+
+
+def _grant_sort_date(grant) -> str:
+    if getattr(grant, "award_date", None):
+        return grant.award_date
+    if getattr(grant, "fiscal_year", None):
+        return f"{grant.fiscal_year}-07-01"
+    return ""
+
+
+def _item_for_grant(airport, grant) -> dict:
+    page = f"{CANONICAL}/airports/{airport.lid}/#funding"
+    title_text = grant_title(grant.description) or grant.description or "Grant"
+    when = grant_date(grant)
+    title_parts = [part for part in (when, f"${int(grant.amount):,} awarded" if grant.amount else None, title_text) if part]
+    desc_parts = [title_text]
+    if grant.entity:
+        desc_parts.append(grant.entity)
+    if grant.programs:
+        desc_parts.append(", ".join(grant.programs))
+    if grant.is_planning:
+        desc_parts.append("planning grant")
+    link = usaspending_award_url(grant.grant_number) or grant.source_url or page
+    return _rss_item(
+        " · ".join(title_parts),
+        link,
+        ". ".join(desc_parts) + ".",
+        date=_grant_sort_date(grant) or None,
+        guid=f"{page}#grant-{grant.grant_number or grant.description}",
+    )
+
+
+def airport_rss_items(
+    airport,
+    *,
+    state=None,
+    stage: str,
+    status_message: str | None,
+    grants: list,
+    docs: list,
+    overview=None,
+    show_plan_insights: bool,
+) -> tuple[list[dict], str]:
+    """Airport feed: identity, review status, grants, then verified plan content."""
+    page = f"{CANONICAL}/airports/{airport.lid}/"
+    meta_parts = [place_line(airport, state)]
+    meta_parts.extend(fact["label"] for fact in identity_facts(airport))
+    if airport.elevation_ft is not None:
+        meta_parts.append(f"Elevation {airport.elevation_ft} ft")
+    if airport.in_npias:
+        meta_parts.append("NPIAS")
+    if airport.website:
+        meta_parts.append(airport.website)
+    identity_desc = f"{airport.name} ({airport.lid}). " + " · ".join(meta_parts) + "."
+    if show_plan_insights:
+        identity_desc += f" Coverage: {coverage_label(stage)}."
+    else:
+        banner = status_message or coverage_banner(stage) or "Plan coverage not reviewed yet."
+        identity_desc += f" {banner}"
+    items = [
+        _rss_item(
+            f"{airport.name} ({airport.lid})",
+            page,
+            identity_desc,
+            date=airport.nasr_effective,
+            guid=f"{page}#airport",
+        )
+    ]
+    for grant in sorted(grants, key=_grant_sort_date, reverse=True):
+        items.append(_item_for_grant(airport, grant))
+    if show_plan_insights and overview is not None:
+        overview_parts: list[str] = []
+        if overview.facts:
+            overview_parts.extend(f"{label}: {value}" for label, value in overview.facts)
+        if overview.trajectory is not None:
+            band = overview.trajectory.band.replace("_", " ")
+            overview_parts.append(f"Planning outlook: {band}")
+            if overview.trajectory.note:
+                overview_parts.append(overview.trajectory.note)
+        if overview_parts:
+            items.append(
+                _rss_item(
+                    f"Planning overview · {airport.lid}",
+                    page,
+                    " ".join(overview_parts),
+                    date=overview.as_of or overview.generated_at,
+                    guid=f"{page}#overview",
+                )
+            )
+    items.extend(_item_for_document(doc) for doc in docs)
+    dated = [item for item in items if item.get("date")]
+    undated = [item for item in items if not item.get("date")]
+    dated.sort(key=lambda item: item["date"], reverse=True)
+    items = dated + undated
+    if show_plan_insights:
+        channel_desc = f"Updates for {airport.name} ({airport.lid}): verified plans, overview, and grants."
+    elif grants:
+        channel_desc = (
+            f"{airport.name} ({airport.lid}). FAA identity and grants on file; "
+            "plan coverage not published yet."
+        )
+    else:
+        channel_desc = (
+            f"{airport.name} ({airport.lid}). Subscribe for review status and future plan updates."
+        )
+    return items, channel_desc
 
 
 def _item_for_document(document) -> dict:
@@ -981,13 +1242,12 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
     digest.update(
         json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     )
-    overlay_dir = _overlay_dir()
-    if overlay_dir is not None:
-        for name in ("pipeline.json", "pipeline_status.json"):
-            path = overlay_dir / name
-            if path.is_file():
-                digest.update(name.encode("utf-8"))
-                digest.update(path.read_bytes())
+    overlay_dir = _overlay_dir() or overlay_dir_from_env()
+    for name in ("pipeline.json", "pipeline_status.json"):
+        path = overlay_dir / name
+        if path.is_file():
+            digest.update(name.encode("utf-8"))
+            digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
@@ -1048,8 +1308,9 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     status_rows = load_status(overlay_dir) if overlay_dir is not None else {}
     stats = counts(catalog, pipeline=pipeline)
     listed = [doc for doc in catalog.documents if visible_on_site(doc)]
+    feed_listed = [doc for doc in listed if feed_visible(doc)]
     recently = sorted(
-        listed,
+        feed_listed,
         key=lambda doc: (doc.source_retrieved_at or "", 1 if doc.summary else 0, doc.title or ""),
         reverse=True,
     )[:12]
@@ -1083,7 +1344,13 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         emit(dest, html)
         note_page(canonical_path, lastmod)
 
-    render("about.html", out_dir / "about" / "index.html", "/about/", rss_links=[RSS_ALL, RSS_LAWS])
+    render(
+        "about.html",
+        out_dir / "about" / "index.html",
+        "/about/",
+        rss_links=[RSS_ALL, RSS_LAWS],
+        pipeline_stages=stage_rows(pipeline.get("coverage")),
+    )
     render("search.html", out_dir / "search" / "index.html", "/search/")
     render(
         "airports.html",
@@ -1129,26 +1396,10 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             if doc.state == airport.state and doc.kind in {"statute", "sasp"}
         ]
         state = catalog.states_by_code.get(airport.state)
-        rss_links = []
-        if docs:
-            rss_links.append(_rss_airport(airport))
+        rss_links = [_rss_airport(airport)]
         if state is not None:
             rss_links.append(_rss_state(state))
         rss_links.append(RSS_ALL)
-        if latest_alp:
-            plan_empty = Markup(
-                "No master plan is listed yet. An "
-                f"{abbr('ALP', 'alp')} can stand on its own."
-            )
-        else:
-            plan_empty = "No master plan is listed yet."
-        overview = page_overview(
-            airport,
-            [latest_plan, latest_alp, *earlier],
-            grants,
-        )
-        if overview and overview.trajectory:
-            outlook_by_lid[airport.lid] = overview.trajectory.band
         stage = coverage_stage(
             airport.lid,
             overlay_dir=overlay_dir,
@@ -1156,23 +1407,41 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             status_rows=status_rows,
         )
         row = status_rows.get(airport.lid.upper()) or {}
+        show_plan_insights = has_verified_plans(catalog, airport.lid)
+        overview = None
+        if show_plan_insights:
+            overview = page_overview(
+                airport,
+                [latest_plan, latest_alp, *earlier],
+                grants,
+            )
+            if overview and overview.trajectory:
+                outlook_by_lid[airport.lid] = overview.trajectory.band
+        if latest_alp:
+            plan_empty = plan_panel_empty(stage, "master_plan", alp_listed=True)
+        else:
+            plan_empty = plan_panel_empty(stage, "master_plan")
+        alp_empty = plan_panel_empty(stage, "alp")
         render(
             "airport.html",
             out_dir / "airports" / airport.lid / "index.html",
             f"/airports/{airport.lid}/",
             airport=airport,
-            documents=docs,
-            latest_alp=latest_alp,
-            latest_plan=latest_plan,
+            documents=docs if show_plan_insights else [],
+            latest_alp=latest_alp if show_plan_insights else None,
+            latest_plan=latest_plan if show_plan_insights else None,
             plan_empty=plan_empty,
+            alp_empty=alp_empty,
+            show_plan_insights=show_plan_insights,
             overview=overview,
-            earlier=earlier,
+            earlier=earlier if show_plan_insights else [],
             funding=funding,
             money=money,
             completeness=completeness_for_airport(catalog, airport.lid),
             coverage_stage=stage,
             coverage_label=coverage_label(stage),
             coverage_banner=coverage_banner(stage, row),
+            coverage_banner_class=coverage_banner_class(stage),
             pending_docs=pending_documents(catalog, airport.lid),
             facts=identity_facts(airport),
             place=place_line(airport, state),
@@ -1226,8 +1495,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             airports=airports,
             documents=state_docs,
             budgets=catalog.budgets_for_state(state.code),
-            projects=project_groups(catalog, grants),
-            project_stats=grant_briefing(grants),
+            allocations=state_grant_allocations(catalog, grants),
             completeness_for=lambda lid, _catalog=catalog: completeness_for_airport(_catalog, lid),
             rss_links=[_rss_state(state), RSS_LAWS, RSS_ALL],
             lastmod=_sitemap_day(
@@ -1317,7 +1585,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
     airport_feeds_by_state: dict[str, list] = {}
     for state in catalog.states:
-        state_docs = [doc for doc in listed if doc.state == state.code]
+        state_docs = [doc for doc in listed if doc.state == state.code and feed_visible(doc)]
         items = [_item_for_document(doc) for doc in state_docs]
         emit(
             out_dir / "feeds" / "states" / f"{state.code}.xml",
@@ -1333,22 +1601,61 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             _sitemap_day(*[doc.source_retrieved_at for doc in state_docs]),
         )
     for airport in catalog.airports:
-        docs = [doc for doc in catalog.documents_for_airport(airport.lid) if visible_on_site(doc)]
-        if not docs:
-            continue
+        stage = coverage_stage(
+            airport.lid,
+            overlay_dir=overlay_dir,
+            catalog_root=REPO / "catalog",
+            status_rows=status_rows,
+        )
+        row = status_rows.get(airport.lid.upper()) or {}
+        docs_visible = [
+            doc
+            for doc in catalog.documents_for_airport(airport.lid)
+            if visible_on_site(doc)
+        ]
+        feed_docs = [doc for doc in docs_visible if feed_visible(doc)]
+        grants = catalog.grants_for_airport(airport.lid)
+        latest_alp, latest_plan, earlier = featured_and_earlier(docs_visible)
+        show_plan_insights = has_verified_plans(catalog, airport.lid)
+        overview = None
+        if show_plan_insights:
+            overview = page_overview(
+                airport,
+                [latest_plan, latest_alp, *earlier],
+                grants,
+            )
+        state = catalog.states_by_code.get(airport.state)
+        items, channel_desc = airport_rss_items(
+            airport,
+            state=state,
+            stage=stage,
+            status_message=coverage_banner(stage, row),
+            grants=grants,
+            docs=feed_docs,
+            overview=overview,
+            show_plan_insights=show_plan_insights,
+        )
         airport_feeds_by_state.setdefault(airport.state, []).append(airport)
         emit(
             out_dir / "feeds" / "airports" / f"{airport.lid}.xml",
             _rss(
                 f"AptPlans - {airport.name}",
                 f"/feeds/airports/{airport.lid}.xml",
-                [_item_for_document(doc) for doc in docs],
+                items,
                 page=f"/airports/{airport.lid}/",
+                description=channel_desc,
             ),
         )
         note_page(
             f"/feeds/airports/{airport.lid}.xml",
-            _sitemap_day(*[doc.source_retrieved_at for doc in docs], *[doc.published_at for doc in docs]),
+            _sitemap_day(
+                airport.nasr_effective,
+                *[doc.source_retrieved_at for doc in feed_docs],
+                *[doc.published_at for doc in feed_docs],
+                *[grant.award_date for grant in grants if grant.award_date],
+                overview.as_of if overview else None,
+                overview.generated_at if overview else None,
+            ),
         )
     render(
         "feeds.html",
