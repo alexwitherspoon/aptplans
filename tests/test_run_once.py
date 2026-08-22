@@ -262,7 +262,7 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
         )
         is True
     )
-    assert order == ["lock", "unlock", "lock", "unlock"]
+    assert order == ["lock", "unlock", "lock", "unlock", "rebuild"]
 
 
 def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:

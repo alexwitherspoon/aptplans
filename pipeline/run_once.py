@@ -183,14 +183,17 @@ def _refresh_pipeline(overlay_dir: Path, queue_dir: Path, catalog_root: Path) ->
         log.exception("pipeline snapshot failed")
 
 
-def _rebuild_if_needed(rebuild: bool, overlay_dir: Path, queue_dir: Path, catalog_root: Path) -> None:
+def refresh_public_site(
+    overlay_dir: Path,
+    queue_dir: Path,
+    catalog_root: Path,
+) -> None:
+    """Write pipeline.json and rebuild HTML so the About page stays current."""
     _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
-    if not rebuild:
-        return
     try:
         _maybe_rebuild_site()
     except Exception:
-        log.exception("site rebuild failed; catalog overlay already written")
+        log.exception("site rebuild failed; pipeline snapshot already written")
 
 
 def process_fetch(
@@ -700,7 +703,7 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
-    _rebuild_if_needed(rebuild, overlay_dir, queue_dir, catalog_root)
+    refresh_public_site(overlay_dir, queue_dir, catalog_root)
 
 
 def process_next(

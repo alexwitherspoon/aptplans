@@ -15,9 +15,10 @@ from pipeline.queue import JobRetry
 from pipeline.overviews import refresh_overviews
 from pipeline.refresh import ROOT, overlay_dir_from_env, overlays_need_fetch
 from pipeline.refresh_airports import maybe_refresh
-from pipeline.run_once import process_next
+from pipeline.run_once import process_next, refresh_public_site
 from pipeline.search import boot_sync
 from pipeline.service_log import attach_jsonl_handler
+from pipeline.status import queue_dir_from_env
 
 log = logging.getLogger("aptplans.worker")
 
@@ -196,6 +197,12 @@ def main() -> None:
         boot_sync()
     except Exception:
         log.exception("search index sync failed; worker stays up")
+    overlay = overlay_dir_from_env()
+    queue = queue_dir_from_env()
+    try:
+        refresh_public_site(overlay, queue, ROOT / "catalog")
+    except Exception:
+        log.exception("initial site refresh failed; worker stays up")
     run_loop()
 
 

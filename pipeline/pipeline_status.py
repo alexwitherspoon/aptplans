@@ -7,9 +7,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 import json
 
-from catalog.models import Document, visible_on_site
+from catalog.models import AIRPORT_COVERAGE_STAGES, Document, visible_on_site
 from catalog.seed import seed_catalog
-from catalog.store import load_overlay
+from catalog.store import has_verified_plans, load_overlay
 from pipeline.queue import JobQueue, QueueJob
 from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.search_scope import parse_search_states, scoped_overlay_airports
@@ -18,28 +18,40 @@ STATUS_NAME = "pipeline_status.json"
 PUBLIC_NAME = "pipeline.json"
 DISCOVERY_CURSOR_NAME = "discovery_cursor.json"
 
-STAGES = (
-    "untouched",
-    "searched",
-    "explored",
-    "snapshot_pending",
-    "published",
-    "no_plan_found",
-)
+STAGES = AIRPORT_COVERAGE_STAGES
 
 STAGE_LABELS = {
     "untouched": "Not searched yet",
     "searched": "Searched",
     "explored": "Hub explored",
-    "snapshot_pending": "Snapshot pending review",
-    "published": "Plan published",
+    "snapshot_pending": "Awaiting review",
+    "published": "Published",
     "no_plan_found": "No plan found yet",
 }
 
+STAGE_DESCRIPTIONS = {
+    "untouched": "Listed from FAA records. Discovery has not run for this airport yet.",
+    "searched": "Web search ran. Hubs and PDF candidates may be queued next.",
+    "explored": "Hub pages were fetched. Plan-shaped links are candidates for snapshot.",
+    "snapshot_pending": "A file was preserved on origin and is waiting for human or model review.",
+    "published": "A master plan or Airport Layout Plan is listed on the public site.",
+    "no_plan_found": "Discovery and explore ran; no official plan or ALP is listed yet.",
+}
+
+STAGE_DISPLAY_ORDER = (
+    "untouched",
+    "searched",
+    "explored",
+    "snapshot_pending",
+    "no_plan_found",
+    "published",
+)
+
 BANNER_TEXT = {
     "untouched": (
-        "AptPlans has not searched this airport for master plans or Airport Layout Plans yet. "
-        "Listed airports come from FAA records, not verified plan coverage."
+        "Not reviewed yet. FAA identity and federal grants may appear below, but AptPlans "
+        "has not searched this airport for master plans or Airport Layout Plans. "
+        "Empty plan sections do not mean none exist."
     ),
     "searched": "AptPlans ran a web search for official plans on {date}. Nothing is published yet.",
     "explored": "AptPlans explored likely hub pages on {date}. Nothing is published yet.",
@@ -52,6 +64,35 @@ BANNER_TEXT = {
         "AptPlans searched and explored this airport on {date}. "
         "No official master plan or Airport Layout Plan is listed yet."
     ),
+}
+
+PLAN_PANEL_EMPTY = {
+    "untouched": {
+        "alp": (
+            "AptPlans has not searched this airport yet. "
+            "Whether an Airport Layout Plan exists is unknown."
+        ),
+        "master_plan": (
+            "AptPlans has not searched this airport yet. "
+            "Whether a master plan exists is unknown."
+        ),
+    },
+    "searched": {
+        "alp": "A web search ran; no Airport Layout Plan is published here yet.",
+        "master_plan": "A web search ran; no master plan is published here yet.",
+    },
+    "explored": {
+        "alp": "Hub pages were explored; no Airport Layout Plan is published here yet.",
+        "master_plan": "Hub pages were explored; no master plan is published here yet.",
+    },
+    "snapshot_pending": {
+        "alp": "Files are preserved and awaiting review. Nothing is published here yet.",
+        "master_plan": "Files are preserved and awaiting review. Nothing is published here yet.",
+    },
+    "no_plan_found": {
+        "alp": "AptPlans searched this airport. No official Airport Layout Plan is listed yet.",
+        "master_plan": "AptPlans searched this airport. No official master plan is listed yet.",
+    },
 }
 
 PLAN_KINDS = frozenset({"master_plan", "alp", "chapter", "other"})
@@ -178,12 +219,19 @@ def coverage_stage(
     lid = _normalize_lid(lid)
     catalog = seed_catalog(catalog_root or ROOT / "catalog", overlay_dir=overlay_dir)
     docs = catalog.documents_for_airport(lid)
-    if any(visible_on_site(doc) and doc.kind in {"master_plan", "alp"} for doc in docs):
-        return "published"
-    if _pending_plan_docs(overlay_dir or overlay_dir_from_env(), lid):
-        return "snapshot_pending"
     rows = status_rows if status_rows is not None else load_status(overlay_dir)
     row = rows.get(lid) or {}
+    if has_verified_plans(catalog, lid):
+        return "published"
+    touched = bool(
+        row.get("discovery_at") or row.get("explored_at") or row.get("snapshot_at")
+    )
+    if _pending_plan_docs(overlay_dir or overlay_dir_from_env(), lid):
+        return "snapshot_pending"
+    if any(visible_on_site(doc) and doc.kind in {"master_plan", "alp"} for doc in docs):
+        if touched:
+            return "published"
+        return "untouched"
     if row.get("explored_at") or row.get("snapshot_at"):
         if row.get("last_job_status") in {"dead", "not_plan", "ssi"} and not row.get("snapshot_at"):
             return "no_plan_found"
@@ -206,6 +254,26 @@ def coverage_banner(stage: str, row: dict | None = None) -> str | None:
     if "{date}" in template:
         return template.format(date=date or "a recent pass")
     return template
+
+
+def coverage_banner_class(stage: str) -> str:
+    if stage == "untouched":
+        return "coverage-banner--unreviewed"
+    if stage == "no_plan_found":
+        return "coverage-banner--searched"
+    if stage in {"searched", "explored"}:
+        return "coverage-banner--in-progress"
+    if stage == "snapshot_pending":
+        return "coverage-banner--pending"
+    return ""
+
+
+def plan_panel_empty(stage: str, kind: str, *, alp_listed: bool = False) -> str:
+    """Empty-state copy for plan panels, keyed by pipeline coverage stage."""
+    if kind == "master_plan" and alp_listed and stage not in {"untouched", "published"}:
+        return "No master plan is listed yet. An Airport Layout Plan can stand on its own."
+    by_stage = PLAN_PANEL_EMPTY.get(stage) or PLAN_PANEL_EMPTY["untouched"]
+    return by_stage[kind]
 
 
 def pending_documents(catalog, lid: str) -> list[Document]:
@@ -234,6 +302,28 @@ def _job_public(job: QueueJob) -> dict:
     }
 
 
+NEXT_QUEUE_AIRPORTS = 10
+
+
+def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_AIRPORTS) -> list[QueueJob]:
+    """Next airports in the pending queue, one row per LID in FIFO order."""
+    rows: list[QueueJob] = []
+    seen_lids: set[str] = set()
+    for path in sorted(queue.pending.glob("*.json")):
+        try:
+            job = QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, TypeError, KeyError):
+            continue
+        lid = _normalize_lid(job.airport_lid)
+        if not lid or lid in seen_lids:
+            continue
+        seen_lids.add(lid)
+        rows.append(job)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
 def _queue_snapshot(queue_dir: Path) -> dict:
     queue = JobQueue(queue_dir)
     active_jobs = []
@@ -242,12 +332,7 @@ def _queue_snapshot(queue_dir: Path) -> dict:
             active_jobs.append(QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8"))))
         except (OSError, json.JSONDecodeError, TypeError, KeyError):
             continue
-    pending_jobs = []
-    for path in sorted(queue.pending.glob("*.json"))[:5]:
-        try:
-            pending_jobs.append(QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8"))))
-        except (OSError, json.JSONDecodeError, TypeError, KeyError):
-            continue
+    pending_jobs = _next_queue_jobs(queue)
     counts = {
         "pending": sum(1 for _ in queue.pending.glob("*.json")),
         "active": sum(1 for _ in queue.active.glob("*.json")),
@@ -330,6 +415,20 @@ def build_public_snapshot(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return payload
+
+
+def stage_rows(coverage: dict | None) -> list[dict]:
+    """Ordered stage counts for the public About page."""
+    rows = coverage if isinstance(coverage, dict) else {}
+    return [
+        {
+            "id": stage,
+            "label": STAGE_LABELS[stage],
+            "description": STAGE_DESCRIPTIONS[stage],
+            "count": int(rows.get(stage) or 0),
+        }
+        for stage in STAGE_DISPLAY_ORDER
+    ]
 
 
 def load_public_snapshot(overlay_dir: Path | None = None) -> dict:
