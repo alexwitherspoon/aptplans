@@ -87,6 +87,10 @@ class Grant:
     outlayed: int | None = None
     level: str = "federal"
     entity: str | None = None
+    spend_category: str | None = None
+    spend_reason: str | None = None
+    spend_classified_at: str | None = None
+    spend_classifier: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -126,6 +130,7 @@ class BudgetLine:
     note: str | None = None
     group: str = "program"
     airport_lid: str | None = None
+    line_kind: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -188,6 +193,10 @@ class Document:
     found_on: str | None = None
     part_of: str | None = None
     media: str | None = None
+    finance_kind: str | None = None
+    finance_scope: str | None = None
+    finance_reason: str | None = None
+    finance_verified_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
