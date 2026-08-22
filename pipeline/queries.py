@@ -694,3 +694,181 @@ def verify_finance(
         "has_locid_rows": bool(data.get("has_locid_rows")),
         "reason": data.get("reason") if isinstance(data.get("reason"), str) else "",
     }
+
+
+SPEND_CATEGORIES = frozenset({"maintenance", "growth", "planning", "other"})
+OUTLOOK_BANDS = frozenset({"growing", "declining", "maintaining"})
+HUB_KIND_GUESSES = frozenset({"master_plan", "alp", "chapter", "unknown"})
+BUDGET_LINE_KINDS = frozenset({"program", "fund", "project", "airport_allocation"})
+
+
+def grant_spend_prompt(
+    *,
+    description: str,
+    lid: str = "",
+    fiscal_year: int | None = None,
+) -> str:
+    fy = f"FY {fiscal_year}" if fiscal_year else "unknown"
+    return (
+        "Classify one FAA airport grant project summary. Do not search the web. "
+        "Do not browse. Return only one line of compact JSON. Keep reason under 12 words. "
+        "Do not include dollar amounts.\n"
+        f"airport_lid: {lid or 'none'}\n"
+        f"fiscal_year: {fy}\n"
+        f"project_summary: {description.strip() or 'none'}\n\n"
+        "Schema:\n"
+        '{"spend_category": "maintenance"|"growth"|"planning"|"other", "reason": str}\n\n'
+        "Rubric (rubric_version: 1):\n"
+        "planning — master plan, airport layout plan, ALP, or planning study only.\n"
+        "maintenance — preserve or restore existing capacity: rehabilitate, reseal, "
+        "resurface, repave, reconstruct, repair, or replace existing pavement, runway, "
+        "taxiway, terminal shell, or similar without adding gates or new footprint.\n"
+        "growth — add or expand capacity: new runway, terminal, gate, hangar, apron, "
+        "lengthen, widen, expand, or additional facility footprint.\n"
+        "other — land acquisition, equipment-only, zero-emissions gear, or unclear scope.\n"
+        "Reconstruct an existing taxiway or runway is maintenance. Construct a new runway "
+        "is growth. Improve or upgrade without clear expansion is usually maintenance.\n"
+    )
+
+
+def classify_grant_spend(
+    *,
+    description: str,
+    generate_fn: GenerateFn,
+    lid: str = "",
+    fiscal_year: int | None = None,
+    rule_category: str = "other",
+) -> dict[str, str]:
+    from pipeline.classify import ClassificationResult, classify_with_rubric
+
+    def fallback() -> ClassificationResult:
+        return ClassificationResult(category=rule_category, classifier="rules")
+
+    result = classify_with_rubric(
+        prompt=grant_spend_prompt(description=description, lid=lid, fiscal_year=fiscal_year),
+        labels=SPEND_CATEGORIES,
+        category_key="spend_category",
+        generate_fn=generate_fn,
+        rule_fallback=fallback,
+    )
+    return {"spend_category": result.category, "reason": result.reason, "classifier": result.classifier}
+
+
+def plan_outlook_prompt(*, excerpt: str, lid: str = "", name: str = "") -> str:
+    return (
+        "Classify airport planning trajectory from a verified plan excerpt. "
+        "Do not search. Return only compact JSON. Keep reason under 12 words. "
+        "No dollar amounts.\n"
+        f"airport_lid: {lid or 'none'}\n"
+        f"airport_name: {name or 'none'}\n\n"
+        "Schema:\n"
+        '{"band": "growing"|"declining"|"maintaining", "reason": str}\n\n'
+        "Rubric:\n"
+        "growing — forecasts or plans add capacity, new facilities, or significant expansion.\n"
+        "declining — closure, downsizing, reduced activity, or contraction called out.\n"
+        "maintaining — status quo, rehabilitation, or replace-in-kind without net growth.\n\n"
+        f"{excerpt[:12_000]}"
+    )
+
+
+def classify_plan_outlook(
+    *,
+    excerpt: str,
+    generate_fn: GenerateFn,
+    lid: str = "",
+    name: str = "",
+    rule_band: str = "maintaining",
+) -> dict[str, str]:
+    from pipeline.classify import ClassificationResult, classify_with_rubric
+
+    def fallback() -> ClassificationResult:
+        return ClassificationResult(category=rule_band, classifier="rules")
+
+    result = classify_with_rubric(
+        prompt=plan_outlook_prompt(excerpt=excerpt, lid=lid, name=name),
+        labels=OUTLOOK_BANDS,
+        category_key="band",
+        generate_fn=generate_fn,
+        rule_fallback=fallback,
+    )
+    return {"band": result.category, "reason": result.reason, "classifier": result.classifier}
+
+
+def hub_link_prompt(*, url: str, label: str, found_on: str = "") -> str:
+    return (
+        "Classify one hub page link toward airport planning documents. "
+        "Do not search. Return only compact JSON. Keep reason under 12 words.\n"
+        f"url: {url}\n"
+        f"label: {label.strip() or 'none'}\n"
+        f"found_on: {found_on or 'none'}\n\n"
+        "Schema:\n"
+        '{"kind_guess": "master_plan"|"alp"|"chapter"|"unknown", "reason": str}\n\n'
+        "Rubric:\n"
+        "master_plan — whole airport master plan or AMP file or hub.\n"
+        "alp — airport layout plan, airport diagram, or ALP set.\n"
+        "chapter — one chapter, appendix, or section of a larger study.\n"
+        "unknown — not plan-shaped or unclear.\n"
+    )
+
+
+def classify_hub_link(
+    *,
+    url: str,
+    label: str,
+    generate_fn: GenerateFn,
+    found_on: str = "",
+    rule_kind: str = "unknown",
+) -> dict[str, str]:
+    from pipeline.classify import ClassificationResult, classify_with_rubric
+
+    def fallback() -> ClassificationResult:
+        return ClassificationResult(category=rule_kind, classifier="rules")
+
+    result = classify_with_rubric(
+        prompt=hub_link_prompt(url=url, label=label, found_on=found_on),
+        labels=HUB_KIND_GUESSES,
+        category_key="kind_guess",
+        generate_fn=generate_fn,
+        rule_fallback=fallback,
+    )
+    return {"kind_guess": result.category, "reason": result.reason, "classifier": result.classifier}
+
+
+def budget_line_prompt(*, category: str, note: str = "", state: str = "") -> str:
+    return (
+        "Classify one state aviation budget table row. Do not search. "
+        "Return only compact JSON. Keep reason under 12 words. No dollar amounts.\n"
+        f"state: {state or 'none'}\n"
+        f"row_label: {category.strip() or 'none'}\n"
+        f"note: {note.strip() or 'none'}\n\n"
+        "Schema:\n"
+        '{"line_kind": "program"|"fund"|"project"|"airport_allocation", "reason": str}\n\n'
+        "Rubric:\n"
+        "program — agency program or activity line.\n"
+        "fund — fund type or revenue source subtotal.\n"
+        "project — named capital project without a single airport LocID.\n"
+        "airport_allocation — row names a specific airport or LocID allocation.\n"
+    )
+
+
+def classify_budget_line(
+    *,
+    category: str,
+    generate_fn: GenerateFn,
+    note: str = "",
+    state: str = "",
+    rule_kind: str = "program",
+) -> dict[str, str]:
+    from pipeline.classify import ClassificationResult, classify_with_rubric
+
+    def fallback() -> ClassificationResult:
+        return ClassificationResult(category=rule_kind, classifier="rules")
+
+    result = classify_with_rubric(
+        prompt=budget_line_prompt(category=category, note=note, state=state),
+        labels=BUDGET_LINE_KINDS,
+        category_key="line_kind",
+        generate_fn=generate_fn,
+        rule_fallback=fallback,
+    )
+    return {"line_kind": result.category, "reason": result.reason, "classifier": result.classifier}

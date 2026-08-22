@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from catalog.grants import (
 from catalog.models import Grant
 from catalog.store import write_grants_overlay
 from pipeline.fetch import fetch_bytes, post_json
+from pipeline.grant_classify import enrich_grants
 from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path, should_refresh
 from pipeline.usaspending import fetch_award_status
 
@@ -60,6 +62,21 @@ def refresh_grants(
             grants = apply_award_status(grants, status)
         except Exception:
             log.exception("USAspending outlays failed; keeping FAA award amounts")
+    generate_fn = None
+    if os.environ.get("APTPLANS_LLM") == "1":
+        try:
+            from pipeline.ollama import generate as ollama_generate
+
+            generate_fn = ollama_generate
+        except Exception:
+            log.exception("Ollama unavailable; grant spend stays rule-based")
+    grants = enrich_grants(
+        grants,
+        generate_fn=generate_fn,
+        overlay_dir=overlay_dir,
+        sleep=sleep,
+        pause_seconds=pause_seconds if generate_fn else 0,
+    )
     write_grants_overlay(overlay_dir, grants)
     log.info("wrote %s grants to %s", len(grants), overlay_grants_path(overlay_dir))
     return len(grants)

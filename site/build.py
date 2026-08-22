@@ -27,8 +27,8 @@ if str(REPO) not in sys.path:
 from catalog.grants import (
     SPEND_CATEGORY_LABELS,
     SPEND_CATEGORIES,
+    effective_spend_category,
     faa_year_summary_url,
-    grant_spend_category,
     grant_title,
     remaining_obligation,
     usaspending_award_url,
@@ -379,7 +379,7 @@ def state_grant_allocations(catalog: Catalog, grants: list) -> dict:
     by_airport: dict[str, dict] = {}
 
     for grant in grants:
-        category = grant_spend_category(grant)
+        category = effective_spend_category(grant)
         amount = _grant_amount(grant)
         purpose[category]["total"] += amount
         purpose[category]["count"] += 1

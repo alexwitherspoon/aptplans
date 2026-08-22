@@ -566,3 +566,38 @@ def test_evaluate_search_hints_invalid_json_stops() -> None:
     )
     assert result["queries"] == []
     assert result["stop"] is True
+
+
+def test_classify_grant_spend_mock() -> None:
+    from pipeline.queries import classify_grant_spend
+
+    scored = classify_grant_spend(
+        description="Construct New Runway 3",
+        generate_fn=lambda _prompt: '{"spend_category":"growth","reason":"new runway"}',
+        lid="PDX",
+        rule_category="other",
+    )
+    assert scored["spend_category"] == "growth"
+    assert scored["classifier"] == "llm"
+
+
+def test_classify_hub_link_mock() -> None:
+    from pipeline.queries import classify_hub_link
+
+    scored = classify_hub_link(
+        url="https://example.gov/plan.pdf",
+        label="Airport Master Plan 2024",
+        generate_fn=lambda _prompt: '{"kind_guess":"master_plan","reason":"AMP title"}',
+    )
+    assert scored["kind_guess"] == "master_plan"
+
+
+def test_classify_plan_outlook_mock() -> None:
+    from pipeline.queries import classify_plan_outlook
+
+    scored = classify_plan_outlook(
+        excerpt="Forecasts show terminal expansion and a new concourse by 2030.",
+        generate_fn=lambda _prompt: '{"band":"growing","reason":"terminal expansion"}',
+        lid="PDX",
+    )
+    assert scored["band"] == "growing"

@@ -143,6 +143,12 @@ SPEND_CATEGORY_LABELS = {
 }
 
 
+_AMBIGUOUS_SPEND_RE = re.compile(
+    r"\b(?:improve|upgrade|moderniz|renov|equip|infrastructure|environment)\b",
+    re.I,
+)
+
+
 def grant_spend_category(grant: Grant) -> str:
     """Classify grant spend as maintenance, growth, planning, or other."""
     if grant.is_planning:
@@ -153,6 +159,21 @@ def grant_spend_category(grant: Grant) -> str:
     if _MAINTENANCE_RE.search(description):
         return "maintenance"
     return "other"
+
+
+def effective_spend_category(grant: Grant) -> str:
+    """Stored LLM/human category when set, else rule-based classification."""
+    stored = (grant.spend_category or "").strip().lower()
+    if stored in SPEND_CATEGORIES:
+        return stored
+    return grant_spend_category(grant)
+
+
+def needs_llm_spend_classification(grant: Grant, rule_category: str) -> bool:
+    """True when regex is weak or returned other."""
+    if rule_category == "other":
+        return True
+    return bool(_AMBIGUOUS_SPEND_RE.search(grant.description or ""))
 
 
 def grant_title(description: str) -> str:
