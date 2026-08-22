@@ -124,14 +124,14 @@ Status key: **Implemented** = follows this pattern today. **Partial** = prompt e
 | Task | Question | Labels / output | Location | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Plan / ALP verify | Is this excerpt an official plan for this LID? | `official_plan`, `kind`, `same_airport`, … | `verify_candidate()` · `run_once` vet job | **Implemented** | Production path when `APTPLANS_LLM=1` |
-| Finance verify | Is this excerpt official finance, and what kind? | `finance_kind`, `scope`, `official_finance`, … | `verify_finance()` | **Partial** | `make llm` only; not in worker refresh |
+| Finance verify | Is this excerpt official finance, and what kind? | `finance_kind`, `scope`, `official_finance`, … | `verify_finance()` · `run_once` vet | **Implemented** | Runs on vet when `APTPLANS_LLM=1`; stores `finance_*` on document |
 | Search hit triage | Same airport? Fetch? | `hit_type`, `kind_guess`, `fetch` | `evaluate_search_hit()` | **Implemented** | URL allowlist gate; eval in `scripts/eval_search_hits.py` |
 | Search hint | What query next? | `queries[]`, `stop` | `evaluate_search_hints()` | **Implemented** | Model does not search; eval in `scripts/eval_search_hints.py` |
-| Hub link classify | Role and kind guess from URL + label | `role`, `kind_guess` | `classify_link()` · `explore.py` | **Rules** | Fast pre-filter; ambiguous PDFs could use LLM |
+| Hub link classify | Role and kind guess from URL + label | `role`, `kind_guess` | `refine_hub_link()` · `explore.py` | **Implemented** | Regex first; LLM for unknown PDF artifacts |
 | File gates | SSI, newsletter, kind block | pass / fail | `gates.evaluate_*()` | **Rules** | Never LLM |
 | Evidence score | Publish / explore / confirm? | linear score → bucket | `evidence.score_packet()` | **Rules** | Trained weights; complements LLM vet |
 | Unofficial note | One paragraph summary | prose | `ollama.unofficial_note*` | **Different** | Generative, not closed-label; chunk+reduce |
-| Planning outlook | Growing / declining / maintaining? | `trajectory.band` | `brief.score_signals()` | **Rules** | Keyword counts on plan text; rubric LLM candidate |
+| Planning outlook | Growing / declining / maintaining? | `trajectory.band` | `classify_plan_outlook()` · `brief.py` | **Implemented** | LLM when verified plans + `APTPLANS_LLM=1`; regex fallback |
 | Coverage stage | Public pipeline stage | `untouched` … `published` | `pipeline_status.coverage_stage()` | **N/A** | Derived from touch history + docs |
 | Completeness | `missing` / `link_only` / `complete` | enum | `store.completeness_for_airport()` | **N/A** | Derived from document rows |
 
@@ -140,8 +140,8 @@ Status key: **Implemented** = follows this pattern today. **Partial** = prompt e
 | Task | Question | Labels / output | Location | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Planning grant flag | Is description a planning study? | `is_planning` bool | `is_planning()` at ingest | **Rules** | Set in `parse_aip_grants_bytes()` |
-| Grant spend category | Maintenance vs growth vs planning? | `maintenance` \| `growth` \| `planning` \| `other` | `grant_spend_category()` · `site/build.py` | **Rules** | **Next rubric LLM**; store on `Grant.spend_category` |
-| State budget lines | Program vs project vs fund row? | `BudgetLine.group` | budget fixtures | **N/A** | Structured ingest today |
+| Grant spend category | Maintenance vs growth vs planning? | `maintenance` \| `growth` \| `planning` \| `other` | `classify_grant_spend()` · `grant_classify.py` | **Implemented** | Hybrid regex + LLM at grant refresh; stored on `Grant.spend_category` |
+| State budget lines | Program vs project vs fund row? | `line_kind` on `BudgetLine` | `classify_budget_line()` · `budget_classify.py` | **Implemented** | Prompt + helper; wired when unstructured budgets ingest |
 | USAspending merge | Obligated / outlayed | dollars | `usaspending.py` | **N/A** | API facts, not interpretation |
 
 ### Search and intake
@@ -154,13 +154,15 @@ Status key: **Implemented** = follows this pattern today. **Partial** = prompt e
 
 ## Priority migration targets
 
-Ordered by value and fit with the pattern:
+Completed in the current implementation pass:
 
-1. **Grant spend category** — short FAA descriptions; regex already fragile; high user value on state dashboards. Add `classify_grant_spend()` + `Grant.spend_category` at `refresh_grants()` time; hybrid with regex fallback.
-2. **Finance verify in worker** — `verify_finance()` already matches the pattern; wire after fetch when ingesting state budget / award PDFs.
-3. **Planning outlook / trajectory** — replace or augment `brief.score_signals()` with rubric LLM over plan excerpts (only when `show_plan_insights` gates pass).
-4. **Ambiguous hub links** — LLM only when `classify_link()` returns `unknown` on a PDF artifact worth fetching.
-5. **Budget PDF line items** — when unstructured state budgets are preserved, use finance rubric + row-kind sub-rubric.
+1. Grant spend category — hybrid LLM at `refresh_grants()` with overlay fields.
+2. Finance verify in worker vet — `finance_*` on documents.
+3. Planning outlook — `classify_plan_outlook()` in overview refresh.
+4. Ambiguous hub links — `refine_hub_link()` during explore.
+5. Budget line classification — `budget_classify.py` ready for unstructured ingest.
+
+Next improvements: expand gold fixtures, `scripts/eval_classification.py` live scoring on origin, human spot-check queue for `other` LLM rows.
 
 ## File map
 
@@ -173,8 +175,9 @@ Ordered by value and fit with the pattern:
 | Explore heuristics | `pipeline/explore.py` |
 | Evidence weights | `pipeline/evidence.py`, `catalog/references/score_gold.json` |
 | Review API labels | `pipeline/review_api.py` |
-| Eval scripts (not CI) | `scripts/eval_search_hints.py`, `scripts/eval_search_hits.py`, `scripts/local_ollama.py` |
-| Unit tests | `tests/test_queries.py` |
+| Eval scripts (not CI) | `scripts/eval_search_hints.py`, `scripts/eval_search_hits.py`, `scripts/eval_classification.py`, `scripts/local_ollama.py` |
+| Classification audit | `pipeline/classifications.py`, `GET /v1/evaluations` |
+| Unit tests | `tests/test_queries.py`, `tests/test_classify.py`, `tests/test_grant_classify.py` |
 
 ## Related docs
 

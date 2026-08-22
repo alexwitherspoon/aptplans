@@ -17,6 +17,8 @@ import re
 import sys
 
 from catalog.store import load_overlay, write_overlay_update
+from pipeline.classifications import classification_stats, load_classifications
+from pipeline.evaluations import EVALUATIONS
 from pipeline.outcomes import (
     BUCKETS,
     bucket_for,
@@ -115,6 +117,18 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/v1/stats":
             _json(self, 200, outcome_stats(overlay_dir=self.overlay_dir))
+            return
+        if parsed.path == "/v1/evaluations":
+            stats = classification_stats(self.overlay_dir)
+            _json(
+                self,
+                200,
+                {
+                    "tasks": {name: spec.description for name, spec in EVALUATIONS.items()},
+                    "stats": stats,
+                    "recent": load_classifications(self.overlay_dir)[-50:],
+                },
+            )
             return
         if parsed.path == "/v1/status":
             _json(
