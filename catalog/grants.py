@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -159,6 +160,32 @@ def grant_spend_category(grant: Grant) -> str:
     if _MAINTENANCE_RE.search(description):
         return "maintenance"
     return "other"
+
+
+def grant_input_hash(grant: Grant) -> str:
+    """Stable hash of grant text used for spend classification."""
+    blob = f"{(grant.description or '').strip().lower()}|{grant.grant_number or ''}"
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def merge_grant_spend(prior: Grant | None, grant: Grant) -> Grant:
+    """Keep stored spend fields when FAA description and grant number are unchanged."""
+    if prior is None:
+        return grant
+    if grant_input_hash(prior) != grant_input_hash(grant):
+        return grant
+    if not prior.spend_category:
+        return grant
+    from dataclasses import replace
+
+    return replace(
+        grant,
+        spend_category=prior.spend_category,
+        spend_reason=prior.spend_reason,
+        spend_classified_at=prior.spend_classified_at,
+        spend_classifier=prior.spend_classifier,
+        spend_input_hash=prior.spend_input_hash,
+    )
 
 
 def effective_spend_category(grant: Grant) -> str:

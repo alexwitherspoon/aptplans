@@ -91,6 +91,7 @@ class Grant:
     spend_reason: str | None = None
     spend_classified_at: str | None = None
     spend_classifier: str | None = None
+    spend_input_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -16,9 +16,9 @@ from catalog.grants import (
     year_pages_from_listing,
 )
 from catalog.models import Grant
-from catalog.store import write_grants_overlay
+from catalog.store import load_grants_overlay, write_grants_overlay
 from pipeline.fetch import fetch_bytes, post_json
-from pipeline.grant_classify import enrich_grants
+from pipeline.grant_classify import enrich_grants, reclassify_grants_overlay
 from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path, should_refresh
 from pipeline.usaspending import fetch_award_status
 
@@ -53,6 +53,11 @@ def refresh_grants(
         grants.extend(parsed)
     if not grants:
         raise ValueError("AIP grant histories produced no grant rows")
+    prior = {
+        grant.grant_number: grant
+        for grant in load_grants_overlay(overlay_dir)
+        if grant.grant_number
+    }
     if post_json is not None:
         try:
             numbers = [grant.grant_number or "" for grant in grants]
@@ -76,6 +81,7 @@ def refresh_grants(
         overlay_dir=overlay_dir,
         sleep=sleep,
         pause_seconds=pause_seconds if generate_fn else 0,
+        prior_by_number=prior,
     )
     write_grants_overlay(overlay_dir, grants)
     log.info("wrote %s grants to %s", len(grants), overlay_grants_path(overlay_dir))
@@ -101,8 +107,21 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch FAA AIP grant histories into the catalog overlay")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--reclassify-spend",
+        action="store_true",
+        help="Re-run grant spend classification on overlay grants without fetching FAA data",
+    )
+    parser.add_argument(
+        "--reclassify-all",
+        action="store_true",
+        help="With --reclassify-spend, reclassify every grant row (not only ambiguous)",
+    )
     args = parser.parse_args()
     overlay = overlay_dir_from_env()
+    if args.reclassify_spend:
+        reclassify_grants_overlay(overlay, force=args.reclassify_all, sleep=time.sleep)
+        return 0
     maybe_refresh_grants(overlay, force=args.force, post_json=post_json)
     return 0
 

@@ -191,6 +191,33 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
         )
         assert "worker" in logs
         assert "outcomes" in logs
+        queue = json.loads(
+            urlopen(Request(f"{base}/v1/classification_queue", headers=headers), timeout=2).read()
+        )
+        assert queue["evaluation"] == "grant_spend"
+        assert queue["n"] == 0
+        grant_label = json.dumps(
+            {
+                "evaluation": "grant_spend",
+                "grant_number": "G-TEST",
+                "gold": {"spend_category": "other", "reason": "equipment"},
+            }
+        ).encode("utf-8")
+        from catalog.models import Grant
+        from catalog.store import write_grants_overlay
+
+        write_grants_overlay(
+            overlay,
+            [Grant(airport_lid="PDX", grant_number="G-TEST", description="Zero Emissions Infrastructure")],
+        )
+        labeled = json.loads(
+            urlopen(
+                Request(f"{base}/v1/label", data=grant_label, headers=headers, method="POST"),
+                timeout=2,
+            ).read()
+        )
+        assert labeled["ok"] is True
+        assert labeled["spend_category"] == "other"
         denied_again = False
         try:
             urlopen(Request(f"{base}/v1/signals", headers={"X-Api-Key": "wrong"}), timeout=2)

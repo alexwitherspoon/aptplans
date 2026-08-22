@@ -18,6 +18,7 @@ import sys
 
 from catalog.store import load_overlay, write_overlay_update
 from pipeline.classifications import classification_stats, load_classifications
+from pipeline.grant_classify import apply_grant_spend_label, grant_spend_spot_check_queue
 from pipeline.evaluations import EVALUATIONS
 from pipeline.outcomes import (
     BUCKETS,
@@ -130,6 +131,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if parsed.path == "/v1/classification_queue":
+            query = parse_qs(parsed.query)
+            evaluation = (query.get("evaluation") or ["grant_spend"])[0]
+            if evaluation == "grant_spend":
+                queue = grant_spend_spot_check_queue(self.overlay_dir)
+            else:
+                queue = []
+            _json(self, 200, {"evaluation": evaluation, "n": len(queue), "items": queue})
+            return
         if parsed.path == "/v1/status":
             _json(
                 self,
@@ -231,6 +241,25 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         if parsed.path != "/v1/label" or not isinstance(payload, dict):
             _json(self, 404, {"error": "not found"})
+            return
+        evaluation = str(payload.get("evaluation") or "").strip()
+        if evaluation == "grant_spend":
+            gold = payload.get("gold") if isinstance(payload.get("gold"), dict) else {}
+            category = str(gold.get("spend_category") or payload.get("spend_category") or "").strip()
+            grant_number = str(payload.get("grant_number") or "").strip()
+            if not grant_number or category not in {"maintenance", "growth", "planning", "other"}:
+                _json(self, 400, {"error": "grant_number and gold.spend_category are required"})
+                return
+            ok = apply_grant_spend_label(
+                self.overlay_dir,
+                grant_number=grant_number,
+                spend_category=category,
+                reason=str(payload.get("reason") or gold.get("reason") or ""),
+            )
+            if not ok:
+                _json(self, 404, {"error": "grant not found"})
+                return
+            _json(self, 201, {"ok": True, "grant_number": grant_number, "spend_category": category})
             return
         url = str(payload.get("url") or "")
         gold = payload.get("gold")
