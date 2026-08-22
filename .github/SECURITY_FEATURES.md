@@ -25,8 +25,8 @@ Existing CI:
 
 | Source | Count | Action |
 | --- | --- | --- |
-| Secret scanning | 2 | Test fixtures used `AIzaSy` literals; split in tests. Resolve alerts in UI after merge. |
-| CodeQL warnings | 6 → fewer after `url_hosts` | `py/incomplete-url-substring-sanitization` on host filters and two test false positives (suppressed). |
+| Secret scanning | 2 | Purged from git history (`git filter-repo`); resolve stale alerts in the Security tab. |
+| CodeQL warnings | 1 open | `py/incomplete-url-substring-sanitization` false positive in `tests/test_search_plan.py` (host set membership, not URL parsing). |
 
 Production code should parse URL hosts with `pipeline/url_hosts.py` instead of substring checks on full URLs.
 
