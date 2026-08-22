@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pipeline.sanitize import html_has_secrets, redact_html_secrets
 
-_FAKE_MAPS = "REDACTED"
+_FAKE_MAPS = "".join(("AIza", "Sy", "TESTKEYNOTREAL", "FORUNITTESTS"))
 _FAKE_STRIPE = "pk_live_FAKEKEYFORUNITTESTS"
 _FAKE_ACCT = "acct_FAKEFORUNITTESTS"
 
