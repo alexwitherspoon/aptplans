@@ -833,10 +833,40 @@ def _as_of(work) -> str | None:
     return str(year) if year else None
 
 
+_BAND_POSITION = {"growing": 0.6, "declining": -0.6, "maintaining": 0.0}
+
+
+def trajectory_from_llm(
+    excerpt: str,
+    *,
+    generate_fn,
+    lid: str = "",
+    name: str = "",
+    rule_trajectory: Trajectory | None = None,
+) -> Trajectory | None:
+    from pipeline.queries import classify_plan_outlook
+
+    rule_band = rule_trajectory.band if rule_trajectory is not None else "maintaining"
+    scored = classify_plan_outlook(
+        excerpt=excerpt,
+        generate_fn=generate_fn,
+        lid=lid,
+        name=name,
+        rule_band=rule_band,
+    )
+    band = scored.get("band") or rule_band
+    position = _BAND_POSITION.get(band, 0.0)
+    note = scored.get("reason") or ""
+    return make_trajectory(band, position, note=note)
+
+
 def airport_overview(
     works: list,
     grant_lines: list[str] | None = None,
     airport=None,
+    *,
+    generate_fn=None,
+    overlay_dir=None,
 ) -> AirportOverview | None:
     merged: dict[str, str] = {}
     as_of = None
@@ -857,6 +887,30 @@ def airport_overview(
         for key, value in facts.items():
             merged.setdefault(key, value)
     trajectory = combine_trajectories(excerpts)
+    if generate_fn is not None and excerpts:
+        lid = getattr(airport, "lid", "") if airport is not None else ""
+        name = getattr(airport, "name", "") if airport is not None else ""
+        try:
+            trajectory = trajectory_from_llm(
+                excerpts[0],
+                generate_fn=generate_fn,
+                lid=lid,
+                name=name,
+                rule_trajectory=trajectory,
+            )
+            if overlay_dir is not None and trajectory is not None:
+                from pipeline.classifications import record_classification
+
+                record_classification(
+                    overlay_dir,
+                    evaluation="plan_outlook",
+                    input_id=lid or "unknown",
+                    category=trajectory.band,
+                    classifier="llm",
+                    reason=trajectory.note or "",
+                )
+        except Exception:
+            pass
     if grant_lines:
         grant_outlook = combine_trajectories([" ".join(grant_lines)])
         if trajectory is None:

@@ -151,7 +151,50 @@ def classify_link(url: str, label: str, *, found_on: str = "") -> HubLink:
     )
 
 
-def html_links(html: str, page_url: str) -> list[HubLink]:
+def refine_hub_link(link: HubLink, *, generate_fn=None, overlay_dir=None) -> HubLink:
+    """LLM kind guess for ambiguous PDF artifacts when enabled."""
+    if generate_fn is None:
+        return link
+    if link.media != "pdf" or link.role != "artifact" or link.kind_guess != "unknown":
+        return link
+    from pipeline.queries import classify_hub_link
+
+    scored = classify_hub_link(
+        url=link.url,
+        label=link.label,
+        generate_fn=generate_fn,
+        found_on=link.found_on,
+        rule_kind=link.kind_guess,
+    )
+    kind = scored.get("kind_guess") or link.kind_guess
+    if overlay_dir is not None:
+        from pipeline.classifications import record_classification
+
+        record_classification(
+            overlay_dir,
+            evaluation="hub_link",
+            input_id=link.url,
+            category=kind,
+            classifier=scored.get("classifier") or "llm",
+            reason=str(scored.get("reason") or ""),
+        )
+    return HubLink(
+        url=link.url,
+        label=link.label,
+        found_on=link.found_on,
+        media=link.media,
+        role=link.role,
+        kind_guess=kind,
+    )
+
+
+def html_links(
+    html: str,
+    page_url: str,
+    *,
+    generate_fn=None,
+    overlay_dir=None,
+) -> list[HubLink]:
     found: list[HubLink] = []
     seen: set[str] = set()
     for attrs, inner in _A_RE.findall(html or ""):
@@ -167,7 +210,8 @@ def html_links(html: str, page_url: str) -> list[HubLink]:
         if url.rstrip("/") == page_url.rstrip("/"):
             continue
         seen.add(url)
-        found.append(classify_link(url, _clean_text(inner), found_on=page_url))
+        link = classify_link(url, _clean_text(inner), found_on=page_url)
+        found.append(refine_hub_link(link, generate_fn=generate_fn, overlay_dir=overlay_dir))
     return found
 
 
@@ -210,13 +254,19 @@ def sharepoint_followups(html: str, page_url: str) -> list[HubLink]:
     return followups
 
 
-def explore_page(html: str, page_url: str) -> ExploreResult:
+def explore_page(
+    html: str,
+    page_url: str,
+    *,
+    generate_fn=None,
+    overlay_dir=None,
+) -> ExploreResult:
     """Parse one fetched hub. Does not GET further URLs and does not publish."""
     return ExploreResult(
         page_url=page_url,
         title=page_title(html),
         excerpt=page_excerpt(html),
-        links=html_links(html, page_url),
+        links=html_links(html, page_url, generate_fn=generate_fn, overlay_dir=overlay_dir),
         followups=sharepoint_followups(html, page_url),
     )
 

@@ -47,7 +47,9 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def compute_overview_row(catalog, lid: str, build=None) -> dict:
+def compute_overview_row(catalog, lid: str, build=None, *, overlay_dir=None) -> dict:
+    import os
+
     build = build or _build_mod()
     docs = [
         document
@@ -57,10 +59,23 @@ def compute_overview_row(catalog, lid: str, build=None) -> dict:
     grants = catalog.grants_for_airport(lid)
     airport = catalog.airports_by_lid.get(lid)
     latest_alp, latest_plan, earlier = build.featured_and_earlier(docs)
+    generate_fn = None
+    if os.environ.get("APTPLANS_LLM") == "1":
+        from catalog.store import has_verified_plans
+
+        if has_verified_plans(catalog, lid):
+            try:
+                from pipeline.ollama import generate as ollama_generate
+
+                generate_fn = ollama_generate
+            except Exception:
+                log.exception("Ollama unavailable for overview %s", lid)
     overview = airport_overview(
         [latest_plan, latest_alp, *earlier],
         build.overview_grant_lines(grants),
         airport=airport,
+        generate_fn=generate_fn,
+        overlay_dir=overlay_dir,
     )
     stamp = _utc_now()
     if overview is None:
@@ -76,7 +91,7 @@ def upsert_overview_for(
     build=None,
 ) -> dict:
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
-    row = compute_overview_row(catalog, lid, build=build)
+    row = compute_overview_row(catalog, lid, build=build, overlay_dir=overlay_dir)
     upsert_overview_overlay(overlay_dir, row)
     catalog.overviews[lid] = row
     airport = catalog.airports_by_lid.get(lid)
@@ -106,7 +121,7 @@ def refresh_overviews(
         current = catalog.overviews.get(lid)
         if not force and current and not overview_is_stale(current, now):
             continue
-        row = compute_overview_row(catalog, lid, build=build)
+        row = compute_overview_row(catalog, lid, build=build, overlay_dir=overlay_dir)
         upsert_overview_overlay(overlay_dir, row)
         catalog.overviews[lid] = row
         wrote += 1

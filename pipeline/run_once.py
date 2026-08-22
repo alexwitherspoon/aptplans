@@ -120,6 +120,18 @@ def _paths(
     )
 
 
+def _llm_generate():
+    if os.environ.get("APTPLANS_LLM") != "1":
+        return None
+    try:
+        from pipeline.ollama import generate
+
+        return generate
+    except Exception:
+        log.exception("Ollama unavailable for explore LLM")
+        return None
+
+
 def _reply(job: QueueJob, status: str, hint: IntakeHint | None) -> None:
     if job.issue_number is None:
         return
@@ -427,7 +439,12 @@ def process_fetch(
             )
         )
     if media == "html" and queue is not None and job.source_url:
-        result = explore_page(data.decode("utf-8", "replace"), job.source_url)
+        result = explore_page(
+            data.decode("utf-8", "replace"),
+            job.source_url,
+            generate_fn=_llm_generate(),
+            overlay_dir=overlay_dir,
+        )
         for child in confirm_jobs(
             result,
             airport_lid=job.airport_lid,
@@ -511,7 +528,12 @@ def process_explore(
     if media != "html":
         _keep_failed(job, files_dir, reason="not_plan", data=data)
         return "not_plan"
-    result = explore_page(data.decode("utf-8", "replace"), job.source_url)
+    result = explore_page(
+        data.decode("utf-8", "replace"),
+        job.source_url,
+        generate_fn=_llm_generate(),
+        overlay_dir=overlay_dir,
+    )
     if not job.suggested_kind:
         job.suggested_kind = hub_document_kind(result)
     if not job.document_id and job.airport_lid:
@@ -548,7 +570,7 @@ def process_vet(
     try:
         from pipeline.ollama import generate
         from pipeline.parse import extract_text, viable_chunk
-        from pipeline.queries import verify_candidate
+        from pipeline.queries import verify_candidate, verify_finance
 
         excerpt = (
             viable_chunk(extract_text(data))
@@ -556,12 +578,21 @@ def process_vet(
             else viable_chunk(data.decode("utf-8", "replace"))
         )
         airport = catalog.airports_by_lid.get(document.airport_lid or "")
+        state = catalog.states_by_code.get(document.state or "")
         scored = verify_candidate(
             lid=document.airport_lid or "",
             name=airport.name if airport is not None else "",
             url=document.source_url,
             excerpt=excerpt,
             generate_fn=generate,
+        )
+        finance = verify_finance(
+            url=document.source_url,
+            excerpt=excerpt,
+            generate_fn=generate,
+            lid=document.airport_lid or "",
+            name=airport.name if airport is not None else "",
+            state=state.code if state is not None else (document.state or ""),
         )
     except Exception:
         log.exception("vet failed document=%s", job.document_id)
@@ -574,7 +605,25 @@ def process_vet(
     )
     if kind == "not_plan":
         _keep_failed(job, files_dir, reason="not_plan", data=data)
-    updates = {"review_status": review}
+    updates: dict = {"review_status": review}
+    if finance.get("finance_kind"):
+        updates["finance_kind"] = finance["finance_kind"]
+        updates["finance_scope"] = finance.get("scope")
+        updates["finance_reason"] = finance.get("reason") or None
+        updates["finance_verified_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            from pipeline.classifications import record_classification
+
+            record_classification(
+                overlay_dir,
+                evaluation="finance_verify",
+                input_id=document.id,
+                category=str(finance.get("finance_kind") or "other"),
+                classifier="llm",
+                reason=str(finance.get("reason") or ""),
+            )
+        except Exception:
+            log.exception("finance classification audit failed document=%s", document.id)
     write_overlay_update(overlay_dir, document.id, updates)
     if visible_on_site(document.overlay(updates)):
         try:

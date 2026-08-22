@@ -143,6 +143,11 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
             urlopen(Request(f"{base}/v1/stats", headers=headers), timeout=2).read()
         )
         assert stats["n"] == 0
+        evaluations = json.loads(
+            urlopen(Request(f"{base}/v1/evaluations", headers=headers), timeout=2).read()
+        )
+        assert "grant_spend" in evaluations["tasks"]
+        assert evaluations["stats"]["total"] == 0
         payload = json.dumps(
             {
                 "id": "ttd-bound-human",
