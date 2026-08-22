@@ -24,7 +24,7 @@ log = logging.getLogger("aptplans.worker")
 BOOT_PAUSE_SECONDS = 5.0
 DEFAULT_IDLE_SEC = 60.0
 DEFAULT_INTAKE_SEC = 3600.0
-DEFAULT_DISCOVERY_SEC = 604800.0
+DEFAULT_DISCOVERY_SEC = 86400.0
 
 
 def cold_start_overlays(

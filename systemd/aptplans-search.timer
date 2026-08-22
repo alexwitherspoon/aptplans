@@ -1,8 +1,8 @@
 [Unit]
-Description=Weekly AptPlans adaptive search discovery
+Description=Daily AptPlans adaptive search discovery
 
 [Timer]
-OnCalendar=weekly
+OnCalendar=daily
 Persistent=true
 RandomizedDelaySec=1h
 

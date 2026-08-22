@@ -15,6 +15,7 @@ import os
 from pipeline.local_env import load_local_env
 
 DEFAULT_URL = "https://aptplans.org/review"
+USER_AGENT = "aptplans.org"
 
 
 def load_review_env(repo: Path | None = None) -> None:
@@ -35,6 +36,7 @@ def review_headers(token: str) -> dict[str, str]:
         "X-Api-Key": token,
         "Accept": "application/json",
         "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
     }
 
 

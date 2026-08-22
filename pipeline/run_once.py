@@ -32,6 +32,7 @@ from pipeline.stages import review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
 from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
+from pipeline.pipeline_status import build_public_snapshot, record_discovery, record_job
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
 from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.reject import purge_expired, store_reject
@@ -175,7 +176,15 @@ def _maybe_rebuild_site() -> None:
     )
 
 
-def _rebuild_if_needed(rebuild: bool) -> None:
+def _refresh_pipeline(overlay_dir: Path, queue_dir: Path, catalog_root: Path) -> None:
+    try:
+        build_public_snapshot(overlay_dir, queue_dir, catalog_root=catalog_root)
+    except Exception:
+        log.exception("pipeline snapshot failed")
+
+
+def _rebuild_if_needed(rebuild: bool, overlay_dir: Path, queue_dir: Path, catalog_root: Path) -> None:
+    _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
     if not rebuild:
         return
     try:
@@ -586,14 +595,26 @@ def _run_claimed_job(
     if job.kind == "check":
         status = process_check(job, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
+        try:
+            record_job(overlay_dir, job, status)
+        except Exception:
+            log.exception("pipeline status failed job=%s", job.id)
         return status in {"dead", "moved", "live"}
     if job.kind == "explore":
         status = process_explore(job, files_dir, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
+        try:
+            record_job(overlay_dir, job, status)
+        except Exception:
+            log.exception("pipeline status failed job=%s", job.id)
         return False
     if job.kind == "vet":
         status = process_vet(job, files_dir, overlay_dir, catalog_root)
         _observe_job(overlay_dir, job, status)
+        try:
+            record_job(overlay_dir, job, status)
+        except Exception:
+            log.exception("pipeline status failed job=%s", job.id)
         return status in {"auto_pass", "published"}
     if job.kind != "fetch":
         log.info("skip unsupported job kind %s", job.kind)
@@ -601,6 +622,10 @@ def _run_claimed_job(
         return False
     status = process_fetch(job, files_dir, overlay_dir, catalog_root, queue=queue)
     _observe_job(overlay_dir, job, status)
+    try:
+        record_job(overlay_dir, job, status)
+    except Exception:
+        log.exception("pipeline status failed job=%s", job.id)
     if status != "preserved":
         return False
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
@@ -632,6 +657,7 @@ def _execute_claimed(
             )
             try:
                 _observe_job(overlay_dir, job, "needs_human")
+                record_job(overlay_dir, job, "needs_human")
                 _reply(job, "needs_human", None)
             except Exception:
                 log.exception("intake reply failed after giving up")
@@ -674,7 +700,7 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
-    _rebuild_if_needed(rebuild)
+    _rebuild_if_needed(rebuild, overlay_dir, queue_dir, catalog_root)
 
 
 def process_next(
@@ -700,6 +726,9 @@ def process_next(
             from pipeline.discover_overlay import discover_next_airports
 
             result = discover_next_airports(overlay_dir, queue_dir)
+            if result.get("airports"):
+                record_discovery(overlay_dir, list(result.get("airports") or []))
+                _refresh_pipeline(overlay_dir, queue_dir, catalog_root)
             if result.get("explore_jobs") or result.get("fetch_jobs"):
                 job = _claim_next_job(queue_dir, files_dir)
                 if job is not None:

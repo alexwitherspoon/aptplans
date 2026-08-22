@@ -16,7 +16,7 @@ from pipeline.search_scope import parse_search_states, scoped_overlay_airports
 log = logging.getLogger("aptplans.discovery")
 
 CURSOR_NAME = "discovery_cursor.json"
-DEFAULT_LIMIT = 1
+DEFAULT_LIMIT = 5
 DEFAULT_MAX_STEPS = 5
 
 
