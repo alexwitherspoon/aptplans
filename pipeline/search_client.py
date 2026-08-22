@@ -1,8 +1,8 @@
 """Search APIs that return packets. Do not scrape result HTML.
 
-Brave (APTPLANS_SEARCH_KEY) is the searcher. Gemini (APTPLANS_GEMINI_KEY) is an
-optional last-resort packet source after the Brave ladder stalls. Gemini does
-not classify files, choose fetches, or override gates. CI must leave both keys unset.
+Brave Search is the default on production (`APP_ENV=production`). CI and local
+dev replay fixtures unless `APTPLANS_LIVE_SEARCH=1`. Gemini escalate stays
+optional and still needs `APTPLANS_GEMINI_KEY`.
 """
 
 from __future__ import annotations
@@ -56,9 +56,29 @@ Rules:
 """
 
 
+def _truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def live_search_enabled() -> bool:
+    """Live Brave/Google search runs on production. CI and local dev use fixtures unless opted in."""
+    flag = os.environ.get("APTPLANS_LIVE_SEARCH", "").strip().lower()
+    if flag in {"1", "true", "yes"}:
+        return True
+    if flag in {"0", "false", "no"}:
+        return False
+    if os.environ.get("APP_ENV", "").strip().lower() == "production":
+        return True
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return False
+    if _truthy("CI"):
+        return False
+    return False
+
+
 def search_provider() -> str:
     load_local_env()
-    if os.environ.get("APTPLANS_SEARCH_KEY", "").strip():
+    if live_search_enabled():
         return (os.environ.get("APTPLANS_SEARCH_PROVIDER") or "brave").strip().lower()
     return "fixture"
 
@@ -374,9 +394,13 @@ def _gemini_search(query: str, *, count: int = 8) -> list[SearchHit]:
 
 def live_search(query: str, *, count: int = 8) -> list[SearchHit]:
     load_local_env()
+    if not live_search_enabled():
+        raise RuntimeError("live search is disabled in this environment")
     key = os.environ.get("APTPLANS_SEARCH_KEY", "").strip()
     if not key:
-        raise RuntimeError("APTPLANS_SEARCH_KEY is unset")
+        raise RuntimeError(
+            "APTPLANS_SEARCH_KEY is unset; production expects Brave Search in .env.secrets"
+        )
     provider = search_provider()
     meter_kind = "brave" if provider == "brave" else provider
     if meter_kind in {"brave", "google"} and not charge_search(meter_kind):

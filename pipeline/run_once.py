@@ -32,13 +32,11 @@ from pipeline.stages import review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
 from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
-from pipeline.refresh import overlay_dir_from_env
+from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.reject import purge_expired, store_reject
 from pipeline.sanitize import redact_html_secrets
 
 log = logging.getLogger("aptplans.job")
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:

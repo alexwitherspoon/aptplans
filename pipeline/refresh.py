@@ -8,7 +8,22 @@ import os
 from zoneinfo import ZoneInfo
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
-ROOT = Path(__file__).resolve().parents[1]
+
+
+def repo_root() -> Path:
+    """Repository root (contains site/build.py). Editable installs resolve from __file__; pip installs in Docker use /app."""
+    env = os.environ.get("APTPLANS_REPO", "").strip()
+    if env:
+        root = Path(env)
+        if (root / "site" / "build.py").is_file():
+            return root
+    for candidate in (Path("/app"), *Path(__file__).resolve().parents):
+        if (candidate / "site" / "build.py").is_file():
+            return candidate
+    return Path(__file__).resolve().parents[1]
+
+
+ROOT = repo_root()
 PAUSE_SECONDS = 2.0
 
 

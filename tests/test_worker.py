@@ -174,3 +174,13 @@ def test_main_search_failure_keeps_worker(monkeypatch) -> None:
     monkeypatch.setattr(worker, "run_loop", lambda: called.append("loop"))
     worker.main()
     assert called == ["loop"]
+
+
+def test_repo_root_honors_aptplans_repo(monkeypatch, tmp_path: Path) -> None:
+    from pipeline.refresh import repo_root
+
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "build.py").write_text("# build\n", encoding="utf-8")
+    monkeypatch.setenv("APTPLANS_REPO", str(tmp_path))
+    assert repo_root() == tmp_path
