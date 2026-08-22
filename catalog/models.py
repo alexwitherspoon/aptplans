@@ -61,6 +61,15 @@ FUNDING_LABELS = {
     "other": "Other",
 }
 
+AIRPORT_COVERAGE_STAGES = (
+    "untouched",
+    "searched",
+    "explored",
+    "snapshot_pending",
+    "published",
+    "no_plan_found",
+)
+
 
 @dataclass(frozen=True)
 class Grant:
@@ -233,6 +242,17 @@ def visible_on_site(document: Document) -> bool:
     if review in {"published", "auto_pass"}:
         return True
     return review == "pending" and document.completeness == "link_only"
+
+
+def feed_visible(document: Document) -> bool:
+    """RSS items: statutes and law pass through; airport plans need review."""
+    if not visible_on_site(document):
+        return False
+    if document.kind in {"statute", "sasp", "notice"}:
+        return True
+    if document.completeness != "complete":
+        return False
+    return (document.review_status or "pending") != "pending"
 
 
 def looks_like_work_edition(document: Document) -> bool:

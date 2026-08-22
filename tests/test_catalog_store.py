@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from catalog.seed import US_STATES, seed_catalog
-from catalog.store import Catalog, completeness_for_airport, merge_overlay
+from catalog.store import Catalog, completeness_for_airport, counts, has_verified_plans, merge_overlay
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -186,6 +186,98 @@ def test_unvetted_snapshot_does_not_complete_or_list() -> None:
     catalog = Catalog(airports=[airport], documents=[snap])
     assert visible_on_site(snap) is False
     assert completeness_for_airport(catalog, "BVY") == "missing"
+
+
+def test_counts_includes_corpus_highlights_and_funding() -> None:
+    catalog = seed_catalog(ROOT / "catalog")
+    pipeline = {
+        "coverage": {
+            "untouched": 5,
+            "searched": 1,
+            "explored": 0,
+            "snapshot_pending": 0,
+            "published": 1,
+            "no_plan_found": 0,
+        }
+    }
+    stats = counts(catalog, pipeline=pipeline)
+    assert stats["pct_reviewed"] == 29
+    assert stats["pct_master_plan"] is not None
+    assert stats["funding_federal_obligated"] > 0
+    assert stats["funding_federal_airports"] >= 1
+    assert stats["funding_state_budget_total"] > 0
+    assert stats["funding_states_with_budgets"] >= 1
+
+
+def test_feed_visible_requires_reviewed_complete() -> None:
+    from catalog.models import Document, feed_visible
+
+    link_only = Document(
+        id="4s9-2019-alp",
+        kind="alp",
+        airport_lid="4S9",
+        source_url="https://example.com/alp.pdf",
+        completeness="link_only",
+        review_status="auto_pass",
+    )
+    verified = Document(
+        id="4s9-2019-alp",
+        kind="alp",
+        airport_lid="4S9",
+        source_url="https://example.com/alp.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+        content_sha256="abc",
+        preserved_url="/files/abc.pdf",
+    )
+    statute = Document(
+        id="or-ors-836",
+        kind="statute",
+        state="OR",
+        source_url="https://example.com/law",
+        completeness="link_only",
+        review_status="pending",
+    )
+    assert feed_visible(link_only) is False
+    assert feed_visible(verified) is True
+    assert feed_visible(statute) is True
+
+
+def test_has_verified_plans_requires_reviewed_complete() -> None:
+    from catalog.models import Airport, Document
+    from catalog.store import Catalog, has_verified_plans
+
+    airport = Airport(lid="4S9", name="Mulino", city="Mulino", state="OR")
+    link_only = Document(
+        id="4s9-2019-alp",
+        kind="alp",
+        airport_lid="4S9",
+        source_url="https://example.com/alp.pdf",
+        completeness="link_only",
+        review_status="auto_pass",
+    )
+    pending = Document(
+        id="4s9-2019-amp",
+        kind="master_plan",
+        airport_lid="4S9",
+        source_url="https://example.com/amp.pdf",
+        completeness="complete",
+        review_status="pending",
+    )
+    verified = Document(
+        id="4s9-amp-verified",
+        kind="master_plan",
+        airport_lid="4S9",
+        source_url="https://example.com/verified.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+        content_sha256="abc",
+        preserved_url="/files/abc.pdf",
+    )
+    catalog = Catalog(airports=[airport], documents=[link_only, pending, verified])
+    assert has_verified_plans(catalog, "4S9") is True
+    catalog = Catalog(airports=[airport], documents=[link_only, pending])
+    assert has_verified_plans(catalog, "4S9") is False
 
 
 def test_load_and_write_roundtrip(tmp_path: Path) -> None:

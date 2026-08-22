@@ -4,7 +4,16 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from catalog.models import Airport, Budget, ChangeEvent, Document, Grant, State, visible_on_site
+from catalog.models import (
+    AIRPORT_COVERAGE_STAGES,
+    Airport,
+    Budget,
+    ChangeEvent,
+    Document,
+    Grant,
+    State,
+    visible_on_site,
+)
 
 COMPLETENESS_RANK = {
     "complete": 4,
@@ -310,6 +319,37 @@ def write_overlay_update(overlay_dir: Path, document_id: str, updates: dict) -> 
     _write_jsonl(overlay_dir / "documents.jsonl", rows)
 
 
+def _airports_with_kind(catalog: Catalog, kind: str) -> int:
+    lids: set[str] = set()
+    for document in catalog.documents:
+        if document.kind != kind or not document.airport_lid or not visible_on_site(document):
+            continue
+        lids.add(document.airport_lid.strip().upper())
+    return len(lids)
+
+
+def _pct(part: int, total: int) -> int | None:
+    if total <= 0:
+        return None
+    return round(100 * part / total)
+
+
+def has_verified_plans(catalog: Catalog, lid: str) -> bool:
+    """True when a reviewed master plan or ALP is published on site."""
+    lid = lid.strip().upper()
+    for document in catalog.documents_for_airport(lid):
+        if document.kind not in {"master_plan", "alp"}:
+            continue
+        if not visible_on_site(document):
+            continue
+        if document.completeness != "complete":
+            continue
+        if (document.review_status or "pending") == "pending":
+            continue
+        return True
+    return False
+
+
 def completeness_for_airport(catalog: Catalog, lid: str) -> str:
     docs = [
         document
@@ -325,12 +365,27 @@ def completeness_for_airport(catalog: Catalog, lid: str) -> str:
     return best
 
 
-def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int]:
+COVERAGE_STAGES = AIRPORT_COVERAGE_STAGES
+
+
+def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int | None]:
     airport_status = [completeness_for_airport(catalog, airport.lid) for airport in catalog.airports]
     queue = (pipeline or {}).get("queue") if isinstance(pipeline, dict) else {}
-    coverage = (pipeline or {}).get("coverage") if isinstance(pipeline, dict) else {}
+    coverage_raw = (pipeline or {}).get("coverage") if isinstance(pipeline, dict) else {}
+    coverage = coverage_raw if isinstance(coverage_raw, dict) else {}
+    airports_total = len(catalog.airports)
+    if coverage:
+        coverage_total = sum(int(coverage.get(stage) or 0) for stage in COVERAGE_STAGES)
+        reviewed = coverage_total - int(coverage.get("untouched") or 0)
+        pct_reviewed = _pct(reviewed, coverage_total) if coverage_total else None
+    else:
+        pct_reviewed = None
+    with_master_plan = _airports_with_kind(catalog, "master_plan")
+    with_alp = _airports_with_kind(catalog, "alp")
+    federal_grants = [grant for grant in catalog.grants if grant.level == "federal"]
+    local_grants = [grant for grant in catalog.grants if grant.level == "local"]
     return {
-        "airports": len(catalog.airports),
+        "airports": airports_total,
         "states": len(catalog.states),
         "documents": len(catalog.documents),
         "complete": sum(1 for status in airport_status if status == "complete"),
@@ -345,10 +400,25 @@ def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int]:
             for doc in catalog.documents
             if doc.completeness == "complete" and visible_on_site(doc)
         ),
+        "listed_documents": sum(1 for doc in catalog.documents if visible_on_site(doc)),
+        "airports_with_plans": sum(1 for status in airport_status if status == "complete"),
+        "airports_with_master_plan": with_master_plan,
+        "airports_with_alp": with_alp,
+        "pct_reviewed": pct_reviewed,
+        "pct_master_plan": _pct(with_master_plan, airports_total),
+        "pct_alp": _pct(with_alp, airports_total),
         "queue_pending": int((queue or {}).get("pending") or 0),
         "queue_active": int((queue or {}).get("active") or 0),
         "snapshot_pending": int((coverage or {}).get("snapshot_pending") or 0),
         "searched": int((coverage or {}).get("searched") or 0) + int((coverage or {}).get("explored") or 0),
         "grants": len(catalog.grants),
         "statutes": sum(1 for doc in catalog.documents if doc.kind in {"statute", "sasp"}),
+        "funding_federal_obligated": sum(
+            grant.obligated or grant.amount or 0 for grant in federal_grants
+        ),
+        "funding_federal_airports": len({grant.airport_lid for grant in federal_grants if grant.airport_lid}),
+        "funding_state_budget_total": sum(budget.total or 0 for budget in catalog.budgets),
+        "funding_states_with_budgets": len({budget.state for budget in catalog.budgets}),
+        "funding_local_total": sum(grant.obligated or grant.amount or 0 for grant in local_grants),
+        "funding_local_airports": len({grant.airport_lid for grant in local_grants if grant.airport_lid}),
     }
