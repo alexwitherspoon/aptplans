@@ -134,6 +134,7 @@ def run_link_check(
 ) -> str:
     from pipeline.check import run_check_pass
     from pipeline.site_build import enqueue_site_build
+    from pipeline.site_scope import scope_after_link_check
 
     overlay = overlay_dir_from_env(overlay_dir)
     queue_path = queue_dir_from_env(queue_dir)
@@ -143,7 +144,7 @@ def run_link_check(
         queue_dir=queue_path,
     )
     if count:
-        enqueue_site_build(queue_path)
+        enqueue_site_build(queue_path, scope=scope_after_link_check())
         return "ok"
     return "skipped"
 

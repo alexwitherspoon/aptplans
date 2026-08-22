@@ -187,12 +187,9 @@ def _maybe_rebuild_site() -> None:
 
 
 def process_site_build(job: QueueJob) -> str:
-    from pipeline.site_build import run_site_build
+    from pipeline.site_build import process_site_build_job
 
-    return run_site_build(
-        airport_lid=job.part_of,
-        include_about=job.report_type == "about",
-    )
+    return process_site_build_job(job)
 
 
 def _run_maintenance_job(
@@ -246,7 +243,7 @@ def refresh_public_site(
     queue_dir: Path,
     catalog_root: Path,
     *,
-    airport_lid: str | None = None,
+    scope=None,
 ) -> None:
     """Queue pipeline.json refresh and an HTML rebuild for the worker."""
     del overlay_dir, catalog_root
@@ -254,7 +251,7 @@ def refresh_public_site(
         from pipeline.site_build import enqueue_site_build
 
         enqueue_pipeline_snapshot(queue_dir)
-        enqueue_site_build(queue_dir, airport_lid=airport_lid)
+        enqueue_site_build(queue_dir, scope=scope)
     except Exception:
         log.exception("public site refresh enqueue failed")
 
@@ -805,7 +802,7 @@ def _claim_next_job(
         return JobQueue(queue_dir).claim(airport_limit=airport_concurrency())
 
 
-def _schedule_after_job(queue_dir: Path, job: QueueJob) -> None:
+def _schedule_after_job(queue_dir: Path, job: QueueJob, catalog_root: Path) -> None:
     """Enqueue follow-up maintenance work; never run heavy jobs inline."""
     if job.kind == "overlay_refresh":
         try:
@@ -818,19 +815,24 @@ def _schedule_after_job(queue_dir: Path, job: QueueJob) -> None:
     if job.kind == "pipeline_snapshot":
         try:
             from pipeline.site_build import enqueue_site_build
+            from pipeline.site_scope import scope_about
 
-            enqueue_site_build(queue_dir, include_about=True)
+            enqueue_site_build(queue_dir, scope=scope_about())
         except Exception:
             log.exception("about rebuild enqueue failed")
         return
     if job.kind in BOOT_JOB_KINDS or job.kind == "site_build":
         return
     try:
+        from catalog.seed import seed_catalog
+        from pipeline.site_build import enqueue_site_build
+        from pipeline.site_scope import scope_after_airport_job
+
         enqueue_pipeline_snapshot(queue_dir)
         if job.kind in SITE_BUILD_TRIGGER_KINDS:
-            from pipeline.site_build import enqueue_site_build
-
-            enqueue_site_build(queue_dir, airport_lid=job.airport_lid)
+            catalog = seed_catalog(catalog_root)
+            scope = scope_after_airport_job(job, catalog)
+            enqueue_site_build(queue_dir, scope=scope)
     except Exception:
         log.exception("post-job enqueue failed job=%s", job.kind)
 
@@ -851,7 +853,7 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
-    _schedule_after_job(queue_dir, job)
+    _schedule_after_job(queue_dir, job, catalog_root)
 
 
 def process_next(

@@ -298,8 +298,9 @@ def main() -> int:
         count = run_check_pass(overlay_dir=overlay, catalog_root=catalog_root, queue_dir=queue)
     if count:
         from pipeline.site_build import enqueue_site_build
+        from pipeline.site_scope import scope_after_link_check
 
-        enqueue_site_build(queue)
+        enqueue_site_build(queue, scope=scope_after_link_check())
     return 0
 
 
