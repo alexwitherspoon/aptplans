@@ -30,8 +30,9 @@ def test_build_writes_index_and_css(tmp_path: Path) -> None:
     assert "Airport Layout Plan" in about
     assert "not legal advice" in about.lower()
     assert "class=\"about-hero\"" in about
-    assert "processing" in about.lower()
-    assert "saved copies" in about.lower()
+    assert "queued" in about.lower()
+    assert "pipeline-panel" in about
+    assert "published saved copies" in about.lower()
     assert css.is_file()
     assert "canonical" in index.lower() or 'rel="canonical"' in index
     assert (out / "robots.txt").is_file()

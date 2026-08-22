@@ -302,6 +302,58 @@ h1 {
   margin-left: 0.25rem;
 }
 
+.badge-coverage {
+  color: var(--accent);
+  border-color: #b8c9be;
+}
+
+.coverage-banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: #ebe6dc;
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+.pending-panel {
+  margin: 1.5rem 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--rule);
+}
+
+.pipeline-panel {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.pipeline-dl {
+  display: grid;
+  grid-template-columns: minmax(6rem, 9rem) 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.pipeline-dl dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pipeline-dl dd {
+  margin: 0;
+}
+
+.pipeline-jobs {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.pipeline-jobs li {
+  margin-bottom: 0.25rem;
+}
+
 .crumb {
   color: var(--muted);
   font-size: 0.9rem;

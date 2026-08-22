@@ -14,7 +14,12 @@
     we can cite.
   </p>
   <p>
-    Each document links to the official source. When we have it, a saved
+    Most airports in this index come from FAA records and have not been searched for plans yet.
+    Coverage grows airport by airport. Status badges on airport pages show both catalog completeness
+    and whether AptPlans has searched or preserved files awaiting review.
+  </p>
+  <p>
+    Each published document links to the official source. When we have it, a saved
     copy lives here too. Short notes on documents are ours, to help you
     find a page in a long PDF. Always open the official file.
   </p>
@@ -27,11 +32,71 @@
   <section class="about-hero">
     <ul class="about-stats">
       <li><strong>{{ counts.documents }}</strong> documents</li>
-      <li><strong>{{ counts.waiting }}</strong> processing</li>
-      <li><strong>{{ counts.documents_complete }}</strong> saved copies</li>
+      <li><strong>{{ counts.queue_pending }}</strong> queued</li>
+      <li><strong>{{ counts.queue_active }}</strong> active</li>
+      <li><strong>{{ counts.saved_copies }}</strong> published saved copies</li>
+      <li><strong>{{ counts.snapshot_pending }}</strong> snapshots awaiting review</li>
       <li><strong>{{ counts.airports }}</strong> airports</li>
       <li><strong>{{ counts.grants }}</strong> grants</li>
       <li><strong>{{ counts.states }}</strong> states</li>
     </ul>
+  </section>
+
+  <section class="pipeline-panel">
+    <h2>Pipeline</h2>
+    <p class="meta">What the origin worker is doing. Updated after each job.</p>
+    {% if pipeline %}
+    <dl class="pipeline-dl">
+      <dt>Generated</dt>
+      <dd>{{ pipeline.generated_at or "unknown" }}</dd>
+      <dt>Queue</dt>
+      <dd>{{ pipeline.queue.pending }} pending · {{ pipeline.queue.active }} active · {{ pipeline.queue.done }} done</dd>
+      {% if pipeline.last_job and pipeline.last_job.at %}
+      <dt>Last job</dt>
+      <dd>
+        {% if pipeline.last_job.airport_lid %}{{ pipeline.last_job.airport_lid }}{% else %}—{% endif %}
+        {{ pipeline.last_job.kind or "" }}
+        {% if pipeline.last_job.status %}({{ pipeline.last_job.status }}){% endif %}
+        · {{ pipeline.last_job.at }}
+      </dd>
+      {% endif %}
+      {% if pipeline.discovery %}
+      <dt>Discovery scope</dt>
+      <dd>
+        {{ pipeline.discovery.scoped_airports }} airports
+        {% if pipeline.discovery.scope_states %}in {{ pipeline.discovery.scope_states|join(", ") }}{% endif %}
+        · cursor {{ pipeline.discovery.cursor_index }}
+      </dd>
+      {% endif %}
+      {% if pipeline.coverage %}
+      <dt>Coverage</dt>
+      <dd>
+        {{ pipeline.coverage.untouched }} not searched ·
+        {{ pipeline.coverage.searched }} searched ·
+        {{ pipeline.coverage.explored }} explored ·
+        {{ pipeline.coverage.snapshot_pending }} pending review ·
+        {{ pipeline.coverage.published }} published
+      </dd>
+      {% endif %}
+    </dl>
+    {% if pipeline.active_jobs %}
+    <h3>Active</h3>
+    <ul class="pipeline-jobs">
+      {% for job in pipeline.active_jobs %}
+      <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if pipeline.next_jobs %}
+    <h3>Next in queue</h3>
+    <ul class="pipeline-jobs">
+      {% for job in pipeline.next_jobs %}
+      <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% else %}
+    <p>No pipeline snapshot yet. The worker writes one after the first discovery or queue job.</p>
+    {% endif %}
   </section>
 {% endblock %}

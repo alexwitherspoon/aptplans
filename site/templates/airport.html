@@ -87,6 +87,9 @@
   {% if airport.website|public_website %}
   <p class="airport-site"><a href="{{ airport.website|public_website }}">{{ airport.website|website_label }}</a></p>
   {% endif %}
+  {% if coverage_banner %}
+  <p class="coverage-banner">{{ coverage_banner }}</p>
+  {% endif %}
   <p class="on-page">
     Sections:
     <a href="#plans">Plans</a>
@@ -122,9 +125,24 @@
     ) }}
   </div>
   <p class="meta">
-    {{ completeness|completeness_phrase }}
+    <span class="badge badge-coverage">{{ coverage_label }}</span>
+    · {{ completeness|completeness_phrase }}
     {% if documents %} · <a href="/feeds/airports/{{ airport.lid }}.xml">RSS</a>{% endif %}
   </p>
+  {% if pending_docs %}
+  <section class="pending-panel">
+    <h3>Preserved, awaiting review</h3>
+    <p class="meta">These snapshots are not published on AptPlans yet. Metadata only.</p>
+    <ul class="edition-list">
+      {% for doc in pending_docs %}
+      <li>
+        {{ doc.title or doc.id }}
+        <span class="meta">{{ doc.kind|kind_label }}{% if doc.source_retrieved_at %} · preserved {{ doc.source_retrieved_at[:10] }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
   {% if earlier %}
   <h3>Earlier editions</h3>
   <ul class="edition-list">

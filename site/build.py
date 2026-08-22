@@ -30,6 +30,14 @@ from catalog.ourairports import http_url
 from catalog.seed import reference_seed_enabled, seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts
 from pipeline.brief import airport_overview
+from pipeline.pipeline_status import (
+    coverage_banner,
+    coverage_label,
+    coverage_stage,
+    load_public_snapshot,
+    load_status,
+    pending_documents,
+)
 from pipeline.search import airport_record
 
 TEMPLATES = ROOT / "templates"
@@ -717,10 +725,13 @@ def _env(*, asset=None) -> Environment:
     return env
 
 
-def _catalog() -> Catalog:
+def _overlay_dir() -> Path | None:
     overlay = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
-    overlay_dir = Path(overlay) if overlay else None
-    return seed_catalog(REPO / "catalog", overlay_dir=overlay_dir)
+    return Path(overlay) if overlay else None
+
+
+def _catalog() -> Catalog:
+    return seed_catalog(REPO / "catalog", overlay_dir=_overlay_dir())
 
 
 def _write(path: Path, text: str) -> bool:
@@ -970,6 +981,13 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
     digest.update(
         json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     )
+    overlay_dir = _overlay_dir()
+    if overlay_dir is not None:
+        for name in ("pipeline.json", "pipeline_status.json"):
+            path = overlay_dir / name
+            if path.is_file():
+                digest.update(name.encode("utf-8"))
+                digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
@@ -1023,8 +1041,12 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
 
     versions = static_asset_versions()
     versions["/data/search.json"] = source_sha[:12]
+    versions["/data/pipeline.json"] = source_sha[:12]
     env = _env(asset=lambda path: bust_url(path, versions))
-    stats = counts(catalog)
+    overlay_dir = _overlay_dir()
+    pipeline = load_public_snapshot(overlay_dir)
+    status_rows = load_status(overlay_dir) if overlay_dir is not None else {}
+    stats = counts(catalog, pipeline=pipeline)
     listed = [doc for doc in catalog.documents if visible_on_site(doc)]
     recently = sorted(
         listed,
@@ -1035,6 +1057,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         "canonical": CANONICAL,
         "year": year,
         "counts": stats,
+        "pipeline": pipeline,
         "intake_url": INTAKE_URL,
         "recently": recently,
         "rss_links": [RSS_ALL],
@@ -1068,6 +1091,13 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         "/airports/",
         airports=catalog.airports,
         completeness_for=lambda lid: completeness_for_airport(catalog, lid),
+        coverage_for=lambda lid: coverage_stage(
+            lid,
+            overlay_dir=overlay_dir,
+            catalog_root=REPO / "catalog",
+            status_rows=status_rows,
+        ),
+        coverage_label=coverage_label,
     )
     render(
         "states.html",
@@ -1119,6 +1149,13 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         )
         if overview and overview.trajectory:
             outlook_by_lid[airport.lid] = overview.trajectory.band
+        stage = coverage_stage(
+            airport.lid,
+            overlay_dir=overlay_dir,
+            catalog_root=REPO / "catalog",
+            status_rows=status_rows,
+        )
+        row = status_rows.get(airport.lid.upper()) or {}
         render(
             "airport.html",
             out_dir / "airports" / airport.lid / "index.html",
@@ -1133,6 +1170,10 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             funding=funding,
             money=money,
             completeness=completeness_for_airport(catalog, airport.lid),
+            coverage_stage=stage,
+            coverage_label=coverage_label(stage),
+            coverage_banner=coverage_banner(stage, row),
+            pending_docs=pending_documents(catalog, airport.lid),
             facts=identity_facts(airport),
             place=place_line(airport, state),
             state=state,
@@ -1391,6 +1432,8 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             }
         )
     emit(out_dir / "data" / "search.json", json.dumps(search_index) + "\n")
+    if pipeline:
+        emit(out_dir / "data" / "pipeline.json", json.dumps(pipeline, indent=2) + "\n")
     emit(
         out_dir / "data" / "catalog.json",
         json.dumps(

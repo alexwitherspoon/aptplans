@@ -325,8 +325,10 @@ def completeness_for_airport(catalog: Catalog, lid: str) -> str:
     return best
 
 
-def counts(catalog: Catalog) -> dict[str, int]:
+def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int]:
     airport_status = [completeness_for_airport(catalog, airport.lid) for airport in catalog.airports]
+    queue = (pipeline or {}).get("queue") if isinstance(pipeline, dict) else {}
+    coverage = (pipeline or {}).get("coverage") if isinstance(pipeline, dict) else {}
     return {
         "airports": len(catalog.airports),
         "states": len(catalog.states),
@@ -338,7 +340,15 @@ def counts(catalog: Catalog) -> dict[str, int]:
         "no_plan_known": sum(1 for status in airport_status if status == "no_plan_known"),
         "documents_complete": sum(1 for doc in catalog.documents if doc.completeness == "complete"),
         "documents_link_only": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
-        "waiting": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
+        "saved_copies": sum(
+            1
+            for doc in catalog.documents
+            if doc.completeness == "complete" and visible_on_site(doc)
+        ),
+        "queue_pending": int((queue or {}).get("pending") or 0),
+        "queue_active": int((queue or {}).get("active") or 0),
+        "snapshot_pending": int((coverage or {}).get("snapshot_pending") or 0),
+        "searched": int((coverage or {}).get("searched") or 0) + int((coverage or {}).get("explored") or 0),
         "grants": len(catalog.grants),
         "statutes": sum(1 for doc in catalog.documents if doc.kind in {"statute", "sasp"}),
     }
