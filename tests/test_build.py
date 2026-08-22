@@ -452,6 +452,49 @@ def test_build_partial_about_only(tmp_path: Path) -> None:
     assert (out / "index.html").stat().st_mtime_ns == index_mtime
 
 
+def test_build_partial_index_only(tmp_path: Path) -> None:
+    from catalog.seed import seed_catalog
+    from pipeline.site_scope import BuildScope
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog")
+    out = tmp_path / "dist"
+    assert build.build(out, catalog=catalog) is True
+    pdx_mtime = (out / "airports" / "PDX" / "index.html").stat().st_mtime_ns
+
+    scope = BuildScope(include_index=True)
+    assert build.build(out, catalog=catalog, scope=scope) is True
+    assert (out / "index.html").is_file()
+    assert (out / "airports" / "PDX" / "index.html").stat().st_mtime_ns == pdx_mtime
+
+
+def test_build_partial_data_preserves_other_outlooks(tmp_path: Path) -> None:
+    import json
+
+    from catalog.seed import seed_catalog
+    from pipeline.site_scope import BuildScope
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog")
+    out = tmp_path / "dist"
+    assert build.build(out, catalog=catalog) is True
+    search_path = out / "data" / "search.json"
+    rows = json.loads(search_path.read_text(encoding="utf-8"))
+    for row in rows:
+        if row.get("url") == "/airports/PDX/":
+            row["outlook"] = "growing"
+            break
+    else:
+        raise AssertionError("PDX missing from search index")
+    search_path.write_text(json.dumps(rows) + "\n", encoding="utf-8")
+
+    scope = BuildScope(airport_lids=frozenset({"4S9"}), include_data=True)
+    assert build.build(out, catalog=catalog, scope=scope) is True
+    after = json.loads(search_path.read_text(encoding="utf-8"))
+    pdx_after = next(row for row in after if row.get("url") == "/airports/PDX/")
+    assert pdx_after.get("outlook") == "growing"
+
+
 def test_build_skips_when_inputs_match(tmp_path: Path) -> None:
     from catalog.seed import seed_catalog
 
