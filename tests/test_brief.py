@@ -31,12 +31,14 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 
 def _load_build():
     import importlib.util
+    import sys
 
     spec = importlib.util.spec_from_file_location(
         "aptplans_build", ROOT / "site" / "build.py"
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

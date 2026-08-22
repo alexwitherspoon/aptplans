@@ -6,11 +6,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_build():
+    import sys
+
     spec = importlib.util.spec_from_file_location(
         "aptplans_build", ROOT / "site" / "build.py"
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -413,6 +416,40 @@ def test_sitemap_day_picks_latest_iso_date() -> None:
     build = _load_build()
     assert build._sitemap_day(None, "2020-01-01T12:00:00Z", "2021-06-15") == "2021-06-15"
     assert build._sitemap_day("", None) is None
+
+
+def test_build_partial_airport_scope(tmp_path: Path) -> None:
+    from catalog.seed import seed_catalog
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog")
+    out = tmp_path / "dist"
+    assert build.build(out, catalog=catalog) is True
+    index_mtime = (out / "index.html").stat().st_mtime_ns
+    pdx_mtime = (out / "airports" / "PDX" / "index.html").stat().st_mtime_ns
+
+    scope = build.scope_from_lids(catalog, ["4S9"])
+    assert build.build(out, catalog=catalog, scope=scope) is True
+    assert (out / "airports" / "4S9" / "index.html").is_file()
+    assert (out / "states" / "OR" / "index.html").is_file()
+    assert (out / "index.html").stat().st_mtime_ns == index_mtime
+    assert (out / "airports" / "PDX" / "index.html").stat().st_mtime_ns == pdx_mtime
+    assert (out / "airports" / "4S9" / "index.html").stat().st_mtime_ns != pdx_mtime
+
+
+def test_build_partial_about_only(tmp_path: Path) -> None:
+    from catalog.seed import seed_catalog
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog")
+    out = tmp_path / "dist"
+    assert build.build(out, catalog=catalog) is True
+    index_mtime = (out / "index.html").stat().st_mtime_ns
+
+    scope = build.BuildScope(include_about=True)
+    assert build.build(out, catalog=catalog, scope=scope) is True
+    assert (out / "about" / "index.html").is_file()
+    assert (out / "index.html").stat().st_mtime_ns == index_mtime
 
 
 def test_build_skips_when_inputs_match(tmp_path: Path) -> None:

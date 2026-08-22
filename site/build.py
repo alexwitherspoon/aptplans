@@ -11,6 +11,7 @@ import os
 import re
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -43,6 +44,70 @@ from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, feed_visible, looks_l
 from catalog.ourairports import http_url
 from catalog.seed import reference_seed_enabled, seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts, has_verified_plans
+
+
+@dataclass(frozen=True)
+class BuildScope:
+    """Regenerate only selected visitor pages. Full build passes scope=None."""
+
+    airport_lids: frozenset = frozenset()
+    state_codes: frozenset = frozenset()
+    include_about: bool = False
+
+    def wants_airport(self, lid: str) -> bool:
+        return bool(self.airport_lids) and lid.upper() in self.airport_lids
+
+    def wants_state(self, code: str) -> bool:
+        return bool(self.state_codes) and code.upper() in self.state_codes
+
+    def wants_document(self, document) -> bool:
+        lid = (document.airport_lid or "").upper()
+        state = (document.state or "").upper()
+        if lid and self.airport_lids and lid in self.airport_lids:
+            return True
+        if state and self.state_codes and state in self.state_codes:
+            return True
+        return False
+
+    @classmethod
+    def for_airport(
+        cls,
+        catalog: Catalog,
+        lid: str,
+        *,
+        include_about: bool = False,
+    ) -> BuildScope:
+        lid = lid.upper()
+        airport = catalog.airports_by_lid.get(lid)
+        states: frozenset = frozenset()
+        if airport and airport.state:
+            states = frozenset({airport.state.upper()})
+        return cls(airport_lids=frozenset({lid}), state_codes=states, include_about=include_about)
+
+
+def scope_from_lids(
+    catalog: Catalog,
+    lids: list[str],
+    *,
+    include_about: bool = False,
+) -> BuildScope:
+    airport_lids: set[str] = set()
+    state_codes: set[str] = set()
+    for raw in lids:
+        lid = raw.strip().upper()
+        if not lid:
+            continue
+        airport_lids.add(lid)
+        airport = catalog.airports_by_lid.get(lid)
+        if airport and airport.state:
+            state_codes.add(airport.state.upper())
+    return BuildScope(
+        airport_lids=frozenset(airport_lids),
+        state_codes=frozenset(state_codes),
+        include_about=include_about,
+    )
+
+
 from pipeline.brief import airport_overview
 from pipeline.classifications import classification_stats
 from pipeline.pipeline_status import (
@@ -1280,6 +1345,20 @@ def _previous_source_sha(out_dir: Path) -> str | None:
     return sha if isinstance(sha, str) else None
 
 
+def _load_sitemap_pages(out_dir: Path) -> dict[str, str | None]:
+    path = out_dir / "sitemap.xml"
+    if not path.is_file():
+        return {}
+    pages: dict[str, str | None] = {}
+    text = path.read_text(encoding="utf-8")
+    for block in re.findall(r"<url>.*?</url>", text, flags=re.S):
+        loc = re.search(r"<loc>https://aptplans\.org([^<]*)</loc>", block)
+        lastmod = re.search(r"<lastmod>([^<]+)</lastmod>", block)
+        if loc:
+            pages[loc.group(1)] = lastmod.group(1) if lastmod else None
+    return pages
+
+
 def _prune_unemitted(out_dir: Path, emitted: set[str]) -> bool:
     leftover = [
         path
@@ -1296,20 +1375,33 @@ def _prune_unemitted(out_dir: Path, emitted: set[str]) -> bool:
     return bool(leftover)
 
 
-def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
+def build(
+    out_dir: Path,
+    catalog: Catalog | None = None,
+    *,
+    scope: BuildScope | None = None,
+) -> bool:
     """Write HTML. False when catalog, templates, and static match the last build."""
     out_dir = out_dir.resolve()
     catalog = catalog or _catalog()
     year = date.today().year
     source_sha = _inputs_sha256(catalog, year)
-    if _previous_source_sha(out_dir) == source_sha:
+    partial = scope is not None
+    if not partial and _previous_source_sha(out_dir) == source_sha:
         _progress("site build: unchanged (inputs match last build)")
         return False
 
-    _progress(
-        f"site build: starting out={out_dir} airports={len(catalog.airports)} "
-        f"documents={len(catalog.documents)} grants={len(catalog.grants)}"
-    )
+    if partial:
+        lids = ",".join(sorted(scope.airport_lids)) if scope.airport_lids else "*"
+        _progress(
+            f"site build: partial out={out_dir} airports={lids} "
+            f"about={'yes' if scope.include_about else 'no'}"
+        )
+    else:
+        _progress(
+            f"site build: starting out={out_dir} airports={len(catalog.airports)} "
+            f"documents={len(catalog.documents)} grants={len(catalog.grants)}"
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     emitted: set[str] = set()
@@ -1370,41 +1462,45 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         emit(dest, html)
         note_page(canonical_path, lastmod)
 
-    render(
-        "about.html",
-        out_dir / "about" / "index.html",
-        "/about/",
-        rss_links=[RSS_ALL, RSS_LAWS],
-        pipeline_stages=stage_rows(pipeline.get("coverage")),
-        classification_counts=classification_counts,
-    )
-    render("search.html", out_dir / "search" / "index.html", "/search/")
-    render(
-        "airports.html",
-        out_dir / "airports" / "index.html",
-        "/airports/",
-        airports=catalog.airports,
-        completeness_for=lambda lid: completeness_for_airport(catalog, lid),
-        coverage_for=lambda lid: coverage_stage(
-            lid,
-            overlay_dir=overlay_dir,
-            catalog_root=REPO / "catalog",
-            status_rows=status_rows,
-        ),
-        coverage_label=coverage_label,
-    )
-    render(
-        "states.html",
-        out_dir / "states" / "index.html",
-        "/states/",
-        states=catalog.states,
-        airport_counts={
-            state.code: len(catalog.airports_for_state(state.code)) for state in catalog.states
-        },
-        rss_links=[RSS_LAWS, RSS_ALL],
-    )
+    if not partial or scope.include_about:
+        render(
+            "about.html",
+            out_dir / "about" / "index.html",
+            "/about/",
+            rss_links=[RSS_ALL, RSS_LAWS],
+            pipeline_stages=stage_rows(pipeline.get("coverage")),
+            classification_counts=classification_counts,
+        )
+    if not partial:
+        render("search.html", out_dir / "search" / "index.html", "/search/")
+        render(
+            "airports.html",
+            out_dir / "airports" / "index.html",
+            "/airports/",
+            airports=catalog.airports,
+            completeness_for=lambda lid: completeness_for_airport(catalog, lid),
+            coverage_for=lambda lid: coverage_stage(
+                lid,
+                overlay_dir=overlay_dir,
+                catalog_root=REPO / "catalog",
+                status_rows=status_rows,
+            ),
+            coverage_label=coverage_label,
+        )
+        render(
+            "states.html",
+            out_dir / "states" / "index.html",
+            "/states/",
+            states=catalog.states,
+            airport_counts={
+                state.code: len(catalog.airports_for_state(state.code)) for state in catalog.states
+            },
+            rss_links=[RSS_LAWS, RSS_ALL],
+        )
 
     for index, airport in enumerate(catalog.airports, start=1):
+        if partial and not scope.wants_airport(airport.lid):
+            continue
         if index == 1 or index % BUILD_PROGRESS_EVERY == 0 or index == len(catalog.airports):
             _progress(f"site build: airports {index}/{len(catalog.airports)} ({airport.lid})")
         docs = sorted(
@@ -1496,19 +1592,22 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             ],
         )
 
-    growing, declining = outlook_airport_lists(catalog.airports, outlook_by_lid)
-    render(
-        "index.html",
-        out_dir / "index.html",
-        "/",
-        states=catalog.states,
-        growing=growing,
-        declining=declining,
-        rss_links=[RSS_ALL, RSS_LAWS],
-        json_ld=[_ld_website()],
-    )
+    if not partial:
+        growing, declining = outlook_airport_lists(catalog.airports, outlook_by_lid)
+        render(
+            "index.html",
+            out_dir / "index.html",
+            "/",
+            states=catalog.states,
+            growing=growing,
+            declining=declining,
+            rss_links=[RSS_ALL, RSS_LAWS],
+            json_ld=[_ld_website()],
+        )
 
     for state in catalog.states:
+        if partial and not scope.wants_state(state.code):
+            continue
         airports = catalog.airports_for_state(state.code)
         grants = catalog.grants_for_state(state.code)
         state_docs = [
@@ -1538,6 +1637,8 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         )
 
     for document in listed:
+        if partial and not scope.wants_document(document):
+            continue
         airport = catalog.airports_by_lid.get(document.airport_lid or "")
         rss_links = []
         if airport is not None:
@@ -1576,45 +1677,49 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             json_ld=[_ld_document(document, airport), _ld_crumbs(crumbs)],
         )
 
-    for folder in ("css", "js"):
-        src = STATIC / folder
-        if not src.is_dir():
-            continue
-        for path in src.rglob("*"):
-            if path.is_file():
-                emit_copy(path, out_dir / folder / path.relative_to(src))
+    if not partial:
+        for folder in ("css", "js"):
+            src = STATIC / folder
+            if not src.is_dir():
+                continue
+            for path in src.rglob("*"):
+                if path.is_file():
+                    emit_copy(path, out_dir / folder / path.relative_to(src))
 
-    emit(
-        out_dir / "robots.txt",
-        "User-agent: *\nAllow: /\nDisallow: /data/\nDisallow: /review/\nSitemap: https://aptplans.org/sitemap.xml\n",
-    )
+        emit(
+            out_dir / "robots.txt",
+            "User-agent: *\nAllow: /\nDisallow: /data/\nDisallow: /review/\nSitemap: https://aptplans.org/sitemap.xml\n",
+        )
 
-    all_items = [_item_for_document(doc) for doc in recently] or [
-        {
-            "title": "AptPlans catalog",
-            "link": f"{CANONICAL}/",
-            "date": None,
-            "description": "Airport master plans and Airport Layout Plans.",
-        }
-    ]
-    emit(out_dir / "feeds" / "all.xml", _rss("AptPlans", "/feeds/all.xml", all_items, page="/feeds/"))
-    note_page(
-        "/feeds/all.xml",
-        _sitemap_day(*[item.get("date") for item in all_items if isinstance(item.get("date"), str)]),
-    )
-    law_docs = [doc for doc in listed if doc.kind in {"statute", "sasp"}]
-    emit(
-        out_dir / "feeds" / "laws.xml",
-        _rss(
-            "AptPlans - state aviation law",
-            "/feeds/laws.xml",
-            [_item_for_document(doc) for doc in law_docs],
-            page="/feeds/",
-        ),
-    )
-    note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
+        all_items = [_item_for_document(doc) for doc in recently] or [
+            {
+                "title": "AptPlans catalog",
+                "link": f"{CANONICAL}/",
+                "date": None,
+                "description": "Airport master plans and Airport Layout Plans.",
+            }
+        ]
+        emit(out_dir / "feeds" / "all.xml", _rss("AptPlans", "/feeds/all.xml", all_items, page="/feeds/"))
+        note_page(
+            "/feeds/all.xml",
+            _sitemap_day(*[item.get("date") for item in all_items if isinstance(item.get("date"), str)]),
+        )
+        law_docs = [doc for doc in listed if doc.kind in {"statute", "sasp"}]
+        emit(
+            out_dir / "feeds" / "laws.xml",
+            _rss(
+                "AptPlans - state aviation law",
+                "/feeds/laws.xml",
+                [_item_for_document(doc) for doc in law_docs],
+                page="/feeds/",
+            ),
+        )
+        note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
+
     airport_feeds_by_state: dict[str, list] = {}
     for state in catalog.states:
+        if partial and not scope.wants_state(state.code):
+            continue
         state_docs = [doc for doc in listed if doc.state == state.code and feed_visible(doc)]
         items = [_item_for_document(doc) for doc in state_docs]
         emit(
@@ -1631,6 +1736,8 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             _sitemap_day(*[doc.source_retrieved_at for doc in state_docs]),
         )
     for airport in catalog.airports:
+        if partial and not scope.wants_airport(airport.lid):
+            continue
         stage = coverage_stage(
             airport.lid,
             overlay_dir=overlay_dir,
@@ -1687,15 +1794,18 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
                 overview.generated_at if overview else None,
             ),
         )
-    render(
-        "feeds.html",
-        out_dir / "feeds" / "index.html",
-        "/feeds/",
-        states=catalog.states,
-        airport_feeds_by_state=airport_feeds_by_state,
-        airport_feed_count=sum(len(rows) for rows in airport_feeds_by_state.values()),
-        rss_links=[RSS_ALL, RSS_LAWS],
-    )
+    if not partial:
+        render(
+            "feeds.html",
+            out_dir / "feeds" / "index.html",
+            "/feeds/",
+            states=catalog.states,
+            airport_feeds_by_state=airport_feeds_by_state,
+            airport_feed_count=sum(len(rows) for rows in airport_feeds_by_state.values()),
+            rss_links=[RSS_ALL, RSS_LAWS],
+        )
+    if partial:
+        sitemap_pages = {**_load_sitemap_pages(out_dir), **sitemap_pages}
     emit(out_dir / "sitemap.xml", _sitemap_xml(sitemap_pages))
 
     status = {
@@ -1708,110 +1818,112 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     }
     emit(out_dir / "status.json", json.dumps(status, indent=2) + "\n")
 
-    search_index = []
-    for airport in catalog.airports:
-        record = airport_record(airport, outlook=outlook_by_lid.get(airport.lid))
-        search_index.append(
-            {
-                "type": record["type"],
-                "title": record["title"],
-                "url": record["url"],
-                "state": record["state"],
-                "outlook": record["outlook"],
-                "text": record["text"],
-            }
+    if not partial:
+        search_index = []
+        for airport in catalog.airports:
+            record = airport_record(airport, outlook=outlook_by_lid.get(airport.lid))
+            search_index.append(
+                {
+                    "type": record["type"],
+                    "title": record["title"],
+                    "url": record["url"],
+                    "state": record["state"],
+                    "outlook": record["outlook"],
+                    "text": record["text"],
+                }
+            )
+        for document in listed:
+            search_index.append(
+                {
+                    "type": document.kind,
+                    "title": document.title or document.id,
+                    "url": f"/documents/{document.id}/",
+                    "state": document.state,
+                    "text": " ".join(
+                        part
+                        for part in (document.id, document.kind, document.edition, document.summary)
+                        if part
+                    ),
+                }
+            )
+        for state in catalog.states:
+            search_index.append(
+                {
+                    "type": "state",
+                    "title": state.name,
+                    "url": f"/states/{state.code}/",
+                    "state": state.code,
+                    "text": " ".join(
+                        part
+                        for part in (state.code, state.agency, "budget law awards")
+                        if part
+                    ),
+                }
+            )
+        for grant in catalog.grants:
+            title = grant_title(grant.description)
+            search_index.append(
+                {
+                    "type": "funding",
+                    "title": f"{grant.airport_lid} {title}",
+                    "url": f"/airports/{grant.airport_lid}/#funding",
+                    "state": grant.state,
+                    "text": " ".join(
+                        part
+                        for part in (
+                            grant.grant_number,
+                            grant.description,
+                            " ".join(grant.programs or []),
+                        )
+                        if part
+                    ),
+                }
+            )
+        emit(out_dir / "data" / "search.json", json.dumps(search_index) + "\n")
+        if pipeline:
+            emit(out_dir / "data" / "pipeline.json", json.dumps(pipeline, indent=2) + "\n")
+        emit(
+            out_dir / "data" / "catalog.json",
+            json.dumps(
+                {
+                    "airports": [item.to_dict() for item in catalog.airports],
+                    "states": [item.to_dict() for item in catalog.states],
+                    "documents": [item.to_dict() for item in listed],
+                }
+            )
+            + "\n",
         )
-    for document in listed:
-        search_index.append(
-            {
-                "type": document.kind,
-                "title": document.title or document.id,
-                "url": f"/documents/{document.id}/",
-                "state": document.state,
-                "text": " ".join(
-                    part
-                    for part in (document.id, document.kind, document.edition, document.summary)
-                    if part
-                ),
-            }
+        buf = io.StringIO()
+        writer = csv.DictWriter(
+            buf,
+            fieldnames=[
+                "id",
+                "kind",
+                "airport_lid",
+                "state",
+                "title",
+                "source_url",
+                "completeness",
+                "content_sha256",
+            ],
         )
-    for state in catalog.states:
-        search_index.append(
-            {
-                "type": "state",
-                "title": state.name,
-                "url": f"/states/{state.code}/",
-                "state": state.code,
-                "text": " ".join(
-                    part
-                    for part in (state.code, state.agency, "budget law awards")
-                    if part
-                ),
-            }
-        )
-    for grant in catalog.grants:
-        title = grant_title(grant.description)
-        search_index.append(
-            {
-                "type": "funding",
-                "title": f"{grant.airport_lid} {title}",
-                "url": f"/airports/{grant.airport_lid}/#funding",
-                "state": grant.state,
-                "text": " ".join(
-                    part
-                    for part in (
-                        grant.grant_number,
-                        grant.description,
-                        " ".join(grant.programs or []),
-                    )
-                    if part
-                ),
-            }
-        )
-    emit(out_dir / "data" / "search.json", json.dumps(search_index) + "\n")
-    if pipeline:
-        emit(out_dir / "data" / "pipeline.json", json.dumps(pipeline, indent=2) + "\n")
-    emit(
-        out_dir / "data" / "catalog.json",
-        json.dumps(
-            {
-                "airports": [item.to_dict() for item in catalog.airports],
-                "states": [item.to_dict() for item in catalog.states],
-                "documents": [item.to_dict() for item in listed],
-            }
-        )
-        + "\n",
-    )
-    buf = io.StringIO()
-    writer = csv.DictWriter(
-        buf,
-        fieldnames=[
-            "id",
-            "kind",
-            "airport_lid",
-            "state",
-            "title",
-            "source_url",
-            "completeness",
-            "content_sha256",
-        ],
-    )
-    writer.writeheader()
-    for document in listed:
-        writer.writerow(
-            {
-                "id": document.id,
-                "kind": document.kind,
-                "airport_lid": document.airport_lid or "",
-                "state": document.state or "",
-                "title": document.title or "",
-                "source_url": document.source_url,
-                "completeness": document.completeness,
-                "content_sha256": document.content_sha256 or "",
-            }
-        )
-    emit(out_dir / "data" / "catalog.csv", buf.getvalue())
-    _prune_unemitted(out_dir, emitted)
+        writer.writeheader()
+        for document in listed:
+            writer.writerow(
+                {
+                    "id": document.id,
+                    "kind": document.kind,
+                    "airport_lid": document.airport_lid or "",
+                    "state": document.state or "",
+                    "title": document.title or "",
+                    "source_url": document.source_url,
+                    "completeness": document.completeness,
+                    "content_sha256": document.content_sha256 or "",
+                }
+            )
+        emit(out_dir / "data" / "catalog.csv", buf.getvalue())
+    if not partial:
+        _prune_unemitted(out_dir, emitted)
     _progress(f"site build: wrote {len(emitted)} files to {out_dir}")
     return True
 
@@ -1824,8 +1936,26 @@ def main() -> None:
         default=ROOT.parent / "dist",
         help="Output directory (default: dist/ at repo root)",
     )
+    parser.add_argument(
+        "--lid",
+        action="append",
+        default=[],
+        metavar="LID",
+        help="Regenerate only this airport page, its state page, and related documents/feeds",
+    )
+    parser.add_argument(
+        "--about",
+        action="store_true",
+        help="Also regenerate /about/ (pipeline stats)",
+    )
     args = parser.parse_args()
-    if not build(args.out):
+    catalog = _catalog()
+    scope = None
+    if args.lid:
+        scope = scope_from_lids(catalog, args.lid, include_about=args.about)
+    elif args.about:
+        scope = BuildScope(include_about=True)
+    if not build(args.out, catalog=catalog, scope=scope):
         _progress("site unchanged")
 
 
