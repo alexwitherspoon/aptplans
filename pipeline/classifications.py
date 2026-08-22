@@ -62,6 +62,8 @@ def classification_stats(overlay_dir: Path | None = None) -> dict:
     rows = load_classifications(overlay_dir)
     by_eval: dict[str, dict[str, int]] = {}
     by_classifier: dict[str, int] = {}
+    month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")
+    month_total = 0
     for row in rows:
         name = str(row.get("evaluation") or "")
         category = str(row.get("category") or "")
@@ -69,8 +71,11 @@ def classification_stats(overlay_dir: Path | None = None) -> dict:
         by_eval.setdefault(name, {})
         by_eval[name][category] = by_eval[name].get(category, 0) + 1
         by_classifier[classifier] = by_classifier.get(classifier, 0) + 1
+        if str(row.get("at") or "").startswith(month_prefix):
+            month_total += 1
     return {
         "total": len(rows),
+        "month_total": month_total,
         "by_evaluation": by_eval,
         "by_classifier": by_classifier,
     }

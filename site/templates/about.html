@@ -51,6 +51,9 @@
       <li><strong>{{ counts.listed_documents }}</strong> catalog records</li>
       <li><strong>{{ counts.grants }}</strong> grant rows cited</li>
       <li><strong>{{ counts.states }}</strong> states</li>
+      {% if classification_counts and classification_counts.month_total %}
+      <li><strong>{{ classification_counts.month_total }}</strong> rubric classifications this month</li>
+      {% endif %}
     </ul>
     <ul class="about-funding">
       <li>

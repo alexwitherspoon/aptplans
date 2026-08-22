@@ -11,7 +11,7 @@
     {% if document.state %}<a href="/states/{{ document.state }}/">{{ document.state }}</a>{% endif %}
   </p>
   <h1>{{ document.title or document.id }}</h1>
-  <p class="lede">{{ kind_label }}{% if document.edition %} · {{ document.edition }}{% endif %} · <span class="badge">{{ document.completeness }}</span></p>
+  <p class="lede">{{ kind_label }}{% if document.edition %} · {{ document.edition }}{% endif %} · <span class="badge">{{ document.completeness }}</span>{% if finance_kind_label %} · <span class="badge badge-finance">{{ finance_kind_label }}</span>{% endif %}</p>
   <p class="meta">
     {% if airport %}<a href="/feeds/airports/{{ airport.lid }}.xml">{{ airport.lid }} RSS</a> · {% endif %}
     {% if document.state %}<a href="/feeds/states/{{ document.state }}.xml">{{ document.state }} RSS</a> · {% endif %}

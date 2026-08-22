@@ -38,6 +38,7 @@ from catalog.ourairports import http_url
 from catalog.seed import reference_seed_enabled, seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts, has_verified_plans
 from pipeline.brief import airport_overview
+from pipeline.classifications import classification_stats
 from pipeline.pipeline_status import (
     coverage_banner,
     coverage_banner_class,
@@ -67,6 +68,16 @@ KIND_LABELS = {
     "sasp": "State aviation plan",
     "notice": "Notice",
     "other": "Planning document",
+}
+FINANCE_KIND_LABELS = {
+    "issued_grants": "Issued grants",
+    "program_budget": "Program budget",
+    "project_list": "Project list",
+    "cip_proposed": "Proposed CIP",
+    "pfc": "PFC",
+    "bond": "Bond",
+    "other": "Finance (other)",
+    "not_finance": "Not finance",
 }
 RSS_ALL = {"title": "AptPlans - new documents", "href": "/feeds/all.xml"}
 RSS_LAWS = {"title": "AptPlans - state aviation law", "href": "/feeds/laws.xml"}
@@ -1243,7 +1254,7 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
         json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     )
     overlay_dir = _overlay_dir() or overlay_dir_from_env()
-    for name in ("pipeline.json", "pipeline_status.json"):
+    for name in ("pipeline.json", "pipeline_status.json", "classifications.jsonl"):
         path = overlay_dir / name
         if path.is_file():
             digest.update(name.encode("utf-8"))
@@ -1307,6 +1318,9 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
     pipeline = load_public_snapshot(overlay_dir)
     status_rows = load_status(overlay_dir) if overlay_dir is not None else {}
     stats = counts(catalog, pipeline=pipeline)
+    classification_counts = (
+        classification_stats(overlay_dir) if overlay_dir is not None else {"month_total": 0}
+    )
     listed = [doc for doc in catalog.documents if visible_on_site(doc)]
     feed_listed = [doc for doc in listed if feed_visible(doc)]
     recently = sorted(
@@ -1350,6 +1364,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
         "/about/",
         rss_links=[RSS_ALL, RSS_LAWS],
         pipeline_stages=stage_rows(pipeline.get("coverage")),
+        classification_counts=classification_counts,
     )
     render("search.html", out_dir / "search" / "index.html", "/search/")
     render(
@@ -1535,6 +1550,7 @@ def build(out_dir: Path, catalog: Catalog | None = None) -> bool:
             document=document,
             airport=airport,
             kind_label=KIND_LABELS.get(document.kind, document.kind),
+            finance_kind_label=FINANCE_KIND_LABELS.get(document.finance_kind or "", ""),
             preview=document_preview(document),
             changes=[
                 change
