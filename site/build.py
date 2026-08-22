@@ -11,7 +11,6 @@ import os
 import re
 import sys
 from collections import Counter
-from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -44,68 +43,7 @@ from catalog.models import FUNDING_LABELS, FUNDING_LEVELS, feed_visible, looks_l
 from catalog.ourairports import http_url
 from catalog.seed import reference_seed_enabled, seed_catalog
 from catalog.store import Catalog, completeness_for_airport, counts, has_verified_plans
-
-
-@dataclass(frozen=True)
-class BuildScope:
-    """Regenerate only selected visitor pages. Full build passes scope=None."""
-
-    airport_lids: frozenset = frozenset()
-    state_codes: frozenset = frozenset()
-    include_about: bool = False
-
-    def wants_airport(self, lid: str) -> bool:
-        return bool(self.airport_lids) and lid.upper() in self.airport_lids
-
-    def wants_state(self, code: str) -> bool:
-        return bool(self.state_codes) and code.upper() in self.state_codes
-
-    def wants_document(self, document) -> bool:
-        lid = (document.airport_lid or "").upper()
-        state = (document.state or "").upper()
-        if lid and self.airport_lids and lid in self.airport_lids:
-            return True
-        if state and self.state_codes and state in self.state_codes:
-            return True
-        return False
-
-    @classmethod
-    def for_airport(
-        cls,
-        catalog: Catalog,
-        lid: str,
-        *,
-        include_about: bool = False,
-    ) -> BuildScope:
-        lid = lid.upper()
-        airport = catalog.airports_by_lid.get(lid)
-        states: frozenset = frozenset()
-        if airport and airport.state:
-            states = frozenset({airport.state.upper()})
-        return cls(airport_lids=frozenset({lid}), state_codes=states, include_about=include_about)
-
-
-def scope_from_lids(
-    catalog: Catalog,
-    lids: list[str],
-    *,
-    include_about: bool = False,
-) -> BuildScope:
-    airport_lids: set[str] = set()
-    state_codes: set[str] = set()
-    for raw in lids:
-        lid = raw.strip().upper()
-        if not lid:
-            continue
-        airport_lids.add(lid)
-        airport = catalog.airports_by_lid.get(lid)
-        if airport and airport.state:
-            state_codes.add(airport.state.upper())
-    return BuildScope(
-        airport_lids=frozenset(airport_lids),
-        state_codes=frozenset(state_codes),
-        include_about=include_about,
-    )
+from pipeline.site_scope import BuildScope, scope_cli_flags, scope_from_lids
 
 
 from pipeline.brief import airport_overview
@@ -1345,6 +1283,26 @@ def _previous_source_sha(out_dir: Path) -> str | None:
     return sha if isinstance(sha, str) else None
 
 
+def _load_search_outlooks(out_dir: Path) -> dict[str, str]:
+    path = out_dir / "data" / "search.json"
+    if not path.is_file():
+        return {}
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    outlooks: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("type") != "airport":
+            continue
+        outlook = row.get("outlook")
+        url = row.get("url") or ""
+        match = re.match(r"^/airports/([^/]+)/$", url)
+        if match and isinstance(outlook, str) and outlook:
+            outlooks[match.group(1).upper()] = outlook
+    return outlooks
+
+
 def _load_sitemap_pages(out_dir: Path) -> dict[str, str | None]:
     path = out_dir / "sitemap.xml"
     if not path.is_file():
@@ -1392,10 +1350,11 @@ def build(
         return False
 
     if partial:
-        lids = ",".join(sorted(scope.airport_lids)) if scope.airport_lids else "*"
+        lids = ",".join(sorted(scope.airport_lids)) if scope.airport_lids else "-"
         _progress(
             f"site build: partial out={out_dir} airports={lids} "
-            f"about={'yes' if scope.include_about else 'no'}"
+            f"about={scope.include_about} index={scope.include_index} "
+            f"data={scope.include_data}"
         )
     else:
         _progress(
@@ -1471,8 +1430,9 @@ def build(
             pipeline_stages=stage_rows(pipeline.get("coverage")),
             classification_counts=classification_counts,
         )
-    if not partial:
+    if not partial or scope.include_search_page:
         render("search.html", out_dir / "search" / "index.html", "/search/")
+    if not partial or scope.include_airports_index:
         render(
             "airports.html",
             out_dir / "airports" / "index.html",
@@ -1487,6 +1447,7 @@ def build(
             ),
             coverage_label=coverage_label,
         )
+    if not partial or scope.include_states_index:
         render(
             "states.html",
             out_dir / "states" / "index.html",
@@ -1592,7 +1553,26 @@ def build(
             ],
         )
 
-    if not partial:
+    if not partial or scope.include_index:
+        if partial and scope.include_index:
+            for airport in catalog.airports:
+                if airport.lid in outlook_by_lid:
+                    continue
+                docs = [
+                    doc
+                    for doc in catalog.documents_for_airport(airport.lid)
+                    if visible_on_site(doc)
+                ]
+                grants = catalog.grants_for_airport(airport.lid)
+                latest_alp, latest_plan, earlier = featured_and_earlier(docs)
+                if has_verified_plans(catalog, airport.lid):
+                    overview = page_overview(
+                        airport,
+                        [latest_plan, latest_alp, *earlier],
+                        grants,
+                    )
+                    if overview and overview.trajectory:
+                        outlook_by_lid[airport.lid] = overview.trajectory.band
         growing, declining = outlook_airport_lists(catalog.airports, outlook_by_lid)
         render(
             "index.html",
@@ -1716,6 +1696,33 @@ def build(
         )
         note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
 
+    if not partial or scope.include_global_feeds:
+        if partial and scope.include_global_feeds:
+            all_items = [_item_for_document(doc) for doc in recently] or [
+                {
+                    "title": "AptPlans catalog",
+                    "link": f"{CANONICAL}/",
+                    "date": None,
+                    "description": "Airport master plans and Airport Layout Plans.",
+                }
+            ]
+            emit(out_dir / "feeds" / "all.xml", _rss("AptPlans", "/feeds/all.xml", all_items, page="/feeds/"))
+            note_page(
+                "/feeds/all.xml",
+                _sitemap_day(*[item.get("date") for item in all_items if isinstance(item.get("date"), str)]),
+            )
+            law_docs = [doc for doc in listed if doc.kind in {"statute", "sasp"}]
+            emit(
+                out_dir / "feeds" / "laws.xml",
+                _rss(
+                    "AptPlans - state aviation law",
+                    "/feeds/laws.xml",
+                    [_item_for_document(doc) for doc in law_docs],
+                    page="/feeds/",
+                ),
+            )
+            note_page("/feeds/laws.xml", _sitemap_day(*[doc.source_retrieved_at for doc in law_docs]))
+
     airport_feeds_by_state: dict[str, list] = {}
     for state in catalog.states:
         if partial and not scope.wants_state(state.code):
@@ -1794,7 +1801,7 @@ def build(
                 overview.generated_at if overview else None,
             ),
         )
-    if not partial:
+    if not partial or scope.include_feeds_index:
         render(
             "feeds.html",
             out_dir / "feeds" / "index.html",
@@ -1818,7 +1825,9 @@ def build(
     }
     emit(out_dir / "status.json", json.dumps(status, indent=2) + "\n")
 
-    if not partial:
+    if not partial or scope.include_data:
+        if partial and scope.include_data:
+            outlook_by_lid = {**_load_search_outlooks(out_dir), **outlook_by_lid}
         search_index = []
         for airport in catalog.airports:
             record = airport_record(airport, outlook=outlook_by_lid.get(airport.lid))
@@ -1929,6 +1938,8 @@ def build(
 
 
 def main() -> None:
+    from pipeline.site_build import add_scope_arguments
+
     parser = argparse.ArgumentParser(description="Build the AptPlans static site")
     parser.add_argument(
         "--out",
@@ -1936,25 +1947,10 @@ def main() -> None:
         default=ROOT.parent / "dist",
         help="Output directory (default: dist/ at repo root)",
     )
-    parser.add_argument(
-        "--lid",
-        action="append",
-        default=[],
-        metavar="LID",
-        help="Regenerate only this airport page, its state page, and related documents/feeds",
-    )
-    parser.add_argument(
-        "--about",
-        action="store_true",
-        help="Also regenerate /about/ (pipeline stats)",
-    )
+    add_scope_arguments(parser)
     args = parser.parse_args()
     catalog = _catalog()
-    scope = None
-    if args.lid:
-        scope = scope_from_lids(catalog, args.lid, include_about=args.about)
-    elif args.about:
-        scope = BuildScope(include_about=True)
+    scope = scope_cli_flags(args, catalog)
     if not build(args.out, catalog=catalog, scope=scope):
         _progress("site unchanged")
 
