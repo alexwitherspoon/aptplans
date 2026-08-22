@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from pipeline.explore import confirm_jobs, explore_page, followup_explore_jobs, hub_document_kind
 from pipeline.stages import source_family
+from pipeline.url_hosts import is_wikipedia_url
 
 DEFAULT_URL = "https://www.oregon.gov/aviation/airports/pages/mulino-4s9.aspx"
 
@@ -140,7 +141,7 @@ def _ourairports_sample(limit: int) -> int:
         if kind not in wanted:
             continue
         url = (row.get("home_link") or "").strip()
-        if not url.startswith("http") or "wikipedia.org" in url.lower():
+        if not url.startswith("http") or is_wikipedia_url(url):
             continue
         iata = (row.get("iata_code") or "").strip().upper()
         if kind in {"large_airport", "medium_airport"} and not iata:

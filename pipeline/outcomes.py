@@ -19,6 +19,7 @@ import json
 from pipeline.evidence import Packet, score_packet
 from pipeline.refresh import overlay_dir_from_env
 from pipeline.reject import compact_reject, live_rejects, purge_expired
+from pipeline.url_hosts import is_example_url
 
 BUCKETS = ("accepted", "uncertain", "needs_human", "failed")
 FAILED_JOBS = frozenset({"dead", "ssi", "not_plan", "not_file"})
@@ -186,7 +187,7 @@ def export_gold_candidates(overlay_dir: Path | None = None) -> list[dict]:
         url = row.get("url") or ""
         if not gold or not url.startswith("http"):
             continue
-        if "example.com" in url or "/example/" in url:
+        if is_example_url(url):
             continue
         case = {
             "id": row.get("id") or row.get("document_id"),

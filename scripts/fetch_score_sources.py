@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 from pipeline.evidence import SCORE_CACHE, gold_source_path, load_score_gold
 from pipeline.gates import sniff_media
 from pipeline.sanitize import redact_html_secrets
+from pipeline.url_hosts import is_example_url, is_wikipedia_url
 
 UA = "aptplans.org eval (https://aptplans.org)"
 
@@ -55,14 +56,14 @@ def main() -> int:
         if wanted and case.get("id") not in wanted:
             continue
         url = case.get("url") or ""
-        if not url.startswith("http") or "example.com" in url or "/example/" in url:
+        if not url.startswith("http") or is_example_url(url):
             rows.append({"id": case.get("id"), "skip": "synthetic or missing url"})
             continue
         existing = gold_source_path(case)
         if existing is not None and SCORE_CACHE not in existing.parents:
             rows.append({"id": case.get("id"), "skip": "committed original already on disk"})
             continue
-        if "wikipedia.org" in url:
+        if is_wikipedia_url(url):
             rows.append({"id": case.get("id"), "skip": "encyclopedia host"})
             continue
         try:
