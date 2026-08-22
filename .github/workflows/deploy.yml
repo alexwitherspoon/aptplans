@@ -41,10 +41,11 @@ jobs:
         (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
         (github.event_name == 'workflow_dispatch' && needs.verify.result == 'success')
       )
-    timeout-minutes: 90
+    timeout-minutes: 30
     env:
       DEPLOY_USER: ${{ secrets.USER }}
       DEPLOY_HOST: ${{ secrets.HOST }}
+      DEPLOY_SSH_OPTS: "-o ServerAliveInterval=30 -o ServerAliveCountMax=60"
     steps:
       - name: Require deploy secrets
         run: |
@@ -78,7 +79,7 @@ jobs:
 
       - name: Install rsync on origin
         run: |
-          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          ssh ${DEPLOY_SSH_OPTS} -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
           if command -v rsync >/dev/null; then
             exit 0
@@ -90,7 +91,7 @@ jobs:
 
       - name: Sync repository
         run: |
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
+          ssh ${DEPLOY_SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
           set -euo pipefail
           sudo mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
           sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
@@ -116,9 +117,9 @@ jobs:
           umask 077
           printf '%s\n' "${ORIGIN_CERT}" > /tmp/origin.pem
           printf '%s\n' "${ORIGIN_KEY}" > /tmp/origin.key
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mkdir -p /var/lib/aptplans/tls'
-          scp /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; sudo chmod 644 /var/lib/aptplans/tls/origin.pem; sudo chmod 600 /var/lib/aptplans/tls/origin.key'
+          ssh ${DEPLOY_SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mkdir -p /var/lib/aptplans/tls'
+          scp ${DEPLOY_SSH_OPTS} /tmp/origin.pem /tmp/origin.key "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
+          ssh ${DEPLOY_SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mv /tmp/origin.pem /tmp/origin.key /var/lib/aptplans/tls/; sudo chmod 644 /var/lib/aptplans/tls/origin.pem; sudo chmod 600 /var/lib/aptplans/tls/origin.key'
           rm -f /tmp/origin.pem /tmp/origin.key
           echo "installed Cloudflare Origin CA material"
 
@@ -137,36 +138,43 @@ jobs:
           import os
           from pathlib import Path
 
+          def env_line(key: str, value: str) -> str:
+              text = (value or "").strip()
+              if not text:
+                  return ""
+              escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+              return f'{key}="{escaped}"'
+
           lines = [
               "# Written by GitHub Actions Deploy. Do not commit.",
-              f"INTAKE_GITHUB_REPO={os.environ.get('INTAKE_GITHUB_REPO', '').strip()}",
+              env_line("INTAKE_GITHUB_REPO", os.environ.get("INTAKE_GITHUB_REPO", "")),
           ]
           token = os.environ.get("INTAKE_GITHUB_TOKEN", "").strip()
           if token:
-              lines.append(f"INTAKE_GITHUB_TOKEN={token}")
+              lines.append(env_line("INTAKE_GITHUB_TOKEN", token))
           review = os.environ.get("APTPLANS_REVIEW_TOKEN", "").strip()
           if review:
-              lines.append(f"APTPLANS_REVIEW_TOKEN={review}")
+              lines.append(env_line("APTPLANS_REVIEW_TOKEN", review))
           search_key = os.environ.get("APTPLANS_SEARCH_KEY", "").strip()
           if search_key:
-              lines.append(f"APTPLANS_SEARCH_KEY={search_key}")
+              lines.append(env_line("APTPLANS_SEARCH_KEY", search_key))
               lines.append("APTPLANS_SEARCH_PROVIDER=brave")
           gemini = os.environ.get("APTPLANS_GEMINI_KEY", "").strip()
           if gemini:
-              lines.append(f"APTPLANS_GEMINI_KEY={gemini}")
+              lines.append(env_line("APTPLANS_GEMINI_KEY", gemini))
           vpn_user = os.environ.get("PIA_OPENVPN_USER", "").strip()
           vpn_password = os.environ.get("PIA_OPENVPN_PASSWORD", "").strip()
           vpn_regions = os.environ.get("PIA_SERVER_REGIONS", "").strip() or "US East"
           if vpn_user and vpn_password:
-              lines.append(f"PIA_OPENVPN_USER={vpn_user}")
-              lines.append(f"PIA_OPENVPN_PASSWORD={vpn_password}")
-              lines.append(f"PIA_SERVER_REGIONS={vpn_regions}")
+              lines.append(env_line("PIA_OPENVPN_USER", vpn_user))
+              lines.append(env_line("PIA_OPENVPN_PASSWORD", vpn_password))
+              lines.append(env_line("PIA_SERVER_REGIONS", vpn_regions))
           path = Path("/tmp/aptplans.env.secrets")
-          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          path.write_text("\n".join(line for line in lines if line) + "\n", encoding="utf-8")
           path.chmod(0o600)
           PY
-          scp /tmp/aptplans.env.secrets "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/aptplans.env.secrets"
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          scp ${DEPLOY_SSH_OPTS} /tmp/aptplans.env.secrets "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/aptplans.env.secrets"
+          ssh ${DEPLOY_SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
           sudo mkdir -p /home/aptplans
           sudo mv /tmp/aptplans.env.secrets /home/aptplans/.env.secrets
@@ -202,7 +210,7 @@ jobs:
 
       - name: Bootstrap host and start Caddy
         run: |
-          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
+          ssh ${DEPLOY_SSH_OPTS} -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
           chmod +x /opt/aptplans/scripts/host/*.sh /opt/aptplans/scripts/docker-cleanup-weekly.sh
           sudo /opt/aptplans/scripts/host/remote-deploy.sh

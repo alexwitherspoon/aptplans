@@ -9,6 +9,7 @@ APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="/home/${APP_USER}/.env.production"
 ENV_SECRETS="/home/${APP_USER}/.env.secrets"
 ENV_SEARCH="/home/${APP_USER}/.env.search"
+LOG_DIR="/var/lib/aptplans/logs"
 
 "${SCRIPT_DIR}/bootstrap.sh"
 
@@ -70,18 +71,12 @@ if [ "${caddy_ok}" -ne 1 ]; then
     exit 1
 fi
 
-echo "Provisioning Ollama model"
-"${SCRIPT_DIR}/provision-ollama.sh"
-if [ ! -s /var/lib/aptplans/catalog/airports.jsonl ] || [ ! -s /var/lib/aptplans/catalog/grants.jsonl ]; then
-    echo "Fetching NASR, NPIAS, and AIP grant histories (missing overlay)"
-    "${COMPOSE[@]}" exec -T worker python3 -m pipeline.refresh_airports --force
+install -d -m 0755 "${LOG_DIR}"
+if [ -x "${SCRIPT_DIR}/provision-ollama.sh" ]; then
+    echo "Scheduling Ollama model provisioning in background (if needed)"
+    nohup "${SCRIPT_DIR}/provision-ollama.sh" >> "${LOG_DIR}/ollama-provision.log" 2>&1 &
 fi
-echo "Rebuilding HTML from git catalog plus origin overlay"
-"${COMPOSE[@]}" run --rm --no-deps --no-TTY worker python3 site/build.py --out /var/lib/aptplans/site
-airport_count="$(python3 -c "import json; print(json.load(open('/var/lib/aptplans/site/status.json'))['counts']['airports'])")"
-if [ "${airport_count}" -lt 1000 ]; then
-    echo "site build has ${airport_count} airports; expected NASR overlay (>=1000)" >&2
-    exit 1
-fi
-echo "site build ok (${airport_count} airports)"
-echo "deploy complete"
+
+echo "Restarting worker to load deployed code and enqueue background jobs"
+"${COMPOSE[@]}" restart worker
+echo "deploy complete (overlays, search index, and HTML rebuild run asynchronously in the worker queue)"
