@@ -8,6 +8,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from pipeline.discovery_priority import sort_airports_for_discovery
 from pipeline.queue import JobQueue, QueueJob
 from pipeline.search_client import gemini_configured, gemini_escalate, live_search_enabled, search_hits, search_provider
 from pipeline.search_plan import SearchHit, SearchIdentity, SearchSession, hit_worth_confirm, hit_worth_explore, run_search_plan
@@ -129,7 +130,10 @@ def discover_next_airports(
         return {"skipped": "live_search_off", "explore_jobs": 0, "fetch_jobs": 0}
 
     states = parse_search_states()
-    airports = scoped_overlay_airports(overlay_dir, states=states)
+    airports = sort_airports_for_discovery(
+        scoped_overlay_airports(overlay_dir, states=states),
+        overlay_dir,
+    )
     if not airports:
         return {"skipped": "no_airports", "explore_jobs": 0, "fetch_jobs": 0}
 

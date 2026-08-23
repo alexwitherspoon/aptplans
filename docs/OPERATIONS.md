@@ -212,6 +212,19 @@ ls -1 /var/lib/aptplans/queue/pending/
 $COMPOSE_PROD logs --tail=80 worker
 ```
 
+**Discovery priority triage** (`pipeline/discovery_priority.py`) reorders scoped airports before each discovery pass. Every airport is still visited; only the order changes. Tiers (searched sooner → later):
+
+1. Funded (federal, state, or local grants) and not evaluated within the recency window
+2. Not evaluated within the recency window
+3. Funded but evaluated recently
+4. Evaluated recently
+5. Prior pass found no plan
+6. Already published on site
+
+Within a tier, never-evaluated airports precede stale ones, then higher total grant dollars (sum of federal, state, and local rows in overlay `grants.jsonl`), then NPIAS, then `(state, lid)`. Env: `APTPLANS_DISCOVERY_FUNDED_FIRST` (default on; legacy `APTPLANS_DISCOVERY_FEDERAL_FIRST`), `APTPLANS_DISCOVERY_RECENCY_DAYS` (default 30).
+
+**System health** (`pipeline/health.py`, overlay `datasets.json`) is the single readiness model for workers and `GET /v1/status`. Producers (`overlay_refresh`, `grant_spend`, `overview_refresh`, `pipeline_snapshot`, `search_sync`) mark datasets `building` / `ready` / `failed`. Consumers call `requirements_met()` before enqueue and at runtime. `summary.discovery_ready` and `summary.blocking` explain deferrals; `datasets` lists each overlay file; `services` covers worker/search/LLM signals; `pipeline` holds queue, outcomes, and rejects. Discovery waits for `airports` (and `grants` when funded triage is on) and defers while `overlay_refresh` is in flight. After `overlay_refresh` completes, the post-overlay chain enqueues `discovery`; the daily timer is a backstop.
+
 **Stuck `docker compose run` containers** from an old deploy (names like `aptplans-worker-run-*`) can be removed:
 
 ```bash

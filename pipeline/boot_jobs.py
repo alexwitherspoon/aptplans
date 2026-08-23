@@ -13,7 +13,21 @@ from pathlib import Path
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.ollama import llm_calls_enabled
 from pipeline.queue import JobQueue, QueueJob
-from pipeline.refresh import ROOT, overlay_dir_from_env, overlays_need_fetch
+from pipeline.datasets import (
+    mark_dataset_building,
+    mark_dataset_failed,
+    mark_dataset_ready,
+    reconcile_catalog,
+)
+from pipeline.overlay_readiness import discovery_ready, grant_spend_ready
+from pipeline.refresh import (
+    ROOT,
+    overlay_airports_path,
+    overlay_dir_from_env,
+    overlay_grants_path,
+    overlays_need_fetch,
+    should_refresh,
+)
 from pipeline.status import queue_dir_from_env
 
 log = logging.getLogger("aptplans.boot_jobs")
@@ -64,6 +78,20 @@ def enqueue_pipeline_snapshot(queue_dir: Path | None = None) -> bool:
     return enqueue_job(queue_dir, "pipeline_snapshot")
 
 
+def enqueue_discovery_if_ready(
+    queue_dir: Path | None = None,
+    overlay_dir: Path | None = None,
+) -> bool:
+    """Enqueue discovery when overlay airports (and grants, when triage is on) are ready."""
+    overlay = overlay_dir_from_env(overlay_dir)
+    queue = JobQueue(queue_dir_from_env(queue_dir))
+    ready, reason = discovery_ready(overlay, queue)
+    if not ready:
+        log.info("discovery not enqueued: %s", reason)
+        return False
+    return enqueue_job(queue_dir, "discovery")
+
+
 def enqueue_boot_jobs(queue_dir: Path | None = None) -> list[str]:
     """Queue background work after deploy or worker restart."""
     enqueued: list[str] = []
@@ -77,7 +105,10 @@ def enqueue_boot_jobs(queue_dir: Path | None = None) -> list[str]:
             enqueued.append("overlay_refresh")
 
     if llm_calls_enabled():
-        for kind in ("grant_spend", "budget_enrich", "ollama_warm"):
+        llm_kinds = ("grant_spend", "budget_enrich", "ollama_warm")
+        if "overlay_refresh" in enqueued:
+            llm_kinds = ("ollama_warm",)
+        for kind in llm_kinds:
             if enqueue_job(queue_dir, kind):
                 enqueued.append(kind)
 
@@ -108,6 +139,8 @@ def run_pipeline_snapshot(
     overlay = overlay_dir_from_env(overlay_dir)
     queue = queue_dir_from_env(queue_dir)
     build_public_snapshot(overlay, queue, catalog_root=catalog_root or ROOT / "catalog")
+    mark_dataset_ready(overlay, "pipeline_snapshot", job_kind="pipeline_snapshot")
+    reconcile_catalog(overlay)
     return "ok"
 
 
@@ -117,6 +150,10 @@ def run_discovery(overlay_dir: Path | None = None, queue_dir: Path | None = None
 
     overlay = overlay_dir_from_env(overlay_dir)
     queue = queue_dir_from_env(queue_dir)
+    ready, reason = discovery_ready(overlay, JobQueue(queue))
+    if not ready:
+        log.info("discovery deferred: %s", reason)
+        return "deferred"
     result = discover_next_airports(overlay, queue)
     if result.get("skipped"):
         return "skipped"
@@ -156,27 +193,68 @@ def run_overlay_refresh(overlay_dir: Path | None = None) -> str:
     from pipeline.refresh_airports import refresh_airports
     from pipeline.refresh_grants import maybe_refresh_grants
 
+    airports_path = overlay_airports_path(overlay)
+    grants_path = overlay_grants_path(overlay)
+    airports_stale = should_refresh(airports_path)
+    grants_stale = should_refresh(grants_path)
     airports_refreshed = False
-    if overlays_need_fetch(overlay):
-        log.info("FAA airport overlay fetch starting")
-        refresh_airports(overlay, fetch=fetch_bytes, sleep=time.sleep)
-        airports_refreshed = True
-        log.info("FAA airport overlay fetch finished")
-    grant_count = maybe_refresh_grants(
-        overlay, fetch=fetch_bytes, sleep=time.sleep, post_json=post_json
-    )
+    grant_count: int | None = None
+    try:
+        if airports_stale:
+            mark_dataset_building(overlay, "airports", job_kind="overlay_refresh")
+        if grants_stale:
+            mark_dataset_building(overlay, "grants", job_kind="overlay_refresh")
+        if overlays_need_fetch(overlay):
+            log.info("FAA airport overlay fetch starting")
+            refresh_airports(overlay, fetch=fetch_bytes, sleep=time.sleep)
+            airports_refreshed = True
+            log.info("FAA airport overlay fetch finished")
+            if airports_stale:
+                mark_dataset_ready(overlay, "airports", job_kind="overlay_refresh")
+        grant_count = maybe_refresh_grants(
+            overlay, fetch=fetch_bytes, sleep=time.sleep, post_json=post_json
+        )
+        if grant_count:
+            mark_dataset_ready(overlay, "grants", job_kind="overlay_refresh")
+    except Exception as exc:
+        if airports_stale:
+            mark_dataset_failed(
+                overlay,
+                "airports",
+                job_kind="overlay_refresh",
+                error=str(exc),
+            )
+        if grants_stale:
+            mark_dataset_failed(
+                overlay,
+                "grants",
+                job_kind="overlay_refresh",
+                error=str(exc),
+            )
+        raise
+    reconcile_catalog(overlay)
     if airports_refreshed or grant_count:
         return "ok"
     return "skipped"
 
 
-def run_grant_spend(overlay_dir: Path | None = None) -> str:
+def run_grant_spend(
+    overlay_dir: Path | None = None,
+    queue_dir: Path | None = None,
+) -> str:
     if not llm_calls_enabled():
         return "skipped"
     from pipeline.grant_classify import reclassify_grants_overlay
 
     overlay = overlay_dir_from_env(overlay_dir)
+    queue = JobQueue(queue_dir_from_env(queue_dir))
+    ready, reason = grant_spend_ready(overlay, queue)
+    if not ready:
+        log.info("grant_spend deferred: %s", reason)
+        return "deferred"
     count = reclassify_grants_overlay(overlay, sleep=time.sleep)
+    if count:
+        mark_dataset_ready(overlay, "grants", job_kind="grant_spend")
     return "ok" if count else "skipped"
 
 
@@ -187,6 +265,8 @@ def run_budget_enrich(overlay_dir: Path | None = None) -> str:
 
     overlay = overlay_dir_from_env(overlay_dir)
     count = maybe_enrich_budgets(overlay)
+    if count:
+        mark_dataset_ready(overlay, "budgets", job_kind="budget_enrich")
     return "ok" if count else "skipped"
 
 
@@ -195,13 +275,19 @@ def run_overview_refresh(overlay_dir: Path | None = None) -> str:
 
     overlay = overlay_dir_from_env(overlay_dir)
     count = refresh_overviews(overlay)
+    if count:
+        mark_dataset_ready(overlay, "overviews", job_kind="overview_refresh")
+    else:
+        reconcile_catalog(overlay)
     return "ok" if count else "skipped"
 
 
-def run_search_sync() -> str:
+def run_search_sync(overlay_dir: Path | None = None) -> str:
     from pipeline.search import boot_sync
 
     boot_sync()
+    overlay = overlay_dir_from_env(overlay_dir)
+    mark_dataset_ready(overlay, "search_index", job_kind="search_sync")
     return "ok"
 
 
@@ -226,6 +312,8 @@ def enqueue_post_overlay_refresh(queue_dir: Path | None = None) -> list[str]:
     for kind in ("overview_refresh", "search_sync", "site_build"):
         if enqueue_job(queue_dir, kind):
             enqueued.append(kind)
+    if enqueue_discovery_if_ready(queue_dir):
+        enqueued.append("discovery")
     return enqueued
 
 
@@ -263,7 +351,8 @@ def main() -> int:
     elif args.monthly:
         enqueue_monthly_refresh()
     elif args.discovery:
-        enqueue_job(None, "discovery")
+        if not enqueue_discovery_if_ready():
+            return 0
     elif args.link_check:
         enqueue_job(None, "link_check")
     else:

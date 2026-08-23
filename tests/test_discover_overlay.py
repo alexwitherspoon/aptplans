@@ -61,6 +61,39 @@ def test_discover_enqueues_fixture_hits(tmp_path: Path, monkeypatch) -> None:
     assert kinds == {"explore", "fetch"}
 
 
+def test_discover_prioritizes_federal_airports(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
+    monkeypatch.setenv("APTPLANS_LIVE_SEARCH", "1")
+    monkeypatch.setenv("APTPLANS_GEMINI_KEY", "")
+    rows = [
+        {"lid": "PDX", "name": "Portland", "city": "Portland", "state": "OR", "website": ""},
+        {"lid": "TTD", "name": "Troutdale", "city": "Troutdale", "state": "OR", "website": ""},
+    ]
+    (tmp_path / "airports.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "grants.jsonl").write_text(
+        json.dumps(
+            {
+                "airport_lid": "TTD",
+                "level": "federal",
+                "obligated": 1000,
+                "state": "OR",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_search(_query: str) -> list[SearchHit]:
+        return []
+
+    queue_dir = tmp_path / "queue"
+    first = discover_next_airports(tmp_path, queue_dir, limit=1, search_fn=fake_search)
+    assert first["airports"] == ["TTD"]
+
+
 def test_discover_cursor_advances(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path))
     monkeypatch.setenv("APTPLANS_LIVE_SEARCH", "1")

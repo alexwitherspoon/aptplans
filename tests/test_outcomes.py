@@ -119,6 +119,17 @@ def test_training_signals_and_disagreements(tmp_path: Path) -> None:
 def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
     overlay = tmp_path / "overlay"
     overlay.mkdir()
+    (overlay / "airports.jsonl").write_text(
+        '{"lid":"PDX","name":"Portland","city":"Portland","state":"OR"}\n',
+        encoding="utf-8",
+    )
+    (overlay / "grants.jsonl").write_text(
+        '{"airport_lid":"PDX","level":"federal","obligated":1,"state":"OR"}\n',
+        encoding="utf-8",
+    )
+    from pipeline.datasets import reconcile_catalog
+
+    reconcile_catalog(overlay)
     token = "test-review-token"
     server = make_server(overlay, token, host="127.0.0.1", port=0)
     host, port = server.server_address[:2]
@@ -185,6 +196,9 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
             urlopen(Request(f"{base}/v1/status", headers=headers), timeout=2).read()
         )
         assert status["ok"] is True
+        assert status["summary"]["discovery_ready"] is True
+        assert "datasets" in status
+        assert "services" in status
         assert "queue" in status
         logs = json.loads(
             urlopen(Request(f"{base}/v1/logs", headers=headers), timeout=2).read()

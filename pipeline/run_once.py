@@ -219,13 +219,13 @@ def _run_maintenance_job(
     if job.kind == "overlay_refresh":
         return run_overlay_refresh(overlay_dir)
     if job.kind == "grant_spend":
-        return run_grant_spend(overlay_dir)
+        return run_grant_spend(overlay_dir, queue_dir)
     if job.kind == "budget_enrich":
         return run_budget_enrich(overlay_dir)
     if job.kind == "overview_refresh":
         return run_overview_refresh(overlay_dir)
     if job.kind == "search_sync":
-        return run_search_sync()
+        return run_search_sync(overlay_dir)
     if job.kind == "ollama_warm":
         return run_ollama_warm()
     return "skipped"
@@ -853,6 +853,13 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
+    if job.kind in {"fetch", "explore", "vet", "check"}:
+        try:
+            from pipeline.datasets import reconcile_catalog
+
+            reconcile_catalog(overlay_dir)
+        except Exception:
+            log.exception("dataset reconcile failed")
     _schedule_after_job(queue_dir, job, catalog_root)
 
 
@@ -876,9 +883,9 @@ def process_next(
 
     if pull_discovery:
         try:
-            from pipeline.boot_jobs import enqueue_job
+            from pipeline.boot_jobs import enqueue_discovery_if_ready
 
-            if enqueue_job(queue_dir, "discovery"):
+            if enqueue_discovery_if_ready(queue_dir, overlay_dir):
                 return True
         except Exception:
             log.exception("discovery enqueue failed")

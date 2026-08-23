@@ -520,6 +520,16 @@ def test_process_next_pull_discovery_enqueues_job(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
     monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
+    overlay = tmp_path / "overlay"
+    overlay.mkdir(parents=True)
+    overlay.joinpath("airports.jsonl").write_text(
+        '{"lid":"PDX","name":"Portland","city":"Portland","state":"OR"}\n',
+        encoding="utf-8",
+    )
+    overlay.joinpath("grants.jsonl").write_text(
+        '{"airport_lid":"PDX","level":"federal","obligated":1,"state":"OR"}\n',
+        encoding="utf-8",
+    )
 
     assert (
         process_next(

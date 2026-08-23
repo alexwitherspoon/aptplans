@@ -119,11 +119,19 @@ def test_schedule_after_job_enqueues_snapshot_for_discovery(tmp_path: Path, monk
 
 
 def test_pull_discovery_dedupes(tmp_path: Path, monkeypatch) -> None:
-    from pipeline.boot_jobs import enqueue_job
-
     monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
     monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
     queue_dir = tmp_path / "queue"
+    overlay = tmp_path / "overlay"
+    overlay.mkdir(parents=True)
+    overlay.joinpath("airports.jsonl").write_text(
+        '{"lid":"PDX","name":"Portland","city":"Portland","state":"OR"}\n',
+        encoding="utf-8",
+    )
+    overlay.joinpath("grants.jsonl").write_text(
+        '{"airport_lid":"PDX","level":"federal","obligated":1,"state":"OR"}\n',
+        encoding="utf-8",
+    )
 
     assert (
         process_next(
@@ -136,7 +144,9 @@ def test_pull_discovery_dedupes(tmp_path: Path, monkeypatch) -> None:
         is True
     )
     assert JobQueue(queue_dir).has_kind("discovery")
-    assert enqueue_job(queue_dir, "discovery") is False
+    from pipeline.boot_jobs import enqueue_discovery_if_ready
+
+    assert enqueue_discovery_if_ready(queue_dir, overlay) is False
 
 
 def test_worker_boot_only_enqueues(monkeypatch, tmp_path: Path) -> None:
@@ -172,6 +182,10 @@ def test_discovery_job_enqueues_explore(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "overlay").mkdir(parents=True)
     (tmp_path / "overlay" / "airports.jsonl").write_text(
         '{"lid":"4S9","name":"Mulino","city":"Mulino","state":"OR"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "overlay" / "grants.jsonl").write_text(
+        '{"airport_lid":"4S9","level":"federal","obligated":1,"state":"OR"}\n',
         encoding="utf-8",
     )
 
