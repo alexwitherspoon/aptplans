@@ -44,7 +44,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
    - Waits for VPN egress and Caddy to answer on :80 (deploy succeeds when the stack is healthy, not when background work finishes)
    - Schedules Ollama GGUF import in the background when needed (`nohup provision-ollama.sh`)
-   - Restarts the worker, which enqueues background jobs only (`pipeline_snapshot`, `overlay_refresh`, grant/budget LLM classify, overview refresh, search sync, Ollama warm, HTML rebuild). Systemd timers (`aptplans-airports`, `aptplans-links`, `aptplans-search`) also enqueue queue jobs; they never run long work inline.
+   - Restarts the worker, which on boot only warms Ollama and refreshes stale FAA overlays. Systemd timers enqueue periodic maintenance (`discovery`, `link_check`, `pipeline_snapshot`, `overview_refresh`, `search_sync`, weekly `site_build`, hourly intake, monthly `overlay_refresh`); they never run long work inline.
 
 A successful deploy means **services are up and serving** (possibly stale HTML until `site_build` runs). Long work runs asynchronously in the worker queue.
 
@@ -84,7 +84,7 @@ sudo /opt/aptplans/scripts/host/remote-deploy.sh
 Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The worker drains `pending/` with one airport in flight by default (`APTPLANS_AIRPORT_CONCURRENCY`).
 
 ```bash
-systemctl list-timers aptplans-reboot.timer aptplans-airports.timer aptplans-links.timer
+systemctl list-timers 'aptplans-*'
 ```
 
 ## What not to install on the host

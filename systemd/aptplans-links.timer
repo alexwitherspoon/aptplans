@@ -2,9 +2,9 @@
 Description=Daily AptPlans dead-link poll
 
 [Timer]
-OnCalendar=daily
+OnCalendar=*-*-* 04:10:00 America/Los_Angeles
 Persistent=true
-RandomizedDelaySec=1h
+RandomizedDelaySec=15m
 
 [Install]
 WantedBy=timers.target

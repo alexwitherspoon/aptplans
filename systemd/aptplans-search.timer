@@ -2,9 +2,9 @@
 Description=Daily AptPlans adaptive search discovery
 
 [Timer]
-OnCalendar=daily
+OnCalendar=*-*-* 04:00:00 America/Los_Angeles
 Persistent=true
-RandomizedDelaySec=1h
+RandomizedDelaySec=15m
 
 [Install]
 WantedBy=timers.target

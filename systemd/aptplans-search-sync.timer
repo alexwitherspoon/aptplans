@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AptPlans Meilisearch index sync
+
+[Timer]
+OnCalendar=*-*-* 04:40:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

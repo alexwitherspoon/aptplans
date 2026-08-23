@@ -16,14 +16,27 @@ journalctl -u aptplans-reboot.service -n 20
 cat /var/log/unattended-upgrades/unattended-upgrades.log
 ```
 
-## Timer
+## Timers
+
+Maintenance jobs are enqueued by **systemd timers**; the worker only drains `pending/`. **Boot** (worker container start) warms Ollama and refreshes stale FAA overlays when `APTPLANS_REFRESH_AIRPORTS=1`; it does not enqueue snapshot, site build, or discovery.
+
+| Timer | Schedule (Pacific) | Job |
+|-------|-------------------|-----|
+| `aptplans-search` | Daily 04:00 | `discovery` |
+| `aptplans-links` | Daily 04:10 | `link_check` |
+| `aptplans-pipeline-snapshot` | Daily 04:20 | `pipeline_snapshot` |
+| `aptplans-overview-refresh` | Daily 04:30 | `overview_refresh` |
+| `aptplans-search-sync` | Daily 04:40 | `search_sync` |
+| `aptplans-site-build` | Weekly Sun 05:00 | full `site_build` |
+| `aptplans-intake` | Hourly | GitHub intake poll |
+| `aptplans-airports` | Monthly 1st 03:00 | `overlay_refresh` |
+
+When `overlay_refresh` completes, the worker chains grant classify, overview, search sync, site build, and discovery (dataset gates apply). Airport `fetch`/`vet` jobs still enqueue scoped `pipeline_snapshot` and `site_build` reactively.
 
 ```bash
-systemctl status aptplans-airports.timer
-systemctl status aptplans-links.timer
-systemctl list-timers aptplans-airports.timer aptplans-links.timer
-journalctl -u aptplans-airports.service -n 100
-journalctl -u aptplans-links.service -n 100
+systemctl list-timers 'aptplans-*'
+journalctl -u aptplans-search.service -n 50
+journalctl -u aptplans-pipeline-snapshot.service -n 50
 docker compose --env-file /home/aptplans/.env.production \
   --env-file /home/aptplans/.env.secrets \
   --env-file /home/aptplans/.env.search \
@@ -31,7 +44,7 @@ docker compose --env-file /home/aptplans/.env.production \
   logs --tail 100 worker
 ```
 
-The document queue is drained by the Compose `worker` process, not a weekly timer. `aptplans-pipeline.timer` should be disabled. Origin Compose uses `.env.production`, `.env.secrets`, and `.env.search` (Meilisearch master key, written once by bootstrap). The worker polls `pending/` about once a minute when idle and lists GitHub intake issues at most hourly. Uncaught errors retry with backoff and stop after three attempts. One extra job by hand (waits if the worker is in a job):
+The document queue is drained by the Compose `worker` process. `aptplans-pipeline.timer` should stay disabled. Origin Compose uses `.env.production`, `.env.secrets`, and `.env.search` (Meilisearch master key, written once by bootstrap). The worker polls `pending/` about once a minute when idle. Uncaught errors retry with backoff and stop after three attempts. One extra job by hand (waits if the worker is in a job):
 
 ```bash
 cd /opt/aptplans

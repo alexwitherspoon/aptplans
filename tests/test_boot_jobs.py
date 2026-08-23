@@ -17,11 +17,22 @@ def test_enqueue_boot_jobs_dedupes(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "local")
     first = enqueue_boot_jobs(tmp_path / "queue")
     second = enqueue_boot_jobs(tmp_path / "queue")
-    assert "pipeline_snapshot" in first
-    assert "site_build" in first
+    assert first == []
     assert second == []
     queue = JobQueue(queue_dir_from_env(tmp_path / "queue"))
-    assert queue.has_kind("site_build")
+    assert not queue.has_kind("site_build")
+    assert not queue.has_kind("pipeline_snapshot")
+
+
+def test_enqueue_boot_jobs_queues_stale_overlay(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
+    (tmp_path / "overlay").mkdir()
+    monkeypatch.setenv("APTPLANS_REFRESH_AIRPORTS", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    enqueued = enqueue_boot_jobs(tmp_path / "queue")
+    assert enqueued[0] == "overlay_refresh"
+    assert set(enqueued).issubset({"overlay_refresh", "ollama_warm"})
 
 
 def test_enqueue_job_unknown_kind(tmp_path: Path, monkeypatch) -> None:

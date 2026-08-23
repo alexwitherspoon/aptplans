@@ -93,29 +93,22 @@ def enqueue_discovery_if_ready(
 
 
 def enqueue_boot_jobs(queue_dir: Path | None = None) -> list[str]:
-    """Queue background work after deploy or worker restart."""
+    """Queue startup work after deploy or worker restart.
+
+    Boot only covers deploy recovery: warm the LLM and refresh stale FAA overlays.
+    Periodic maintenance is driven by systemd timers; overlay follow-ups chain from
+    ``overlay_refresh`` completion.
+    """
     enqueued: list[str] = []
     overlay = overlay_dir_from_env()
-
-    if enqueue_job(queue_dir, "pipeline_snapshot"):
-        enqueued.append("pipeline_snapshot")
 
     if os.environ.get("APTPLANS_REFRESH_AIRPORTS") == "1" and overlays_need_fetch(overlay):
         if enqueue_job(queue_dir, "overlay_refresh"):
             enqueued.append("overlay_refresh")
 
     if llm_calls_enabled():
-        llm_kinds = ("grant_spend", "budget_enrich", "ollama_warm")
-        if "overlay_refresh" in enqueued:
-            llm_kinds = ("ollama_warm",)
-        for kind in llm_kinds:
-            if enqueue_job(queue_dir, kind):
-                enqueued.append(kind)
-
-    if "overlay_refresh" not in enqueued:
-        for kind in ("overview_refresh", "search_sync", "site_build"):
-            if enqueue_job(queue_dir, kind):
-                enqueued.append(kind)
+        if enqueue_job(queue_dir, "ollama_warm"):
+            enqueued.append("ollama_warm")
     return enqueued
 
 
@@ -317,6 +310,30 @@ def enqueue_post_overlay_refresh(queue_dir: Path | None = None) -> list[str]:
     return enqueued
 
 
+def enqueue_site_build_full(queue_dir: Path | None = None) -> bool:
+    from pipeline.site_build import enqueue_site_build
+
+    return enqueue_site_build(queue_dir, scope=None)
+
+
+def run_intake_once(
+    queue_dir: Path | None = None,
+    files_dir: Path | None = None,
+    overlay_dir: Path | None = None,
+    catalog_root: Path | None = None,
+) -> bool:
+    from pipeline.run_once import process_next
+
+    return process_next(
+        queue_dir=queue_dir,
+        files_dir=files_dir,
+        overlay_dir=overlay_dir,
+        catalog_root=catalog_root,
+        pull_intake=True,
+        pull_discovery=False,
+    )
+
+
 def main() -> int:
     import argparse
 
@@ -343,6 +360,31 @@ def main() -> int:
         action="store_true",
         help="Enqueue the daily official URL check",
     )
+    parser.add_argument(
+        "--pipeline-snapshot",
+        action="store_true",
+        help="Enqueue a pipeline.json refresh",
+    )
+    parser.add_argument(
+        "--overview-refresh",
+        action="store_true",
+        help="Enqueue airport fact sheet refresh",
+    )
+    parser.add_argument(
+        "--search-sync",
+        action="store_true",
+        help="Enqueue Meilisearch index sync",
+    )
+    parser.add_argument(
+        "--site-build",
+        action="store_true",
+        help="Enqueue a full static site rebuild",
+    )
+    parser.add_argument(
+        "--intake",
+        action="store_true",
+        help="Poll GitHub intake once and process one queued job if present",
+    )
     args = parser.parse_args()
     if args.boot:
         enqueue_boot_jobs()
@@ -355,8 +397,21 @@ def main() -> int:
             return 0
     elif args.link_check:
         enqueue_job(None, "link_check")
+    elif args.pipeline_snapshot:
+        enqueue_pipeline_snapshot()
+    elif args.overview_refresh:
+        enqueue_job(None, "overview_refresh")
+    elif args.search_sync:
+        enqueue_job(None, "search_sync")
+    elif args.site_build:
+        enqueue_site_build_full()
+    elif args.intake:
+        run_intake_once()
     else:
-        parser.error("pass --boot, --post-overlay, --monthly, --discovery, or --link-check")
+        parser.error(
+            "pass --boot, --post-overlay, --monthly, --discovery, --link-check, "
+            "--pipeline-snapshot, --overview-refresh, --search-sync, --site-build, or --intake"
+        )
     return 0
 
 

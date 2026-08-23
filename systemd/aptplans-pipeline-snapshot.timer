@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AptPlans pipeline.json snapshot refresh
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

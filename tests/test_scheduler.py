@@ -160,7 +160,7 @@ def test_worker_boot_only_enqueues(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "overlay" / "grants.jsonl").write_text('{"airport_lid":"PDX"}\n', encoding="utf-8")
     monkeypatch.delenv("APTPLANS_REFRESH_AIRPORTS", raising=False)
     monkeypatch.setenv("APP_ENV", "local")
-    monkeypatch.setattr(worker, "enqueue_boot_jobs", lambda *_a, **_k: enqueued.append("boot") or ["pipeline_snapshot"])
+    monkeypatch.setattr(worker, "enqueue_boot_jobs", lambda *_a, **_k: enqueued.append("boot") or ["overlay_refresh"])
     monkeypatch.setattr(worker, "run_loop", lambda: enqueued.append("loop"))
     worker_main()
     assert enqueued == ["boot", "loop"]

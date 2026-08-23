@@ -139,27 +139,19 @@ def test_run_loop_backoff_on_job_retry() -> None:
     assert sleeps == [120]
 
 
-def test_run_loop_polls_intake_hourly(monkeypatch) -> None:
-    pulls: list[bool] = []
-    now = {"t": 0.0}
+def test_run_loop_drains_queue_only(monkeypatch) -> None:
+    pulls: list[tuple[bool, bool]] = []
 
     def fake_next(pull_intake: bool = False, pull_discovery: bool = False, **_kwargs) -> bool:
         pulls.append((pull_intake, pull_discovery))
-        if now["t"] > 4000:
-            raise KeyboardInterrupt
-        return False
-
-    def sleeper(seconds: float) -> None:
-        now["t"] += seconds
+        raise KeyboardInterrupt
 
     monkeypatch.setattr("pipeline.worker.process_next", fake_next)
     try:
-        run_loop(sleep=sleeper, idle=60, intake_idle=3600, discovery_idle=999999, job_pause=0, now=lambda: now["t"])
+        run_loop(sleep=lambda _s: None, idle=60, job_pause=0)
     except KeyboardInterrupt:
         pass
-    assert pulls[0] == (False, False)
-    assert (True, False) in pulls
-    assert pulls.count((True, False)) == 2
+    assert pulls == [(False, False)]
 
 
 def test_main_boot_enqueue_failure_keeps_worker(monkeypatch) -> None:

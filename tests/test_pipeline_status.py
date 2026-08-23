@@ -17,7 +17,6 @@ from pipeline.pipeline_status import (
     stage_rows,
 )
 from pipeline.queue import JobQueue, QueueJob
-from pipeline.worker import discovery_idle_seconds
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -191,7 +190,6 @@ def test_next_queue_jobs_skips_jobs_without_lid(tmp_path: Path) -> None:
 
 def test_discovery_defaults_tuned() -> None:
     assert discovery_limit() == 5
-    assert discovery_idle_seconds() == 86400.0
 
 
 def test_review_client_sets_user_agent() -> None:

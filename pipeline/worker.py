@@ -16,8 +16,6 @@ from pipeline.status import queue_dir_from_env
 log = logging.getLogger("aptplans.worker")
 
 DEFAULT_IDLE_SEC = 60.0
-DEFAULT_INTAKE_SEC = 3600.0
-DEFAULT_DISCOVERY_SEC = 86400.0
 
 
 def idle_seconds() -> float:
@@ -30,40 +28,15 @@ def idle_seconds() -> float:
     return DEFAULT_IDLE_SEC
 
 
-def intake_idle_seconds() -> float:
-    raw = os.environ.get("APTPLANS_INTAKE_IDLE_SEC", "").strip()
-    if raw:
-        try:
-            return max(60.0, float(raw))
-        except ValueError:
-            pass
-    return DEFAULT_INTAKE_SEC
-
-
-def discovery_idle_seconds() -> float:
-    raw = os.environ.get("APTPLANS_DISCOVERY_IDLE_SEC", "").strip()
-    if raw:
-        try:
-            return max(3600.0, float(raw))
-        except ValueError:
-            pass
-    return DEFAULT_DISCOVERY_SEC
-
-
 def run_loop(
     *,
     process=None,
     sleep=time.sleep,
     idle: float | None = None,
-    intake_idle: float | None = None,
-    discovery_idle: float | None = None,
     job_pause: float | None = None,
-    now=time.monotonic,
 ) -> None:
-    """Drain the queue serially. One airport batch at a time by default."""
+    """Drain the queue serially. Periodic maintenance is enqueued by systemd timers."""
     pause = idle_seconds() if idle is None else idle
-    intake_every = intake_idle_seconds() if intake_idle is None else intake_idle
-    discovery_every = discovery_idle_seconds() if discovery_idle is None else discovery_idle
     between_jobs = job_pause_seconds() if job_pause is None else job_pause
     slots = airport_concurrency()
     if slots > 1:
@@ -72,8 +45,6 @@ def run_loop(
             slots,
         )
 
-    last_intake: float | None = None
-    last_discovery: float | None = None
     busy = False
     while True:
         try:
@@ -81,16 +52,6 @@ def run_loop(
                 worked = process()
             else:
                 worked = process_next(pull_intake=False, pull_discovery=False)
-                if not worked:
-                    due_intake = last_intake is None or (now() - last_intake) >= intake_every
-                    if due_intake:
-                        worked = process_next(pull_intake=True, pull_discovery=False)
-                        last_intake = now()
-                if not worked:
-                    due_discovery = last_discovery is None or (now() - last_discovery) >= discovery_every
-                    if due_discovery:
-                        worked = process_next(pull_intake=False, pull_discovery=True)
-                        last_discovery = now()
         except JobRetry as exc:
             delay = exc.delay_seconds()
             log.exception("job failed; retry in %.0fs", delay)
@@ -116,12 +77,10 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     log.info(
-        "worker drain host=%s model=%s idle_sec=%s intake_sec=%s discovery_sec=%s airport_slots=%s job_pause_sec=%s",
+        "worker drain host=%s model=%s idle_sec=%s airport_slots=%s job_pause_sec=%s",
         os.environ.get("OLLAMA_HOST", ""),
         os.environ.get("OLLAMA_MODEL", ""),
         idle_seconds(),
-        intake_idle_seconds(),
-        discovery_idle_seconds(),
         airport_concurrency(),
         job_pause_seconds(),
     )
