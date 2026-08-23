@@ -11,6 +11,9 @@ ENV_SECRETS="/home/${APP_USER}/.env.secrets"
 ENV_SEARCH="/home/${APP_USER}/.env.search"
 LOG_DIR="/var/lib/aptplans/logs"
 
+chmod +x "${SCRIPT_DIR}"/*.sh "${REPO_ROOT}/scripts/docker-cleanup-weekly.sh" 2>/dev/null || true
+
+echo "Applying host bootstrap (systemd timers, directories, firewall, env files)"
 "${SCRIPT_DIR}/bootstrap.sh"
 
 if [ -f "${ENV_FILE}" ]; then

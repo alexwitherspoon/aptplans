@@ -4,7 +4,7 @@ Steady state should be boring: unattended-upgrades, a Monday reboot, a worker th
 
 ## Deploy
 
-Pushes to `main` that pass [Test](../.github/workflows/test.yml) trigger [Deploy](../.github/workflows/deploy.yml). Manual runs are **Actions → Deploy**. Secrets are listed in [`.github/SETUP.md`](../.github/SETUP.md).
+Pushes to `main` that pass [Test](../.github/workflows/test.yml) trigger [Deploy](../.github/workflows/deploy.yml). Manual runs are **Actions → Deploy**. Secrets are listed in [`.github/SETUP.md`](../.github/SETUP.md). Each deploy rsyncs the repo, writes secrets, then runs `scripts/host/remote-deploy.sh`, which calls idempotent `bootstrap.sh` before `docker compose up`. Bootstrap reinstalls all `systemd/aptplans-*.timer` units (except the legacy `aptplans-pipeline.timer`) so new timers land without a manual host step.
 
 ## Host updates and reboot
 

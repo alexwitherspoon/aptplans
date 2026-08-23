@@ -44,7 +44,7 @@ On every successful `Test` run on `main` (or a manual **Deploy** dispatch):
    - `docker compose` up for the full stack: Caddy on 80/443, Meilisearch (no host port), worker, CPU Ollama
    - Waits for VPN egress and Caddy to answer on :80 (deploy succeeds when the stack is healthy, not when background work finishes)
    - Schedules Ollama GGUF import in the background when needed (`nohup provision-ollama.sh`)
-   - Restarts the worker, which on boot only warms Ollama and refreshes stale FAA overlays. Systemd timers enqueue periodic maintenance (`discovery`, `link_check`, `pipeline_snapshot`, `overview_refresh`, `search_sync`, weekly `site_build`, hourly intake, monthly `overlay_refresh`); they never run long work inline.
+   - Restarts the worker, which on boot only warms Ollama and refreshes stale FAA overlays. **Every deploy** runs `scripts/host/remote-deploy.sh`, which calls idempotent `bootstrap.sh` (systemd timers, directories, firewall, env files) before `docker compose up`. Systemd timers enqueue periodic maintenance; they never run long work inline.
 
 A successful deploy means **services are up and serving** (possibly stale HTML until `site_build` runs). Long work runs asynchronously in the worker queue.
 

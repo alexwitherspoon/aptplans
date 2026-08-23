@@ -217,42 +217,31 @@ configure_firewall() {
 
 install_systemd_units() {
     log "installing systemd units"
-    as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-airports.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-airports.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-links.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-links.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-search.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-search.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline-snapshot.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-pipeline-snapshot.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-overview-refresh.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-overview-refresh.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-search-sync.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-search-sync.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-site-build.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-site-build.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-intake.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-intake.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.service" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-reboot.timer" /etc/systemd/system/
-    as_root cp "${REPO_ROOT}/systemd/aptplans-ollama-warmup.service" /etc/systemd/system/
+    local unit
+    for unit in "${REPO_ROOT}"/systemd/aptplans-*.service "${REPO_ROOT}"/systemd/aptplans-*.timer; do
+        [ -f "${unit}" ] || continue
+        as_root cp "${unit}" /etc/systemd/system/
+    done
     as_root cp "${HOST_CONFIG}/docker-cleanup.cron" /etc/cron.d/aptplans-docker-cleanup
     as_root cp "${HOST_CONFIG}/docker-cleanup.logrotate" /etc/logrotate.d/aptplans-docker-cleanup
     as_root chmod 644 /etc/cron.d/aptplans-docker-cleanup /etc/logrotate.d/aptplans-docker-cleanup
     as_root systemctl daemon-reload
-    as_root systemctl disable --now aptplans-pipeline.timer || true
-    as_root systemctl enable --now aptplans-airports.timer
-    as_root systemctl enable --now aptplans-search.timer
-    as_root systemctl enable --now aptplans-links.timer
-    as_root systemctl enable --now aptplans-pipeline-snapshot.timer
-    as_root systemctl enable --now aptplans-overview-refresh.timer
-    as_root systemctl enable --now aptplans-search-sync.timer
-    as_root systemctl enable --now aptplans-site-build.timer
-    as_root systemctl enable --now aptplans-intake.timer
-    as_root systemctl enable --now aptplans-reboot.timer
-    as_root systemctl enable aptplans-ollama-warmup.service
+    local timer
+    for timer in /etc/systemd/system/aptplans-*.timer; do
+        [ -f "${timer}" ] || continue
+        local name
+        name="$(basename "${timer}")"
+        if [ "${name}" = "aptplans-pipeline.timer" ]; then
+            as_root systemctl disable --now "${name}" || true
+            continue
+        fi
+        as_root systemctl enable --now "${name}"
+    done
+    if [ -f /etc/systemd/system/aptplans-ollama-warmup.service ]; then
+        as_root systemctl enable aptplans-ollama-warmup.service
+    fi
+    log "enabled timers:"
+    as_root systemctl list-timers 'aptplans-*' --no-pager || true
 }
 
 write_env_file() {
