@@ -81,7 +81,7 @@ def test_reference_documents_match_catalog_schema() -> None:
         assert doc["kind"] in kind_enum
         assert doc["completeness"] in completeness_enum
         assert doc["completeness"] == "link_only"
-        assert doc["review_status"] == "pending"
+        assert doc["review_status"] == "curated"
         assert doc["content_sha256"] is None
         assert doc["preserved_url"] is None
         assert doc["airport_lid"] == case["airport_lid"]

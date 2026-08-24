@@ -86,6 +86,7 @@ def test_schedule_after_job_is_enqueue_only(tmp_path: Path, monkeypatch) -> None
         tmp_path / "queue",
         QueueJob(kind="fetch", document_id="x", source_url="https://x", airport_lid="4S9"),
         ROOT / "catalog",
+        tmp_path / "overlay",
     )
     snapshot.assert_called_once()
     site.assert_called_once()
@@ -101,6 +102,7 @@ def test_schedule_after_job_skips_boot_kinds(tmp_path: Path, monkeypatch) -> Non
             tmp_path / "queue",
             QueueJob(kind=kind, document_id=None, source_url=None, airport_lid=None),
             ROOT / "catalog",
+            tmp_path / "overlay",
         )
     snapshot.assert_not_called()
 
@@ -114,6 +116,7 @@ def test_schedule_after_job_enqueues_snapshot_for_discovery(tmp_path: Path, monk
         tmp_path / "queue",
         QueueJob(kind="discovery", document_id=None, source_url=None, airport_lid=None),
         ROOT / "catalog",
+        tmp_path / "overlay",
     )
     snapshot.assert_called_once()
 

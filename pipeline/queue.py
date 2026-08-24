@@ -48,6 +48,7 @@ class QueueJob:
     found_on: str | None = None
     part_of: str | None = None
     requested_review_status: str | None = None
+    expected_content_sha256: str | None = None
     requested_by: str | None = None
     request_reason: str | None = None
     reject_record: dict | None = field(default=None, repr=False, compare=False)
@@ -74,6 +75,7 @@ class QueueJob:
             found_on=data.get("found_on"),
             part_of=data.get("part_of"),
             requested_review_status=data.get("requested_review_status"),
+            expected_content_sha256=data.get("expected_content_sha256"),
             requested_by=data.get("requested_by"),
             request_reason=data.get("request_reason"),
         )
@@ -266,6 +268,16 @@ class JobQueue:
 
         if len(active_lids) >= airport_limit:
             return None
+
+        if not active:
+            for priority_kind in ("pipeline_snapshot", "site_build"):
+                for path in sorted(self.pending.glob("*.json")):
+                    try:
+                        kind = json.loads(path.read_text(encoding="utf-8")).get("kind")
+                    except (OSError, json.JSONDecodeError, TypeError):
+                        continue
+                    if kind == priority_kind:
+                        return self._activate(path)
 
         picked = self._pick_pending(airport_limit, active_lids, maintenance=False)
         if picked is not None:

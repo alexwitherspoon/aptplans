@@ -64,7 +64,12 @@
   <p class="meta">Saved as {{ document.inferred_media() }}</p>
   {% endif %}
   {% if document.source_status or document.source_retrieved_at %}
-  <p class="meta">{% if document.source_status %}Source: {{ document.source_status }}{% endif %}{% if document.source_retrieved_at %}{% if document.source_status %} · {% endif %}last checked {{ document.source_retrieved_at }}{% endif %}</p>
+  <p class="meta">{% if document.source_status %}Source: {{ "changed response under review" if document.source_status == "changed_rejected" else document.source_status }}{% endif %}{% if document.source_retrieved_at %}{% if document.source_status %} · {% endif %}last checked {{ document.source_retrieved_at }}{% endif %}</p>
+  {% endif %}
+  {% if document.source_status == "changed_rejected" %}
+  <p class="notice">The source returned changed bytes that did not pass intake checks. This page retains the previously reviewed artifact and does not publish the rejected response.</p>
+  {% elif document.source_status == "source_error" %}
+  <p class="notice">The source could not be refreshed successfully. This page retains the previously reviewed artifact and reports the source issue separately.</p>
   {% endif %}
 
   <h2>Saved copy</h2>

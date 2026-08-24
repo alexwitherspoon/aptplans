@@ -47,7 +47,9 @@ from pipeline.status import queue_dir_from_env, service_logs, system_status
 REJECT_SHA = re.compile(r"^/v1/rejects/([a-f0-9]{64})(/bytes)?$")
 DOCUMENT_PATH = re.compile(r"^/v1/documents/([^/]+)$")
 DOCUMENT_BYTES_PATH = re.compile(r"^/v1/documents/([^/]+)/bytes$")
-REVIEW_STATUSES = frozenset({"pending", "auto_pass", "needs_human", "published"})
+REVIEW_STATUSES = frozenset(
+    {"pending", "curated", "auto_pass", "needs_human", "published"}
+)
 
 
 def _json(handler: BaseHTTPRequestHandler, code: int, payload: dict) -> None:
@@ -350,6 +352,32 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if document is None:
             _json(self, 404, {"error": "unknown document"})
             return
+        current_sha = str(document.get("content_sha256") or "").strip() or None
+        submitted_sha = (
+            str(payload.get("expected_content_sha256") or "").strip() or None
+        )
+        if requested == "curated" and document.get("completeness") != "link_only":
+            _json(self, 409, {"error": "curated status is only for link-only records"})
+            return
+        if requested in {"auto_pass", "published"}:
+            if document.get("completeness") != "complete":
+                _json(
+                    self,
+                    409,
+                    {"error": "preserved publication requires a complete document"},
+                )
+                return
+            if not submitted_sha or not re.fullmatch(r"[a-f0-9]{64}", submitted_sha):
+                _json(
+                    self,
+                    400,
+                    {"error": "expected_content_sha256 is required for publication"},
+                )
+                return
+            if current_sha != submitted_sha:
+                _json(self, 409, {"error": "document content changed"})
+                return
+        expected_sha = submitted_sha or current_sha
         job = QueueJob(
             kind="review",
             document_id=document_id,
@@ -357,6 +385,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             airport_lid=document.get("airport_lid"),
             state=document.get("state"),
             requested_review_status=requested,
+            expected_content_sha256=expected_sha,
             requested_by="operator",
             request_reason=str(payload.get("reason") or "").strip() or None,
         )
@@ -370,6 +399,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 "job_id": job.id,
                 "document_id": document_id,
                 "requested_review_status": requested,
+                "expected_content_sha256": expected_sha,
             },
         )
 

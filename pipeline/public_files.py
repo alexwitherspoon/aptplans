@@ -78,10 +78,19 @@ def reconcile_public_files(
             published += 1
 
     removed = 0
-    for path in public_root.iterdir():
-        if path.is_file() and path.name not in expected:
+    for path in public_root.rglob("*"):
+        if path.is_file() and path.relative_to(public_root).as_posix() not in expected:
             path.unlink()
             removed += 1
+    for directory in sorted(
+        (path for path in public_root.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    ):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
 
     return {"expected": len(expected), "published": published, "removed": removed}
 

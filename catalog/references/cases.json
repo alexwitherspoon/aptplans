@@ -1,5 +1,5 @@
 {
-  "description": "Known-good official master plans and Airport Layout Plans used as TDD fixtures. Completeness stays link_only until the worker hash-verifies a preserved copy on origin. A small set of full PDFs is committed under files/ for deterministic tests.",
+  "description": "Known-good official master plans and Airport Layout Plans used as curated TDD fixtures. Completeness stays link_only until the worker hash-verifies a preserved copy on origin. A small set of full PDFs is committed under files/ for deterministic tests.",
   "embedded": [
     {
       "document_id": "pdx-2045-existing-conditions",
@@ -109,7 +109,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -129,7 +129,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }
@@ -175,7 +175,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }
@@ -221,7 +221,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -241,7 +241,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -261,7 +261,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }
@@ -309,7 +309,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null,
           "publisher": "Oregon Department of Aviation",
@@ -332,7 +332,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null,
           "publisher": "Oregon Department of Aviation",
@@ -355,7 +355,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -375,7 +375,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -395,7 +395,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": "Unofficial. Chapter 2 inventories Mulino Airport in northern Clackamas County: location, airfield and landside facilities, airspace, land use, environmental issues, and historical activity. Later forecast and facility-requirement chapters build on this chapter."
         },
@@ -415,7 +415,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -435,7 +435,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -455,7 +455,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -475,7 +475,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -495,7 +495,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }
@@ -543,7 +543,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -563,7 +563,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -583,7 +583,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": "Unofficial. Sheet 3 of 11 of the Ken Jernstedt Airfield ALP. Scaled drawing of existing buildings, runway safety area, object free area, RPZ, and airport property, with Port of Hood River and FAA approval blocks."
         }
@@ -629,7 +629,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }
@@ -675,7 +675,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -695,7 +695,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": "Unofficial. Chapter 1 of the Beverly Regional Airport master plan for the Beverly Airport Commission. It frames a 20-year development program and notes FAA typically funds a master plan about every five to ten years."
         },
@@ -715,7 +715,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         },
@@ -735,7 +735,7 @@
           "mirrors": [],
           "license_or_rights": "public_record",
           "supersedes": null,
-          "review_status": "pending",
+          "review_status": "curated",
           "completeness": "link_only",
           "summary": null
         }

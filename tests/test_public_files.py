@@ -28,6 +28,8 @@ def test_public_projection_follows_visibility_and_revocation(tmp_path: Path) -> 
     sha = "a" * 64
     private_artifact = private_dir / f"{sha}.pdf"
     private_artifact.write_bytes(b"%PDF-private")
+    (public_dir / "preview").mkdir(parents=True)
+    (public_dir / "preview" / "pending.pdf").write_bytes(b"%PDF-pending")
 
     hidden = reconcile_public_files(
         Catalog(documents=[_document("pending", sha)]),

@@ -410,6 +410,31 @@ def test_visible_document_does_not_link_to_hidden_superseded_record(tmp_path: Pa
     assert "Hidden Older Plan" not in page
 
 
+def test_rejected_source_change_is_disclosed_without_replacing_artifact(
+    tmp_path: Path,
+) -> None:
+    from catalog.models import Document
+    from catalog.store import Catalog
+
+    document = Document(
+        id="currentness-plan",
+        kind="master_plan",
+        source_url="https://example.com/current.pdf",
+        completeness="complete",
+        review_status="published",
+        title="Reviewed Plan",
+        source_status="changed_rejected",
+        source_candidate_sha256="5" * 64,
+        source_issue="ssi",
+    )
+    out = tmp_path / "dist"
+    _load_build().build(out, catalog=Catalog(documents=[document]))
+
+    page = (out / "documents" / document.id / "index.html").read_text(encoding="utf-8")
+    assert "changed response under review" in page
+    assert "retains the previously reviewed artifact" in page
+
+
 def test_partial_build_removes_revoked_document_page_and_sitemap_entry(tmp_path: Path) -> None:
     from catalog.models import Airport, Document, State
     from catalog.store import Catalog

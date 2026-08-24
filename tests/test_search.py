@@ -115,7 +115,7 @@ def test_sync_catalog_removes_unlisted_documents(monkeypatch) -> None:
         kind="master_plan",
         source_url="https://example.com/",
         completeness="link_only",
-        review_status="pending",
+        review_status="curated",
     )
     upserted: list[dict] = []
     removed: list[str] = []
@@ -274,8 +274,8 @@ def test_caddy_search_proxy_is_post_only() -> None:
         assert "handle_path /files/*" in text
         files_handler = text.split("handle_path /files/*", 1)[1].split("}", 1)[0]
         assert 'Cache-Control "no-store"' in files_handler
-        assert 'Cache-Control "public, max-age=86400"' in text
         assert 'Cache-Control "no-store"' in text
+        assert 'Cache-Control "public, max-age=86400"' not in text
         assert "root * /srv/files" in text
         assert "/dumps" not in text
         assert "/indexes/aptplans/documents" not in text

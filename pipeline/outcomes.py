@@ -39,6 +39,9 @@ SIGNAL_KEYS = (
     "label",
     "job_status",
     "review_status",
+    "expected_content_sha256",
+    "requested_by",
+    "reason",
     "source",
     "scored",
     "gold",
@@ -72,7 +75,11 @@ def bucket_for(
         return "failed"
     if status == "needs_human" or review == "needs_human":
         return "needs_human"
-    if review in {"auto_pass", "published"} or status in {"auto_pass", "published"}:
+    if review in {"curated", "auto_pass", "published"} or status in {
+        "curated",
+        "auto_pass",
+        "published",
+    }:
         return "accepted"
     if scored and _near_threshold(scored):
         return "uncertain"
@@ -120,8 +127,10 @@ def _json_safe(value):
 def record_outcome(
     overlay_dir: Path | None,
     row: dict,
+    *,
+    strict: bool = False,
 ) -> dict:
-    """Append one observation. Never raises into the worker drain."""
+    """Append one observation; worker publication paths may require durability."""
     try:
         scored = row.get("scored") if isinstance(row.get("scored"), dict) else None
         payload = {
@@ -137,9 +146,20 @@ def record_outcome(
         payload = _json_safe(payload)
         dest = outcomes_path(overlay_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
+        job_id = payload.get("job_id")
+        if job_id and dest.is_file():
+            for existing in reversed(load_outcomes(overlay_dir)):
+                if (
+                    existing.get("job_id") == job_id
+                    and existing.get("job_status") == payload.get("job_status")
+                    and existing.get("review_status") == payload.get("review_status")
+                ):
+                    return existing
         with dest.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
     except Exception:
+        if strict:
+            raise
         return _json_safe(row)
     return payload
 

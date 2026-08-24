@@ -166,6 +166,7 @@ def test_hashed_airport_page_does_not_complete_the_plan() -> None:
         source_url="https://example.com/2019.pdf",
         completeness="link_only",
         airport_lid="4S9",
+        review_status="curated",
     )
     catalog = Catalog(airports=[airport], documents=[hub, plan])
     assert completeness_for_airport(catalog, "4S9") == "link_only"
@@ -236,7 +237,7 @@ def test_feed_visible_requires_reviewed_complete() -> None:
         state="OR",
         source_url="https://example.com/law",
         completeness="link_only",
-        review_status="pending",
+        review_status="curated",
     )
     assert feed_visible(link_only) is False
     assert feed_visible(verified) is True

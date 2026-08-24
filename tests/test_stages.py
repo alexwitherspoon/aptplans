@@ -34,7 +34,8 @@ def test_pipeline_stages_are_ordered() -> None:
 
 
 def test_curated_catalog_rows_are_visible_snapshots_are_not() -> None:
-    assert visible_on_site(_doc()) is True
+    assert visible_on_site(_doc()) is False
+    assert visible_on_site(_doc(review_status="curated")) is True
     assert visible_on_site(_doc(completeness="complete", review_status="pending")) is False
     assert visible_on_site(_doc(completeness="complete", review_status="auto_pass")) is True
     assert visible_on_site(_doc(completeness="complete", review_status="needs_human")) is False
@@ -51,9 +52,12 @@ def test_snapshot_is_not_a_publish() -> None:
 def test_review_transition_separates_machine_and_operator_authority() -> None:
     assert apply_review_transition("auto_pass", authority="machine") == "auto_pass"
     assert apply_review_transition("published", authority="operator") == "published"
+    assert apply_review_transition("curated", authority="operator") == "curated"
     assert apply_review_transition("needs_human", authority="operator") == "needs_human"
     with pytest.raises(ValueError, match="machine cannot"):
         apply_review_transition("published", authority="machine")
+    with pytest.raises(ValueError, match="machine cannot"):
+        apply_review_transition("curated", authority="machine")
 
 
 def test_worth_confirm_skips_minutes_and_unknown_pdfs() -> None:

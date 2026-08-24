@@ -20,7 +20,6 @@ DEBOUNCE_SEC = 0.2
 PREVIEW_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$")
 
 log = logging.getLogger("aptplans.dev")
-_preview_catalog = None
 
 
 def files_dir(root: Path | None = None) -> Path:
@@ -62,23 +61,23 @@ def preview_doc_id(url_path: str) -> str | None:
 
 
 def load_preview_catalog():
-    global _preview_catalog
-    if _preview_catalog is None:
-        if str(ROOT) not in sys.path:
-            sys.path.insert(0, str(ROOT))
-        from catalog.seed import seed_catalog
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from catalog.seed import seed_catalog
 
-        overlay = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
-        _preview_catalog = seed_catalog(
-            ROOT / "catalog", overlay_dir=Path(overlay) if overlay else None
-        )
-    return _preview_catalog
+    overlay = os.environ.get("APTPLANS_CATALOG_OVERLAY", "").strip()
+    return seed_catalog(
+        ROOT / "catalog",
+        overlay_dir=Path(overlay) if overlay else None,
+    )
 
 
 def official_pdf_url(doc_id: str, catalog=None) -> str | None:
+    from catalog.models import visible_on_site
+
     catalog = catalog if catalog is not None else load_preview_catalog()
     doc = catalog.documents_by_id.get(doc_id)
-    if doc is None or doc.kind == "notice":
+    if doc is None or doc.kind == "notice" or not visible_on_site(doc):
         return None
     if doc.inferred_media() != "pdf":
         return None
@@ -114,13 +113,15 @@ def ensure_preview_file(url_path: str, files_root: Path, catalog=None, opener=No
     mapped = resolve_file_request(url_path, files_root)
     if mapped is None:
         return None
-    if mapped.is_file():
-        return mapped
     doc_id = preview_doc_id(url_path)
     if not doc_id:
         return mapped
     url = official_pdf_url(doc_id, catalog=catalog)
     if not url:
+        if mapped.is_file():
+            mapped.unlink()
+        return mapped
+    if mapped.is_file():
         return mapped
     log.info("fetching official pdf for preview id=%s", doc_id)
     try:

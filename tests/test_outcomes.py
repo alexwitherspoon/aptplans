@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import json
 
+import pytest
+
 from pipeline.outcomes import (
     bucket_for,
     compact_outcome,
@@ -25,9 +27,31 @@ def test_bucket_maps_job_and_review_status() -> None:
     assert bucket_for(job_status="needs_human") == "needs_human"
     assert bucket_for(review_status="needs_human") == "needs_human"
     assert bucket_for(review_status="auto_pass") == "accepted"
+    assert bucket_for(review_status="curated") == "accepted"
     assert bucket_for(review_status="published") == "accepted"
     assert bucket_for(review_status="pending") == "uncertain"
     assert bucket_for(job_status="preserved") == "uncertain"
+
+
+def test_worker_outcomes_are_idempotent_and_can_require_durability(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    row = {
+        "job_id": "job-1",
+        "job_kind": "review",
+        "job_status": "published",
+        "review_status": "published",
+    }
+    record_outcome(tmp_path, row, strict=True)
+    record_outcome(tmp_path, row, strict=True)
+    assert len(load_outcomes(tmp_path)) == 1
+
+    invalid = tmp_path / "outcome-directory"
+    invalid.mkdir()
+    monkeypatch.setattr("pipeline.outcomes.outcomes_path", lambda _overlay=None: invalid)
+    with pytest.raises(OSError):
+        record_outcome(tmp_path, {**row, "job_id": "job-2"}, strict=True)
 
 
 def test_record_and_export_gold_candidates(tmp_path: Path) -> None:
@@ -264,6 +288,29 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
                 "content_sha256": document_sha,
             },
         )
+        write_overlay_update(
+            overlay,
+            "link-only-document",
+            {
+                "kind": "master_plan",
+                "source_url": "https://example.com/link-only.pdf",
+                "completeness": "link_only",
+                "review_status": "pending",
+            },
+        )
+        try:
+            urlopen(
+                Request(
+                    f"{base}/v1/documents/link-only-document",
+                    data=json.dumps({"review_status": "published"}).encode("utf-8"),
+                    headers=headers,
+                    method="PATCH",
+                ),
+                timeout=2,
+            )
+            raise AssertionError("link-only publication must use curated status")
+        except HTTPError as exc:
+            assert exc.code == 409
         full_payload = urlopen(
             Request(
                 f"{base}/v1/documents/pending-document/bytes",
@@ -272,7 +319,35 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
             timeout=2,
         ).read()
         assert full_payload == b"%PDF-operator-payload"
-        mutation = json.dumps({"review_status": "published"}).encode("utf-8")
+        for rejected_payload, expected_code in (
+            ({"review_status": "published"}, 400),
+            (
+                {
+                    "review_status": "published",
+                    "expected_content_sha256": "e" * 64,
+                },
+                409,
+            ),
+        ):
+            try:
+                urlopen(
+                    Request(
+                        f"{base}/v1/documents/pending-document",
+                        data=json.dumps(rejected_payload).encode("utf-8"),
+                        headers=headers,
+                        method="PATCH",
+                    ),
+                    timeout=2,
+                )
+                raise AssertionError("unbound publication request must fail")
+            except HTTPError as exc:
+                assert exc.code == expected_code
+        mutation = json.dumps(
+            {
+                "review_status": "published",
+                "expected_content_sha256": document_sha,
+            }
+        ).encode("utf-8")
         queued_review = json.loads(
             urlopen(
                 Request(
@@ -291,6 +366,7 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
         assert queued.kind == "review"
         assert queued.document_id == "pending-document"
         assert queued.requested_review_status == "published"
+        assert queued.expected_content_sha256 == document_sha
     finally:
         server.shutdown()
 

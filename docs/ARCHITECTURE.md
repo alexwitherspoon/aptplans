@@ -88,7 +88,7 @@ Minimum fields (see [`catalog/schema.json`](../catalog/schema.json)):
 | `found_on` | Page that listed this file (discovery provenance) |
 | `part_of` | Document id of the edition this chapter or section update belongs to |
 | `media` | `pdf` / `html` / `other` - what we hashed. A webpage can be a complete record. |
-| `review_status` | pending / auto_pass / needs_human / published |
+| `review_status` | pending / curated / auto_pass / needs_human / published |
 
 Completeness:
 
@@ -128,7 +128,9 @@ Find documents, in order:
 3. **Confirm.** Queue GETs only for plan-shaped links (master plan, ALP, named chapter). Meeting minutes, privacy PDFs, and date-only labels stay signals. SharePoint list/view pointers become one-hop `explore` jobs, not a dump fetch. The model may triage a packet; it cannot invent URLs or override a failed gate.
 4. **Snapshot.** Store bytes (`media` pdf or html), set `found_on`, `completeness: complete`, `review_status: pending`. This is not a publish. Search and the public site ignore pending snapshots.
 5. **Vet.** A separate `vet` job. With `APTPLANS_LLM=1`, `verify_candidate` may set `review_status: auto_pass` when the file is an official plan or ALP for that LID (`kind` master_plan, alp, or chapter). Facility HTML and not-plan files stay pending. SSI gates never publish.
-6. **Publish.** The static builder lists vetted snapshots (`auto_pass` or `published`) and, when reference seed is enabled (`APTPLANS_DEV_PREVIEW=1` or `APTPLANS_REFERENCE_SEED=1`), curated git `link_only` rows with `pending` review. Production builds skip git reference documents by default.
+6. **Publish.** The static builder lists only explicit public states: vetted snapshots (`auto_pass` or `published`) and curated git citations (`curated`). `pending` is never public, including for `link_only` rows. Production builds skip git reference documents by default.
+
+If an approved source later returns different bytes that fail intake, the rejected body remains private and cannot replace the reviewed artifact. The document records `source_status: changed_rejected`, the candidate hash, and the gate reason. HTTP failures similarly record `dead` or `source_error` without replacing the artifact. The public page therefore distinguishes artifact approval from source currentness.
 
 Create or append: same official URL keeps the same id; same text and drawings at a new URL add a `mirror`; a later whole study `supersedes`; a section update sets `part_of` the edition hub.
 
@@ -142,7 +144,7 @@ Origin fetches NASR, NPIAS, OurAirports home pages, and AIP grant histories when
 
 Crawlers send an identifiable User-Agent of `aptplans.org`, honor robots.txt, and request one host at a time with backoff.
 
-Known-good official URLs used as development fixtures live in [`catalog/references/`](../catalog/references/). A subset of those files is committed under `catalog/references/files/` so tests can hash bytes without a network fetch. `reference_seed_enabled()` merges git reference airports, grants, budgets, and fixture paths only when `APTPLANS_DEV_PREVIEW=1` or `APTPLANS_REFERENCE_SEED=1`. Production is the default. Completeness stays `link_only` until the worker stores an origin copy. Classification uses the AC 150/5070-6B shape card in that directory.
+Known-good official URLs used as development fixtures live in [`catalog/references/`](../catalog/references/). A subset of those files is committed under `catalog/references/files/` so tests can hash bytes without a network fetch. `reference_seed_enabled()` merges git reference airports, grants, budgets, and fixture paths only when `APTPLANS_DEV_PREVIEW=1` or `APTPLANS_REFERENCE_SEED=1`. Production is the default. These explicit citations use `review_status: curated`; completeness stays `link_only` until the worker stores an origin copy. Classification uses the AC 150/5070-6B shape card in that directory.
 
 ## Site
 
@@ -192,7 +194,7 @@ The worker extracts a TOC when the PDF outline, a contents page, or numbered cha
 
 `needs_human` is rare: SSI-shaped files, hash mismatch, or a URL the worker never fetched. Low-confidence wording still yields an unofficial note when the gates passed. Newsletters fail *kind* gates (`newsletter`); they are not a plan. News and press pages are situational awareness only: if catalogued at all they are `kind: notice` with publisher, published date, and URL. Do not parse or store article body. Do not write an unofficial summary of news.
 
-Every worker job also appends a row to origin `outcomes.jsonl` in one of four buckets: **accepted** (`auto_pass` / `published`), **uncertain** (`pending` snapshots and near-threshold evidence scores), **needs_human**, and **failed** (`dead`, `ssi`, `not_plan`). Artifacts that fail a check (SSI filename, newsletter/kind gate, not a file, HTTP 404 body, vet `not_plan`) are stored privately for **90 days** under `/var/lib/aptplans/reject` (not Caddy `/files/`, not Meilisearch).
+Every worker job also appends a row to origin `outcomes.jsonl` in one of four buckets: **accepted** (`curated` / `auto_pass` / `published`), **uncertain** (`pending` snapshots and near-threshold evidence scores), **needs_human**, and **failed** (`dead`, `ssi`, `not_plan`). Artifacts that fail a check (SSI filename, newsletter/kind gate, not a file, HTTP 404 body, vet `not_plan`) are stored privately for **90 days** under `/var/lib/aptplans/reject` (not Caddy `/files/`, not Meilisearch).
 
 A private review API (`python3 -m pipeline.review_api`) is HTTPS at `https://aptplans.org/review`. Caddy proxies `/review/` on `:443` only (not `:80`) to the review container on the Compose network. The container has no published host port. Caddy requires `Authorization: Bearer` or `X-Api-Key` except `GET /v1/health`; the app checks the same `APTPLANS_REVIEW_TOKEN`. Responses set `Cache-Control: no-store`. `GET /v1/status` and `GET /v1/logs` are the programmatic health loop. The API lists scoring buckets, lists rejects (`GET /v1/rejects`), sends reject bytes (`GET /v1/rejects/{sha256}/bytes`), can return an optionally requested full preserved source (`GET /v1/documents/{id}/bytes`), and accepts human gold labels (`POST /v1/label`) that can be exported into `score_gold.json`. `PATCH /v1/documents/{id}` validates and queues a review transition; only the serial worker mutates publication state and synchronizes public files, search, and the site. `GET /v1/signals` is the compact dump for local scoring. Laptop and Cursor agent copies of the key live in gitignored `.env` with `APTPLANS_REVIEW_URL=https://aptplans.org/review`. `make pull-outcomes` writes `data/score/review/` (signals, gold, status, logs, and reject files) without putting excerpts in git. Train with `python3 scripts/train_evidence.py --outcomes data/score/review/gold.json`. `robots.txt` disallows `/review/`. After 90 days the worker deletes expired reject bytes.
 
@@ -206,7 +208,7 @@ What we do not run: Kubernetes, Swarm, Redis, Postgres, Prometheus, a public cha
 
 Both domains use Cloudflare DNS. `aptplans.org` is orange-clouded to the origin. `aptplans.com` (apex and www) 301s to `https://aptplans.org`. Add a Cache Rule that **Bypasses** cache for `aptplans.org/review*`. Origin already sends `Cache-Control: no-store` on that prefix.
 
-Reviewed PDFs under `/files/{sha256}.pdf` send `Cache-Control: no-store`; the bytes are content-addressed, but review visibility can be revoked. HTML, RSS, CSS, JS, and JSON send `public, max-age=86400` (24 hours) so Cloudflare does not invent a lifetime. CSS and JS URLs append `?v=` plus a 12-character content hash; `/data/search.json` fetches use the same build token from `data-cache` on `<html>`. Search POST and `/review/` also send `no-store`. Cloudflare is a cache, not a second copy of the bytes, and not the place the pipeline runs.
+All public responses currently send `Cache-Control: no-store`. Content-addressed bytes are immutable, but publication permission can be revoked, and generated HTML, RSS, sitemaps, and JSON must not survive a revocation in a shared cache. Asset URLs still append `?v=` plus a 12-character content hash. A later generation-safe release design may restore bounded caching with explicit purge/revalidation guarantees. Cloudflare is not a second copy of the bytes and is not the place the pipeline runs.
 
 ## Legal posture
 

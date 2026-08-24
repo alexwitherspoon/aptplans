@@ -30,7 +30,7 @@ Master plans and Airport Layout Plans often carry consultant copyright lines eve
 
 ## HTTP
 
-Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. HTML, RSS, and static assets send `Cache-Control: public, max-age=86400`. Reviewed `/files/` objects send `Cache-Control: no-store` because review status can be revoked even though the content-addressed bytes are immutable. Visitors use HTTPS at Cloudflare. Origin Caddy also listens on 443 with either a Cloudflare Origin CA cert or a self-signed cert. Use Cloudflare **Full (strict)** once Origin CA material is in GitHub secrets. Cloudflare cache should **Respect Existing Headers** so it does not pick its own TTL.
+Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. HTML, RSS, JSON, static assets, and reviewed `/files/` objects currently send `Cache-Control: no-store` because publication status can be revoked. Visitors use HTTPS at Cloudflare. Origin Caddy also listens on 443 with either a Cloudflare Origin CA cert or a self-signed cert. Use Cloudflare **Full (strict)** once Origin CA material is in GitHub secrets. Cloudflare must **Respect Existing Headers** and must not cache these responses independently.
 
 Hashed file URLs may be cached for a long time; a takedown needs an origin delete plus a Cloudflare purge of that object.
 

@@ -179,6 +179,8 @@ class Document:
     edition: str | None = None
     source_retrieved_at: str | None = None
     source_status: str = "unknown"
+    source_candidate_sha256: str | None = None
+    source_issue: str | None = None
     content_sha256: str | None = None
     text_sha256: str | None = None
     images_sha256: str | None = None
@@ -245,13 +247,9 @@ def work_key(document: Document) -> tuple[str, str] | None:
 
 
 def visible_on_site(document: Document) -> bool:
-    """Public pages list curated catalog rows and vetted snapshots only."""
+    """Public pages list explicitly curated or vetted records only."""
     review = document.review_status or "pending"
-    if review == "needs_human":
-        return False
-    if review in {"published", "auto_pass"}:
-        return True
-    return review == "pending" and document.completeness == "link_only"
+    return review in {"curated", "published", "auto_pass"}
 
 
 def feed_visible(document: Document) -> bool:

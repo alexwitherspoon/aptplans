@@ -74,6 +74,7 @@ def test_process_review_promotes_and_revokes_public_artifact(tmp_path: Path) -> 
         source_url="https://example.com/review-plan.pdf",
         airport_lid="4S9",
         requested_review_status="published",
+        expected_content_sha256=sha,
         requested_by="operator",
     )
     assert process_review(promote, files_dir, overlay_dir, ROOT / "catalog") == "published"
@@ -91,6 +92,141 @@ def test_process_review_promotes_and_revokes_public_artifact(tmp_path: Path) -> 
     assert process_review(revoke, files_dir, overlay_dir, ROOT / "catalog") == "needs_human"
     assert not (tmp_path / "public-files" / f"{sha}.pdf").exists()
     assert (files_dir / f"{sha}.pdf").is_file()
+
+
+def test_process_review_rejects_approval_when_content_changed(tmp_path: Path) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    overlay_dir = tmp_path / "overlay"
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+    reviewed_sha = "1" * 64
+    replacement_sha = "2" * 64
+    write_overlay_update(
+        overlay_dir,
+        "raced-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/raced.pdf",
+            "preserved_url": f"/files/{replacement_sha}.pdf",
+            "content_sha256": replacement_sha,
+            "completeness": "complete",
+            "review_status": "pending",
+        },
+    )
+    job = QueueJob(
+        kind="review",
+        document_id="raced-plan",
+        source_url="https://example.com/raced.pdf",
+        airport_lid=None,
+        requested_review_status="published",
+        expected_content_sha256=reviewed_sha,
+        requested_by="operator",
+    )
+
+    assert process_review(job, files_dir, overlay_dir, ROOT / "catalog") == "stale_review"
+    assert load_overlay(overlay_dir)["raced-plan"]["review_status"] == "pending"
+    assert not (tmp_path / "public-files").exists()
+
+
+def test_process_review_rolls_back_promotion_when_search_sync_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    overlay_dir = tmp_path / "overlay"
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+    sha = "4" * 64
+    (files_dir / f"{sha}.pdf").write_bytes(b"%PDF-reviewed")
+    write_overlay_update(
+        overlay_dir,
+        "sync-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/sync.pdf",
+            "preserved_url": f"/files/{sha}.pdf",
+            "content_sha256": sha,
+            "completeness": "complete",
+            "review_status": "pending",
+        },
+    )
+    monkeypatch.setattr(
+        "pipeline.search.upsert_preserved",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("search down")),
+    )
+    job = QueueJob(
+        kind="review",
+        document_id="sync-plan",
+        source_url="https://example.com/sync.pdf",
+        airport_lid=None,
+        requested_review_status="published",
+        expected_content_sha256=sha,
+        requested_by="operator",
+    )
+
+    with pytest.raises(RuntimeError):
+        process_review(job, files_dir, overlay_dir, ROOT / "catalog")
+    assert load_overlay(overlay_dir)["sync-plan"]["review_status"] == "pending"
+    assert not (tmp_path / "public-files" / f"{sha}.pdf").exists()
+
+
+@pytest.mark.parametrize("failure", ["outcome", "site_build"])
+def test_process_next_rolls_back_promotion_when_durable_release_fails(
+    tmp_path: Path,
+    monkeypatch,
+    failure: str,
+) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    overlay_dir = tmp_path / "overlay"
+    files_dir = tmp_path / "files"
+    queue_dir = tmp_path / "queue"
+    files_dir.mkdir()
+    sha = "6" * 64
+    (files_dir / f"{sha}.pdf").write_bytes(b"%PDF-reviewed")
+    write_overlay_update(
+        overlay_dir,
+        "durable-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/durable.pdf",
+            "preserved_url": f"/files/{sha}.pdf",
+            "content_sha256": sha,
+            "completeness": "complete",
+            "review_status": "pending",
+        },
+    )
+    JobQueue(queue_dir).enqueue(
+        QueueJob(
+            kind="review",
+            document_id="durable-plan",
+            source_url="https://example.com/durable.pdf",
+            airport_lid=None,
+            requested_review_status="published",
+            expected_content_sha256=sha,
+            requested_by="operator",
+        )
+    )
+    if failure == "outcome":
+        monkeypatch.setattr(
+            "pipeline.run_once.record_outcome",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("audit down")),
+        )
+    else:
+        monkeypatch.setattr("pipeline.site_build.run_site_build", lambda _scope=None: "error")
+
+    with pytest.raises(JobRetry):
+        process_next(
+            queue_dir=queue_dir,
+            files_dir=files_dir,
+            overlay_dir=overlay_dir,
+            catalog_root=ROOT / "catalog",
+        )
+    assert load_overlay(overlay_dir)["durable-plan"]["review_status"] == "pending"
+    assert not (tmp_path / "public-files" / f"{sha}.pdf").exists()
+    assert list((queue_dir / "active").glob("*.json"))
 
 
 def test_changed_published_bytes_return_to_pending_before_vet(tmp_path: Path) -> None:
@@ -140,6 +276,120 @@ def test_changed_published_bytes_return_to_pending_before_vet(tmp_path: Path) ->
     )
     assert load_overlay(overlay_dir)["changed-plan"]["review_status"] == "pending"
     assert not (public_dir / old_name).exists()
+
+
+def test_rejected_replacement_marks_currentness_without_replacing_artifact(
+    tmp_path: Path,
+) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    files_dir = tmp_path / "files"
+    public_dir = tmp_path / "public-files"
+    overlay_dir = tmp_path / "overlay"
+    files_dir.mkdir()
+    public_dir.mkdir()
+    old_sha = "3" * 64
+    old_name = f"{old_sha}.pdf"
+    (files_dir / old_name).write_bytes(b"%PDF-reviewed")
+    (public_dir / old_name).write_bytes(b"%PDF-reviewed")
+    write_overlay_update(
+        overlay_dir,
+        "source-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/ssi-plan.pdf",
+            "preserved_url": f"/files/{old_name}",
+            "content_sha256": old_sha,
+            "completeness": "complete",
+            "review_status": "published",
+            "source_status": "live",
+        },
+    )
+    job = QueueJob(
+        kind="fetch",
+        document_id="source-plan",
+        source_url="https://example.com/ssi-plan.pdf",
+        airport_lid=None,
+        suggested_kind="master_plan",
+    )
+
+    status = process_fetch(
+        job,
+        files_dir,
+        overlay_dir,
+        ROOT / "catalog",
+        queue=JobQueue(tmp_path / "queue"),
+        data=b"%PDF-1.4 changed restricted response",
+    )
+
+    assert status == "ssi"
+    row = load_overlay(overlay_dir)["source-plan"]
+    assert row["review_status"] == "published"
+    assert row["content_sha256"] == old_sha
+    assert row["source_status"] == "changed_rejected"
+    assert row["source_issue"] == "ssi"
+    assert row["source_candidate_sha256"] != old_sha
+    assert (public_dir / old_name).is_file()
+
+
+def test_http_error_body_updates_source_currentness_for_approved_artifact(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from io import BytesIO
+    from urllib.error import HTTPError
+
+    from catalog.store import load_overlay, write_overlay_update
+
+    files_dir = tmp_path / "files"
+    overlay_dir = tmp_path / "overlay"
+    files_dir.mkdir()
+    old_sha = "7" * 64
+    write_overlay_update(
+        overlay_dir,
+        "dead-source-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/dead.pdf",
+            "preserved_url": f"/files/{old_sha}.pdf",
+            "content_sha256": old_sha,
+            "completeness": "complete",
+            "review_status": "published",
+            "source_status": "live",
+        },
+    )
+    error_body = b"<html>gone</html>"
+
+    def dead(*_args, **_kwargs):
+        raise HTTPError(
+            "https://example.com/dead.pdf",
+            404,
+            "Not Found",
+            {},
+            BytesIO(error_body),
+        )
+
+    monkeypatch.setattr("pipeline.run_once.fetch_bytes", dead)
+    status = process_fetch(
+        QueueJob(
+            kind="fetch",
+            document_id="dead-source-plan",
+            source_url="https://example.com/dead.pdf",
+            airport_lid=None,
+        ),
+        files_dir,
+        overlay_dir,
+        ROOT / "catalog",
+        queue=JobQueue(tmp_path / "queue"),
+    )
+
+    assert status == "dead"
+    row = load_overlay(overlay_dir)["dead-source-plan"]
+    assert row["review_status"] == "published"
+    assert row["content_sha256"] == old_sha
+    assert row["source_status"] == "dead"
+    assert row["source_issue"] == "http_404"
+    assert row["source_candidate_sha256"] == hashlib.sha256(error_body).hexdigest()
 
 
 def test_run_once_preserves_fixture_and_writes_overlay(tmp_path: Path) -> None:
@@ -359,7 +609,7 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
         )
         is True
     )
-    assert order == ["lock", "unlock", "lock", "unlock", "rebuild"]
+    assert order == ["lock", "unlock", "rebuild", "lock", "unlock"]
 
 
 def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:
@@ -377,7 +627,7 @@ def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> 
         order.append("rebuild")
 
     monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
-    monkeypatch.setattr("pipeline.site_build.enqueue_site_build", lambda *_args, **_kwargs: rebuild())
+    monkeypatch.setattr("pipeline.site_build.run_site_build", lambda *_args, **_kwargs: rebuild())
     monkeypatch.setattr("pipeline.run_once.process_vet", lambda *_args, **_kwargs: "auto_pass")
     queue = JobQueue(tmp_path / "queue")
     queue.enqueue(
@@ -398,7 +648,73 @@ def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> 
         )
         is True
     )
-    assert order == ["lock", "unlock", "lock", "unlock", "rebuild"]
+    assert order == ["lock", "unlock", "rebuild", "lock", "unlock"]
+
+
+def test_publication_job_retries_when_snapshot_enqueue_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "pipeline.run_once.process_vet",
+        lambda *_args, **_kwargs: "auto_pass",
+    )
+    monkeypatch.setattr(
+        "pipeline.run_once.enqueue_pipeline_snapshot",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("queue unavailable")),
+    )
+    JobQueue(tmp_path / "queue").enqueue(
+        QueueJob(
+            kind="vet",
+            document_id="4s9-2008-inventory",
+            source_url=INVENTORY.resolve().as_uri(),
+            airport_lid="4S9",
+        )
+    )
+    kwargs = {
+        "queue_dir": tmp_path / "queue",
+        "files_dir": tmp_path / "files",
+        "overlay_dir": tmp_path / "overlay",
+        "catalog_root": ROOT / "catalog",
+    }
+
+    with pytest.raises(JobRetry):
+        process_next(**kwargs)
+    assert list((tmp_path / "queue" / "active").glob("*.json"))
+    assert not list((tmp_path / "queue" / "done").glob("*.json"))
+
+    monkeypatch.setattr(
+        "pipeline.run_once.enqueue_pipeline_snapshot",
+        lambda *_args, **_kwargs: True,
+    )
+    assert process_next(**kwargs) is True
+    assert list((tmp_path / "queue" / "done").glob("*.json"))
+
+
+def test_site_build_error_retries_instead_of_completing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pipeline.run_once.process_site_build", lambda _job: "error")
+    JobQueue(tmp_path / "queue").enqueue(
+        QueueJob(
+            kind="site_build",
+            document_id=None,
+            source_url=None,
+            airport_lid=None,
+        )
+    )
+
+    for _attempt in range(4):
+        with pytest.raises(JobRetry):
+            process_next(
+                queue_dir=tmp_path / "queue",
+                files_dir=tmp_path / "files",
+                overlay_dir=tmp_path / "overlay",
+                catalog_root=ROOT / "catalog",
+            )
+    assert list((tmp_path / "queue" / "active").glob("*.json"))
+    assert not list((tmp_path / "queue" / "done").glob("*.json"))
 
 
 def test_process_next_retries_then_gives_up(tmp_path: Path, monkeypatch) -> None:

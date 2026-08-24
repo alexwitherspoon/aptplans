@@ -76,6 +76,7 @@ def test_review_request_round_trips_through_queue(tmp_path: Path) -> None:
             source_url="https://example.com/plan.pdf",
             airport_lid="PDX",
             requested_review_status="published",
+            expected_content_sha256="a" * 64,
             requested_by="operator",
             request_reason="source verified",
         )
@@ -83,8 +84,38 @@ def test_review_request_round_trips_through_queue(tmp_path: Path) -> None:
     claimed = queue.claim()
     assert claimed is not None
     assert claimed.requested_review_status == "published"
+    assert claimed.expected_content_sha256 == "a" * 64
     assert claimed.requested_by == "operator"
     assert claimed.request_reason == "source verified"
+
+
+def test_publication_maintenance_preempts_bulk_airport_work(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path)
+    queue.enqueue(_job("bulk", "PDX"))
+    queue.enqueue(
+        QueueJob(
+            kind="site_build",
+            document_id=None,
+            source_url=None,
+            airport_lid=None,
+        )
+    )
+    queue.enqueue(
+        QueueJob(
+            kind="pipeline_snapshot",
+            document_id=None,
+            source_url=None,
+            airport_lid=None,
+        )
+    )
+
+    first = queue.claim()
+    assert first is not None
+    assert first.kind == "pipeline_snapshot"
+    queue.complete(first)
+    second = queue.claim()
+    assert second is not None
+    assert second.kind == "site_build"
 
 
 def test_claim_one_airport_at_a_time(tmp_path: Path) -> None:

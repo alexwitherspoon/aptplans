@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+import hashlib
 import logging
 import os
 import subprocess
@@ -45,7 +46,17 @@ log = logging.getLogger("aptplans.job")
 SITE_BUILD_TRIGGER_KINDS = frozenset({"fetch", "vet", "review", "check"})
 
 
-def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
+class PublicationSyncError(RuntimeError):
+    """A retryable failure while converging public surfaces or audit state."""
+
+
+def _observe_job(
+    overlay_dir: Path,
+    job: QueueJob,
+    status: str,
+    *,
+    strict: bool = False,
+) -> None:
     """Append a scoring/production outcome. Failures here must not fail the job."""
     try:
         scored = score_job_signal(
@@ -66,6 +77,7 @@ def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
             extra.update(
                 {
                     "review_status": job.requested_review_status,
+                    "expected_content_sha256": job.expected_content_sha256,
                     "requested_by": job.requested_by,
                     "reason": job.request_reason,
                 }
@@ -84,9 +96,12 @@ def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
                 "source": "operator" if job.kind == "review" else "worker",
                 **extra,
             },
+            strict=strict,
         )
-    except Exception:
+    except Exception as exc:
         log.exception("outcome log failed job=%s", job.id)
+        if strict:
+            raise PublicationSyncError("publication outcome write failed") from exc
 
 
 def _utc_now() -> str:
@@ -105,6 +120,40 @@ def _reconcile_public_artifacts(
     )
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
     reconcile_public_files(catalog, private_dir=files_dir, public_dir=public_dir)
+
+
+def _apply_review_updates(
+    document: Document,
+    updates: dict,
+    *,
+    overlay_dir: Path,
+    catalog_root: Path,
+    files_dir: Path,
+) -> None:
+    """Persist and synchronize a review change; roll back failed promotions."""
+    from pipeline.search import upsert_preserved
+
+    target = document.overlay(updates)
+    promotion = not visible_on_site(document) and visible_on_site(target)
+    write_overlay_update(overlay_dir, document.id, updates)
+    try:
+        _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+        upsert_preserved(target.to_dict(), None)
+    except Exception as exc:
+        if promotion:
+            rollback = {"review_status": document.review_status}
+            write_overlay_update(overlay_dir, document.id, rollback)
+            try:
+                _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+                upsert_preserved(document.to_dict(), None)
+            except Exception:
+                log.exception(
+                    "publication rollback synchronization failed document=%s",
+                    document.id,
+                )
+        raise PublicationSyncError(
+            f"publication synchronization failed for {document.id}"
+        ) from exc
 
 
 def _keep_failed(
@@ -278,6 +327,36 @@ def refresh_public_site(
         log.exception("public site refresh enqueue failed")
 
 
+def _record_source_issue(
+    previous: Document | None,
+    overlay_dir: Path,
+    *,
+    issue: str,
+    source_status: str,
+    data: bytes = b"",
+) -> None:
+    if previous is None or not visible_on_site(previous):
+        return
+    candidate_sha = hashlib.sha256(data).hexdigest() if data else None
+    if candidate_sha == previous.content_sha256:
+        candidate_sha = None
+    updates = {
+        "source_status": source_status,
+        "source_retrieved_at": _utc_now(),
+        "source_candidate_sha256": candidate_sha,
+        "source_issue": issue,
+    }
+    write_overlay_update(overlay_dir, previous.id, updates)
+    from pipeline.search import upsert_preserved
+
+    try:
+        upsert_preserved({**previous.to_dict(), **updates}, None)
+    except Exception as exc:
+        raise PublicationSyncError(
+            "source-currentness search synchronization failed"
+        ) from exc
+
+
 def process_fetch(
     job: QueueJob,
     files_dir: Path,
@@ -289,6 +368,20 @@ def process_fetch(
     if not job.source_url:
         _reply(job, "needs_human", None)
         return "needs_human"
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    document_id = job.document_id
+    previous = catalog.documents_by_id.get(document_id) if document_id else None
+    if previous is None:
+        previous = next(
+            (
+                document
+                for document in catalog.documents
+                if document.source_url == job.source_url
+            ),
+            None,
+        )
+        if previous is not None:
+            document_id = previous.id
     if data is None:
         try:
             data, _status = fetch_bytes(job.source_url)
@@ -301,15 +394,34 @@ def process_fetch(
                 body = b""
             log.info("fetch HTTP %s %s -> %s", exc.code, job.source_url, status)
             _keep_failed(job, files_dir, reason=status, data=body, http_status=exc.code)
+            _record_source_issue(
+                previous,
+                overlay_dir,
+                issue=f"http_{exc.code}",
+                source_status="dead" if status == "dead" else "source_error",
+                data=body,
+            )
             _reply(job, status, None)
             return status
         except ValueError as exc:
             log.info("fetch failed %s: %s", job.source_url, exc)
             _keep_failed(job, files_dir, reason="too_large")
+            _record_source_issue(
+                previous,
+                overlay_dir,
+                issue="too_large",
+                source_status="source_error",
+            )
             _reply(job, "needs_human", None)
             return "needs_human"
         except (URLError, OSError, TimeoutError, PermissionError) as exc:
             log.info("fetch failed %s: %s", job.source_url, exc)
+            _record_source_issue(
+                previous,
+                overlay_dir,
+                issue=type(exc).__name__.lower(),
+                source_status="source_error",
+            )
             _reply(job, "needs_human", None)
             return "needs_human"
 
@@ -318,6 +430,13 @@ def process_fetch(
     status = intake_status(evaluate_payload(job.source_url, filename, data, allow_html=True))
     if status:
         _keep_failed(job, files_dir, reason=status, data=data)
+        _record_source_issue(
+            previous,
+            overlay_dir,
+            issue=status,
+            source_status="changed_rejected",
+            data=data,
+        )
         _reply(job, status, None)
         return status
 
@@ -326,7 +445,6 @@ def process_fetch(
 
     suffix = ".pdf" if media == "pdf" else ".html" if media == "html" else ".bin"
     stored = store_bytes(data, files_dir, suffix=suffix)
-    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
     if job.airport_lid and job.airport_lid not in catalog.airports_by_lid:
         upsert_airport_overlay(
             overlay_dir,
@@ -346,15 +464,6 @@ def process_fetch(
     except Exception:
         log.exception("fingerprint failed; preserve still counts")
 
-    document_id = job.document_id
-    previous = None
-    if document_id is None:
-        for document in catalog.documents:
-            if document.source_url == job.source_url:
-                document_id = document.id
-                break
-    if document_id is not None:
-        previous = catalog.documents_by_id.get(document_id)
     reused_content = False
     if previous is None:
         twin = find_same_content(
@@ -399,6 +508,8 @@ def process_fetch(
         "source_url": source_url,
         "source_retrieved_at": _utc_now(),
         "source_status": "live",
+        "source_candidate_sha256": None,
+        "source_issue": None,
         "content_sha256": stored.sha256,
         "preserved_url": f"/files/{stored.sha256}{suffix}",
         "completeness": "complete",
@@ -480,7 +591,10 @@ def process_fetch(
         except Exception:
             log.exception("unofficial note failed; preserve still counts")
     write_overlay_update(overlay_dir, document_id, updates)
-    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+    try:
+        _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+    except Exception as exc:
+        raise PublicationSyncError("public artifact reconciliation failed") from exc
     if job.airport_lid and kind in {"master_plan", "alp"}:
         try:
             from pipeline.overviews import upsert_overview_for
@@ -488,12 +602,12 @@ def process_fetch(
             upsert_overview_for(overlay_dir, catalog_root, job.airport_lid)
         except Exception:
             log.exception("overview refresh failed; preserve still counts")
-    try:
-        from pipeline.search import upsert_preserved
+    from pipeline.search import upsert_preserved
 
+    try:
         upsert_preserved(updates, pages)
-    except Exception:
-        log.exception("search index failed; preserve still counts")
+    except Exception as exc:
+        raise PublicationSyncError("search synchronization failed") from exc
     if queue is not None:
         queue.enqueue(
             QueueJob(
@@ -696,14 +810,13 @@ def process_vet(
             )
         except Exception:
             log.exception("finance classification audit failed document=%s", document.id)
-    write_overlay_update(overlay_dir, document.id, updates)
-    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
-    try:
-        from pipeline.search import upsert_preserved
-
-        upsert_preserved({**document.to_dict(), **updates}, None)
-    except Exception:
-        log.exception("search index failed after vet; review still written")
+    _apply_review_updates(
+        document,
+        updates,
+        overlay_dir=overlay_dir,
+        catalog_root=catalog_root,
+        files_dir=files_dir,
+    )
     log.info("vet %s review=%s", document.id, review)
     return review
 
@@ -725,15 +838,30 @@ def process_review(
         job.requested_review_status,
         authority="operator",
     )
+    if requested == "curated" and document.completeness != "link_only":
+        raise ValueError("curated status is only valid for link-only records")
+    if requested in {"auto_pass", "published"}:
+        if document.completeness != "complete":
+            raise ValueError("preserved publication requires a complete document")
+        if (
+            not job.expected_content_sha256
+            or document.content_sha256 != job.expected_content_sha256
+        ):
+            log.warning(
+                "stale review request document=%s expected=%s current=%s",
+                document.id,
+                job.expected_content_sha256,
+                document.content_sha256,
+            )
+            return "stale_review"
     updates = {"review_status": requested}
-    write_overlay_update(overlay_dir, document.id, updates)
-    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
-    try:
-        from pipeline.search import upsert_preserved
-
-        upsert_preserved({**document.to_dict(), **updates}, None)
-    except Exception:
-        log.exception("search index failed after review; transition still written")
+    _apply_review_updates(
+        document,
+        updates,
+        overlay_dir=overlay_dir,
+        catalog_root=catalog_root,
+        files_dir=files_dir,
+    )
     log.info(
         "review %s status=%s requested_by=%s",
         document.id,
@@ -743,15 +871,72 @@ def process_review(
     return requested
 
 
-def _touch_job_status(queue: JobQueue, overlay_dir: Path, job: QueueJob, status: str) -> None:
+def _touch_job_status(
+    queue: JobQueue,
+    overlay_dir: Path,
+    job: QueueJob,
+    status: str,
+    *,
+    strict: bool = False,
+) -> None:
     try:
         record_job(overlay_dir, job, status)
-    except Exception:
+    except Exception as exc:
         log.exception("pipeline status failed job=%s", job.id)
+        if strict:
+            raise PublicationSyncError("pipeline status write failed") from exc
     try:
         record_queue_completion(queue.root, job, status)
-    except Exception:
+    except Exception as exc:
         log.exception("queue completion record failed job=%s", job.id)
+        if strict:
+            raise PublicationSyncError("queue completion record failed") from exc
+
+
+def _run_transition_site_build(
+    job: QueueJob,
+    overlay_dir: Path,
+    catalog_root: Path,
+) -> None:
+    from pipeline.site_build import run_site_build
+    from pipeline.site_scope import scope_after_airport_job
+
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    scope = scope_after_airport_job(job, catalog)
+    if run_site_build(scope) == "error":
+        raise PublicationSyncError("transition site build failed")
+
+
+def _rollback_failed_promotion(
+    initial: Document | None,
+    job: QueueJob,
+    files_dir: Path,
+    overlay_dir: Path,
+    catalog_root: Path,
+) -> None:
+    if initial is None or visible_on_site(initial):
+        return
+    current = seed_catalog(
+        catalog_root,
+        overlay_dir=overlay_dir,
+    ).documents_by_id.get(initial.id)
+    if current is None or not visible_on_site(current):
+        return
+    log.warning(
+        "rolling back incomplete promotion document=%s status=%s",
+        initial.id,
+        current.review_status,
+    )
+    write_overlay_update(
+        overlay_dir,
+        initial.id,
+        {"review_status": initial.review_status},
+    )
+    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+    from pipeline.search import upsert_preserved
+
+    upsert_preserved(initial.to_dict(), None)
+    _run_transition_site_build(job, overlay_dir, catalog_root)
 
 
 def _run_claimed_job(
@@ -764,13 +949,15 @@ def _run_claimed_job(
     """Process a claimed job. True if the public HTML should rebuild after complete."""
     if job.kind == "check":
         status = process_check(job, overlay_dir, catalog_root, queue)
-        _observe_job(overlay_dir, job, status)
-        _touch_job_status(queue, overlay_dir, job, status)
+        _observe_job(overlay_dir, job, status, strict=True)
+        _touch_job_status(queue, overlay_dir, job, status, strict=True)
         return status in {"dead", "moved", "live"}
     if job.kind == "site_build":
         status = process_site_build(job)
-        _observe_job(overlay_dir, job, status)
-        _touch_job_status(queue, overlay_dir, job, status)
+        if status == "error":
+            raise PublicationSyncError("site build failed")
+        _observe_job(overlay_dir, job, status, strict=True)
+        _touch_job_status(queue, overlay_dir, job, status, strict=True)
         return False
     if job.kind in MAINTENANCE_JOB_KINDS and job.kind != "site_build":
         status = _run_maintenance_job(job, overlay_dir, queue.root, catalog_root)
@@ -784,13 +971,13 @@ def _run_claimed_job(
         return False
     if job.kind == "vet":
         status = process_vet(job, files_dir, overlay_dir, catalog_root)
-        _observe_job(overlay_dir, job, status)
-        _touch_job_status(queue, overlay_dir, job, status)
+        _observe_job(overlay_dir, job, status, strict=True)
+        _touch_job_status(queue, overlay_dir, job, status, strict=True)
         return status in {"auto_pass", "published"}
     if job.kind == "review":
         status = process_review(job, files_dir, overlay_dir, catalog_root)
-        _observe_job(overlay_dir, job, status)
-        _touch_job_status(queue, overlay_dir, job, status)
+        _observe_job(overlay_dir, job, status, strict=True)
+        _touch_job_status(queue, overlay_dir, job, status, strict=True)
         return status in {"auto_pass", "published"}
     if job.kind != "fetch":
         log.info("skip unsupported job kind %s", job.kind)
@@ -798,8 +985,8 @@ def _run_claimed_job(
         _touch_job_status(queue, overlay_dir, job, "skipped")
         return False
     status = process_fetch(job, files_dir, overlay_dir, catalog_root, queue=queue)
-    _observe_job(overlay_dir, job, status)
-    _touch_job_status(queue, overlay_dir, job, status)
+    _observe_job(overlay_dir, job, status, strict=True)
+    _touch_job_status(queue, overlay_dir, job, status, strict=True)
     if status != "preserved":
         return False
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
@@ -819,9 +1006,53 @@ def _execute_claimed(
     overlay_dir: Path,
     catalog_root: Path,
 ) -> bool:
+    initial_document = None
+    if job.kind in {"review", "vet"} and job.document_id:
+        initial_document = seed_catalog(
+            catalog_root,
+            overlay_dir=overlay_dir,
+        ).documents_by_id.get(job.document_id)
     try:
-        return _run_claimed_job(queue, job, files_dir, overlay_dir, catalog_root)
-    except Exception:
+        result = _run_claimed_job(
+            queue,
+            job,
+            files_dir,
+            overlay_dir,
+            catalog_root,
+        )
+        if job.kind in {"review", "vet"}:
+            _run_transition_site_build(job, overlay_dir, catalog_root)
+        try:
+            _schedule_after_job(
+                queue.root,
+                job,
+                catalog_root,
+                overlay_dir,
+                strict=job.kind in SITE_BUILD_TRIGGER_KINDS,
+            )
+        except Exception as exc:
+            if job.kind in SITE_BUILD_TRIGGER_KINDS:
+                raise PublicationSyncError(
+                    "publication follow-up enqueue failed"
+                ) from exc
+            raise
+        return result
+    except Exception as exc:
+        if isinstance(exc, PublicationSyncError):
+            try:
+                _rollback_failed_promotion(
+                    initial_document,
+                    job,
+                    files_dir,
+                    overlay_dir,
+                    catalog_root,
+                )
+            except Exception:
+                log.exception(
+                    "promotion rollback failed document=%s",
+                    job.document_id,
+                )
+            raise JobRetry(job.attempts) from exc
         if job.attempts >= MAX_ATTEMPTS:
             log.exception(
                 "giving up after %s attempts job=%s url=%s",
@@ -858,7 +1089,14 @@ def _claim_next_job(
         return JobQueue(queue_dir).claim(airport_limit=airport_concurrency())
 
 
-def _schedule_after_job(queue_dir: Path, job: QueueJob, catalog_root: Path) -> None:
+def _schedule_after_job(
+    queue_dir: Path,
+    job: QueueJob,
+    catalog_root: Path,
+    overlay_dir: Path,
+    *,
+    strict: bool = False,
+) -> None:
     """Enqueue follow-up maintenance work; never run heavy jobs inline."""
     if job.kind == "overlay_refresh":
         try:
@@ -867,6 +1105,8 @@ def _schedule_after_job(queue_dir: Path, job: QueueJob, catalog_root: Path) -> N
                 log.info("post-overlay jobs enqueued: %s", ",".join(followups))
         except Exception:
             log.exception("post-overlay enqueue failed")
+            if strict:
+                raise
         return
     if job.kind == "pipeline_snapshot":
         try:
@@ -876,6 +1116,8 @@ def _schedule_after_job(queue_dir: Path, job: QueueJob, catalog_root: Path) -> N
             enqueue_site_build(queue_dir, scope=scope_about())
         except Exception:
             log.exception("about rebuild enqueue failed")
+            if strict:
+                raise
         return
     if job.kind in BOOT_JOB_KINDS or job.kind == "site_build":
         return
@@ -885,12 +1127,14 @@ def _schedule_after_job(queue_dir: Path, job: QueueJob, catalog_root: Path) -> N
         from pipeline.site_scope import scope_after_airport_job
 
         enqueue_pipeline_snapshot(queue_dir)
-        if job.kind in SITE_BUILD_TRIGGER_KINDS:
-            catalog = seed_catalog(catalog_root)
+        if job.kind in SITE_BUILD_TRIGGER_KINDS and job.kind not in {"review", "vet"}:
+            catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
             scope = scope_after_airport_job(job, catalog)
             enqueue_site_build(queue_dir, scope=scope)
     except Exception:
         log.exception("post-job enqueue failed job=%s", job.kind)
+        if strict:
+            raise
 
 
 def _finish_job(
@@ -907,8 +1151,6 @@ def _finish_job(
         overlay_dir,
         catalog_root,
     )
-    with worker_lock(queue_dir):
-        JobQueue(queue_dir).complete(job)
     if job.kind in {"fetch", "explore", "vet", "review", "check"}:
         try:
             from pipeline.datasets import reconcile_catalog
@@ -916,7 +1158,8 @@ def _finish_job(
             reconcile_catalog(overlay_dir)
         except Exception:
             log.exception("dataset reconcile failed")
-    _schedule_after_job(queue_dir, job, catalog_root)
+    with worker_lock(queue_dir):
+        JobQueue(queue_dir).complete(job)
 
 
 def process_next(

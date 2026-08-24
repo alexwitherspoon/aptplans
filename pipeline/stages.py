@@ -15,7 +15,9 @@ _SKIP_LABEL_RE = re.compile(
 )
 _DATE_LABEL_RE = re.compile(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$")
 _PLAN_KIND = frozenset({"master_plan", "alp", "chapter"})
-_REVIEW_STATUSES = frozenset({"pending", "auto_pass", "needs_human", "published"})
+_REVIEW_STATUSES = frozenset(
+    {"pending", "curated", "auto_pass", "needs_human", "published"}
+)
 
 
 def review_after_snapshot(previous_review: str | None = None) -> str:

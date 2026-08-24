@@ -65,6 +65,7 @@ def test_preview_doc_id_and_official_pdf_url(tmp_path: Path) -> None:
         kind="alp",
         source_url="https://www.oregon.gov/aviation/airports/Documents/4S9/ODA_Doc_4S9_ALP.pdf",
         completeness="link_only",
+        review_status="curated",
         media="pdf",
     )
     catalog = Catalog(airports=[], states=[], documents=[alp])
@@ -83,6 +84,46 @@ def test_preview_doc_id_and_official_pdf_url(tmp_path: Path) -> None:
 
     dev.fetch_preview_pdf("https://example.com/a.pdf", dest, opener=lambda _req, timeout=0: Resp())
     assert dest.read_bytes().startswith(b"%PDF")
+    hidden_catalog = Catalog(
+        airports=[],
+        states=[],
+        documents=[alp.overlay({"review_status": "pending"})],
+    )
+    assert dev.official_pdf_url("4s9-2019-alp", catalog=hidden_catalog) is None
+    assert (
+        dev.ensure_preview_file(
+            "/files/preview/4s9-2019-alp.pdf",
+            tmp_path,
+            catalog=hidden_catalog,
+        )
+        == dest
+    )
+    assert not dest.exists()
+
+
+def test_preview_catalog_is_reloaded_for_each_visibility_check(monkeypatch) -> None:
+    from catalog.models import Document
+    from catalog.store import Catalog
+
+    dev = _load()
+    visible = Document(
+        id="preview-plan",
+        kind="alp",
+        source_url="https://example.com/preview.pdf",
+        completeness="link_only",
+        review_status="curated",
+        media="pdf",
+    )
+    catalogs = iter(
+        [
+            Catalog(documents=[visible]),
+            Catalog(documents=[visible.overlay({"review_status": "pending"})]),
+        ]
+    )
+    monkeypatch.setattr("catalog.seed.seed_catalog", lambda *_args, **_kwargs: next(catalogs))
+
+    assert dev.official_pdf_url("preview-plan") == "https://example.com/preview.pdf"
+    assert dev.official_pdf_url("preview-plan") is None
 
 
 def test_watch_loop_rebuilds_once_on_stamp_change(tmp_path: Path) -> None:

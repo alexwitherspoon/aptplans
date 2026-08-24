@@ -25,8 +25,10 @@
     "source_retrieved_at": { "type": ["string", "null"] },
     "source_status": {
       "type": "string",
-      "enum": ["live", "moved", "dead", "replaced", "unknown"]
+      "enum": ["live", "moved", "dead", "replaced", "changed_rejected", "source_error", "unknown"]
     },
+    "source_candidate_sha256": { "type": ["string", "null"] },
+    "source_issue": { "type": ["string", "null"] },
     "content_sha256": { "type": ["string", "null"] },
     "text_sha256": { "type": ["string", "null"] },
     "images_sha256": { "type": ["string", "null"] },
@@ -43,7 +45,7 @@
     "supersedes": { "type": ["string", "null"] },
     "review_status": {
       "type": "string",
-      "enum": ["pending", "auto_pass", "needs_human", "published"]
+      "enum": ["pending", "curated", "auto_pass", "needs_human", "published"]
     },
     "completeness": {
       "type": "string",
