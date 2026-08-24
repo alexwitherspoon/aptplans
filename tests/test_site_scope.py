@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from catalog.seed import seed_catalog
 from pipeline.queue import JobQueue, QueueJob
 from pipeline.site_scope import (
@@ -18,10 +20,11 @@ from pipeline.site_build import enqueue_site_build
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_scope_after_vet_includes_index_and_data() -> None:
+@pytest.mark.parametrize("kind", ["vet", "review"])
+def test_scope_after_review_change_includes_index_and_data(kind: str) -> None:
     catalog = seed_catalog(ROOT / "catalog")
     job = QueueJob(
-        kind="vet",
+        kind=kind,
         document_id="4s9-2019-alp",
         source_url="https://example.com/x.pdf",
         airport_lid="4S9",

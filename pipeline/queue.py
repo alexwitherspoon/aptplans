@@ -47,6 +47,9 @@ class QueueJob:
     attempts: int = 0
     found_on: str | None = None
     part_of: str | None = None
+    requested_review_status: str | None = None
+    requested_by: str | None = None
+    request_reason: str | None = None
     reject_record: dict | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict:
@@ -70,6 +73,9 @@ class QueueJob:
             attempts=int(data.get("attempts") or 0),
             found_on=data.get("found_on"),
             part_of=data.get("part_of"),
+            requested_review_status=data.get("requested_review_status"),
+            requested_by=data.get("requested_by"),
+            request_reason=data.get("request_reason"),
         )
 
 

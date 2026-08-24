@@ -94,7 +94,8 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "0.0.0.0:11434" not in local
     assert "7700:7700" not in local
     assert "aptplanslocalkey1" in local
-    assert "${FILES_PATH:-../data/files}:/srv/files:ro" in local
+    assert "${PUBLIC_FILES_PATH:-../data/public-files}:/srv/files:ro" in local
+    assert "${FILES_PATH:-../data/files}:/srv/files:ro" not in local
 
 
 def test_llm_calls_enabled_defaults(monkeypatch) -> None:

@@ -92,6 +92,110 @@ def test_upsert_preserved_is_noop_without_meili(monkeypatch) -> None:
     upsert_preserved({"id": "x", "kind": "master_plan"}, [{"page": 1, "text": "hi"}])
 
 
+def test_sync_catalog_removes_unlisted_documents(monkeypatch) -> None:
+    from catalog.store import Catalog
+    from pipeline.search import sync_catalog
+
+    listed = Document(
+        id="listed",
+        kind="master_plan",
+        source_url="https://example.com/listed.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+    )
+    pending = Document(
+        id="pending",
+        kind="master_plan",
+        source_url="https://example.com/pending.pdf",
+        completeness="complete",
+        review_status="pending",
+    )
+    linked = Document(
+        id="linked",
+        kind="master_plan",
+        source_url="https://example.com/",
+        completeness="link_only",
+        review_status="pending",
+    )
+    upserted: list[dict] = []
+    removed: list[str] = []
+    monkeypatch.setattr("pipeline.search.upsert", lambda rows: upserted.extend(rows))
+    monkeypatch.setattr("pipeline.search.remove_document", removed.append)
+
+    sync_catalog(Catalog(documents=[listed, pending, linked]))
+
+    ids = {row["id"] for row in upserted}
+    assert "document-listed" in ids
+    assert "document-linked" in ids
+    assert "document-pending" not in ids
+    assert removed == ["pending"]
+
+
+def test_sync_pages_skips_unlisted_documents(tmp_path, monkeypatch) -> None:
+    from catalog.store import Catalog
+    from pipeline.search import sync_pages
+
+    listed = Document(
+        id="listed",
+        kind="master_plan",
+        source_url="https://example.com/listed.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+        content_sha256="listed-sha",
+    )
+    pending = Document(
+        id="pending",
+        kind="master_plan",
+        source_url="https://example.com/pending.pdf",
+        completeness="complete",
+        review_status="pending",
+        content_sha256="pending-sha",
+    )
+    write_pages(tmp_path, "listed-sha", ["listed text"])
+    write_pages(tmp_path, "pending-sha", ["private text"])
+    upserted: list[dict] = []
+    monkeypatch.setattr("pipeline.search.upsert", lambda rows: upserted.extend(rows))
+
+    sync_pages(Catalog(documents=[listed, pending]), tmp_path)
+
+    assert [row["id"] for row in upserted] == ["page-listed-1"]
+    assert "private text" not in {row["text"] for row in upserted}
+
+
+def test_upsert_preserved_removes_pending_and_loads_pages_after_vet(
+    tmp_path, monkeypatch
+) -> None:
+    from pipeline.search import upsert_preserved
+
+    monkeypatch.setenv("MEILI_URL", "http://search:7700")
+    monkeypatch.setenv("MEILI_MASTER_KEY", "key")
+    monkeypatch.setattr("pipeline.search.ensure_index", lambda: None)
+    removed: list[str] = []
+    upserted: list[dict] = []
+    deleted_pages: list[str] = []
+    monkeypatch.setattr("pipeline.search.remove_document", removed.append)
+    monkeypatch.setattr("pipeline.search.upsert", lambda rows: upserted.extend(rows))
+    monkeypatch.setattr("pipeline.search.delete_pages", deleted_pages.append)
+
+    pending = {
+        "id": "doc",
+        "kind": "master_plan",
+        "source_url": "https://example.com/plan.pdf",
+        "completeness": "complete",
+        "review_status": "pending",
+        "content_sha256": "sha",
+    }
+    upsert_preserved(pending, [{"page": 1, "text": "private"}], dest=tmp_path)
+    assert removed == ["doc"]
+    assert upserted == []
+
+    write_pages(tmp_path, "sha", ["published text"])
+    upsert_preserved({**pending, "review_status": "auto_pass"}, None, dest=tmp_path)
+    assert deleted_pages == ["doc"]
+    assert [row["id"] for row in upserted] == ["document-doc", "page-doc-1"]
+    assert upserted[-1]["text"] == "published text"
+
+
 def test_boot_sync_skips_without_meili(monkeypatch) -> None:
     from pipeline.search import boot_sync
 
@@ -168,7 +272,8 @@ def test_caddy_search_proxy_is_post_only() -> None:
         assert "search:7700" in text
         assert "dial_timeout 1s" in text
         assert "handle_path /files/*" in text
-        assert 'Cache-Control "public, max-age=31536000, immutable"' in text
+        files_handler = text.split("handle_path /files/*", 1)[1].split("}", 1)[0]
+        assert 'Cache-Control "no-store"' in files_handler
         assert 'Cache-Control "public, max-age=86400"' in text
         assert 'Cache-Control "no-store"' in text
         assert "root * /srv/files" in text

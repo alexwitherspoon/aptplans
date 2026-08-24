@@ -67,6 +67,26 @@ def test_job_retry_backoff_caps_at_one_hour() -> None:
     assert JobRetry(10).delay_seconds() == 3600
 
 
+def test_review_request_round_trips_through_queue(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path)
+    queue.enqueue(
+        QueueJob(
+            kind="review",
+            document_id="plan",
+            source_url="https://example.com/plan.pdf",
+            airport_lid="PDX",
+            requested_review_status="published",
+            requested_by="operator",
+            request_reason="source verified",
+        )
+    )
+    claimed = queue.claim()
+    assert claimed is not None
+    assert claimed.requested_review_status == "published"
+    assert claimed.requested_by == "operator"
+    assert claimed.request_reason == "source verified"
+
+
 def test_claim_one_airport_at_a_time(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path)
     queue.enqueue(_job("a", "PDX"))

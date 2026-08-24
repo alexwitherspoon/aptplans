@@ -9,20 +9,19 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import hmac
 import json
 import os
 import re
 import sys
 
-from catalog.store import load_overlay, write_overlay_update
+from catalog.store import load_overlay
 from pipeline.classifications import classification_stats, load_classifications
 from pipeline.grant_classify import apply_grant_spend_label, grant_spend_spot_check_queue
 from pipeline.evaluations import EVALUATIONS
 from pipeline.outcomes import (
     BUCKETS,
-    bucket_for,
     export_gold_candidates,
     load_outcomes,
     outcome_stats,
@@ -40,11 +39,15 @@ from pipeline.reject import (
     training_case,
 )
 from pipeline.review_client import load_review_env
+from pipeline.lock import worker_lock
+from pipeline.queue import JobQueue, QueueJob
 from pipeline.service_log import logs_dir_from_env
 from pipeline.status import queue_dir_from_env, service_logs, system_status
 
-ALLOWED_REVIEW = frozenset({"pending", "auto_pass", "needs_human", "published"})
 REJECT_SHA = re.compile(r"^/v1/rejects/([a-f0-9]{64})(/bytes)?$")
+DOCUMENT_PATH = re.compile(r"^/v1/documents/([^/]+)$")
+DOCUMENT_BYTES_PATH = re.compile(r"^/v1/documents/([^/]+)/bytes$")
+REVIEW_STATUSES = frozenset({"pending", "auto_pass", "needs_human", "published"})
 
 
 def _json(handler: BaseHTTPRequestHandler, code: int, payload: dict) -> None:
@@ -66,6 +69,17 @@ def _bytes(handler: BaseHTTPRequestHandler, code: int, body: bytes, content_type
     handler.wfile.write(body)
 
 
+def _file(handler: BaseHTTPRequestHandler, path: Path, content_type: str) -> None:
+    handler.send_response(200)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(path.stat().st_size))
+    handler.end_headers()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            handler.wfile.write(chunk)
+
+
 def _content_type(suffix: str) -> str:
     if suffix == ".pdf":
         return "application/pdf"
@@ -77,6 +91,7 @@ def _content_type(suffix: str) -> str:
 class ReviewHandler(BaseHTTPRequestHandler):
     overlay_dir: Path
     reject_dir: Path
+    files_dir: Path
     queue_dir: Path
     logs_dir: Path
     token: str
@@ -223,6 +238,24 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 limit = 200
             _json(self, 200, {"n": len(docs), "documents": docs[:limit]})
             return
+        document_bytes = DOCUMENT_BYTES_PATH.match(parsed.path)
+        if document_bytes:
+            document_id = unquote(document_bytes.group(1))
+            document = load_overlay(self.overlay_dir).get(document_id)
+            if document is None:
+                _json(self, 404, {"error": "unknown document"})
+                return
+            sha = str(document.get("content_sha256") or "")
+            if not re.fullmatch(r"[a-f0-9]{64}", sha):
+                _json(self, 404, {"error": "document has no preserved bytes"})
+                return
+            for suffix in (".pdf", ".html"):
+                path = self.files_dir / f"{sha}{suffix}"
+                if path.is_file():
+                    _file(self, path, _content_type(suffix))
+                    return
+            _json(self, 404, {"error": "preserved bytes unavailable"})
+            return
         _json(self, 404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -292,43 +325,53 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             _json(self, 401, {"error": "unauthorized"})
             return
-        parsed = urlparse(self.path)
-        prefix = "/v1/documents/"
-        if not parsed.path.startswith(prefix):
+        match = DOCUMENT_PATH.match(urlparse(self.path).path)
+        if not match:
             _json(self, 404, {"error": "not found"})
             return
-        document_id = parsed.path[len(prefix) :].strip("/")
-        if not document_id or "/" in document_id:
-            _json(self, 400, {"error": "bad document id"})
-            return
         length = int(self.headers.get("Content-Length") or 0)
+        if length > 32_000:
+            _json(self, 413, {"error": "too large"})
+            return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
             _json(self, 400, {"error": "invalid json"})
             return
-        review = (payload or {}).get("review_status") if isinstance(payload, dict) else None
-        if review not in ALLOWED_REVIEW:
-            _json(self, 400, {"error": "review_status must be pending, auto_pass, needs_human, or published"})
+        if not isinstance(payload, dict):
+            _json(self, 400, {"error": "object required"})
             return
-        overlay = load_overlay(self.overlay_dir)
-        if document_id not in overlay:
+        requested = str(payload.get("review_status") or "").strip()
+        if requested not in REVIEW_STATUSES:
+            _json(self, 400, {"error": "invalid review_status"})
+            return
+        document_id = unquote(match.group(1))
+        document = load_overlay(self.overlay_dir).get(document_id)
+        if document is None:
             _json(self, 404, {"error": "unknown document"})
             return
-        write_overlay_update(self.overlay_dir, document_id, {"review_status": review})
-        record_outcome(
-            self.overlay_dir,
+        job = QueueJob(
+            kind="review",
+            document_id=document_id,
+            source_url=document.get("source_url"),
+            airport_lid=document.get("airport_lid"),
+            state=document.get("state"),
+            requested_review_status=requested,
+            requested_by="operator",
+            request_reason=str(payload.get("reason") or "").strip() or None,
+        )
+        with worker_lock(self.queue_dir):
+            JobQueue(self.queue_dir).enqueue(job)
+        _json(
+            self,
+            202,
             {
+                "ok": True,
+                "job_id": job.id,
                 "document_id": document_id,
-                "url": overlay[document_id].get("source_url"),
-                "lid": overlay[document_id].get("airport_lid"),
-                "review_status": review,
-                "job_status": "human_review",
-                "bucket": bucket_for(review_status=review),
-                "source": "human",
+                "requested_review_status": requested,
             },
         )
-        _json(self, 200, {"ok": True, "id": document_id, "review_status": review})
 
 
 def make_server(
@@ -337,6 +380,7 @@ def make_server(
     host: str = "127.0.0.1",
     port: int = 8787,
     reject_dir: Path | None = None,
+    files_dir: Path | None = None,
     queue_dir: Path | None = None,
     logs_dir: Path | None = None,
 ):
@@ -346,6 +390,9 @@ def make_server(
         {
             "overlay_dir": overlay_dir,
             "reject_dir": reject_dir or reject_dir_from_env(),
+            "files_dir": files_dir or Path(
+                os.environ.get("APTPLANS_FILES", "/var/lib/aptplans/files")
+            ),
             "queue_dir": queue_dir or queue_dir_from_env(),
             "logs_dir": logs_dir or logs_dir_from_env(),
             "token": token,

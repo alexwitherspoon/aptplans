@@ -9,7 +9,7 @@
 
 	handle_path /files/* {
 		root * /srv/files
-		header Cache-Control "public, max-age=31536000, immutable"
+		header Cache-Control "no-store"
 		file_server
 	}
 

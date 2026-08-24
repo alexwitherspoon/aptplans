@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from catalog.grants import grant_title
-from catalog.models import Airport, Document, Grant, State
+from catalog.models import Airport, Document, Grant, State, visible_on_site
 from catalog.seed import seed_catalog
 from catalog.store import Catalog
 from pipeline.parse import extract_pages
@@ -239,6 +239,7 @@ def document_from_updates(updates: dict) -> Document:
             "summary": updates.get("summary"),
             "preserved_url": updates.get("preserved_url"),
             "content_sha256": updates.get("content_sha256"),
+            "review_status": updates.get("review_status") or "pending",
         }
     )
 
@@ -277,15 +278,29 @@ def delete_pages(document_id: str) -> None:
     )
 
 
+def remove_document(document_id: str) -> None:
+    """Remove every public search record derived from one document."""
+    _enqueue(
+        "POST",
+        f"/indexes/{INDEX}/documents/delete-batch",
+        [f"document-{document_id}"],
+    )
+    delete_pages(document_id)
+
+
 def sync_catalog(catalog: Catalog) -> None:
+    visible_documents = [document for document in catalog.documents if visible_on_site(document)]
     records = [
         airport_record(airport, catalog.overview_for(airport.lid))
         for airport in catalog.airports
     ]
     records += [state_record(state) for state in catalog.states]
-    records += [document_record(document) for document in catalog.documents]
+    records += [document_record(document) for document in visible_documents]
     records += [funding_record(grant) for grant in catalog.grants if grant.airport_lid]
     upsert(records)
+    for document in catalog.documents:
+        if not visible_on_site(document):
+            remove_document(document.id)
     log.info("search catalog records upserted=%s", len(records))
 
 
@@ -330,7 +345,11 @@ def sync_pages(catalog: Catalog, dest: Path | None = None) -> None:
     dest = dest or text_dir()
     records: list[dict] = []
     for document in catalog.documents:
-        if document.kind == "notice" or not document.content_sha256:
+        if (
+            not visible_on_site(document)
+            or document.kind == "notice"
+            or not document.content_sha256
+        ):
             continue
         for row in read_pages(dest, document.content_sha256):
             records.append(page_record(document, int(row["page"]), str(row["text"])))
@@ -341,15 +360,26 @@ def sync_pages(catalog: Catalog, dest: Path | None = None) -> None:
     log.info("search page records upserted")
 
 
-def upsert_preserved(updates: dict, pages: list[dict]) -> None:
+def upsert_preserved(
+    updates: dict,
+    pages: list[dict] | None,
+    *,
+    dest: Path | None = None,
+) -> None:
     if not configured():
         return
     document = document_from_updates(updates)
     ensure_index()
+    if not visible_on_site(document):
+        remove_document(document.id)
+        return
     upsert([document_record(document)])
     if document.kind == "notice":
         return
     delete_pages(document.id)
+    if pages is None and document.content_sha256:
+        pages = read_pages(dest or text_dir(), document.content_sha256)
+    pages = pages or []
     upsert([page_record(document, int(row["page"]), str(row["text"])) for row in pages])
 
 
@@ -365,6 +395,9 @@ def reindex(
     _enqueue("POST", f"/indexes/{INDEX}/documents/delete-all")
     sync_catalog(catalog)
     sync_pages(catalog, dest)
+    from pipeline.public_files import reconcile_public_files
+
+    reconcile_public_files(catalog)
 
 
 def boot_sync() -> None:
@@ -386,6 +419,9 @@ def boot_sync() -> None:
     if last_error is not None:
         raise last_error
     sync_catalog(catalog)
+    from pipeline.public_files import reconcile_public_files
+
+    reconcile_public_files(catalog)
     if not has_page_docs():
         log.info("search index has no page hits; indexing extracted text")
         backfill_text(catalog)

@@ -55,7 +55,6 @@ from pipeline.pipeline_status import (
     coverage_stage,
     load_public_snapshot,
     load_status,
-    pending_documents,
     plan_panel_empty,
     stage_rows,
 )
@@ -1334,6 +1333,17 @@ def _prune_unemitted(out_dir: Path, emitted: set[str]) -> bool:
     return bool(leftover)
 
 
+def _remove_generated_tree(path: Path) -> None:
+    if not path.is_dir():
+        return
+    for item in sorted(path.rglob("*"), reverse=True):
+        if item.is_file():
+            item.unlink()
+        elif item.is_dir():
+            item.rmdir()
+    path.rmdir()
+
+
 def build(
     out_dir: Path,
     catalog: Catalog | None = None,
@@ -1386,6 +1396,10 @@ def build(
         classification_stats(overlay_dir) if overlay_dir is not None else {"month_total": 0}
     )
     listed = [doc for doc in catalog.documents if visible_on_site(doc)]
+    if partial:
+        for document in catalog.documents:
+            if not visible_on_site(document) and scope.wants_document(document):
+                _remove_generated_tree(out_dir / "documents" / document.id)
     feed_listed = [doc for doc in listed if feed_visible(doc)]
     recently = sorted(
         feed_listed,
@@ -1482,7 +1496,11 @@ def build(
         state_docs = [
             doc
             for doc in catalog.documents
-            if doc.state == airport.state and doc.kind in {"statute", "sasp"}
+            if (
+                doc.state == airport.state
+                and doc.kind in {"statute", "sasp"}
+                and visible_on_site(doc)
+            )
         ]
         state = catalog.states_by_code.get(airport.state)
         rss_links = [_rss_airport(airport)]
@@ -1531,7 +1549,6 @@ def build(
             coverage_label=coverage_label(stage),
             coverage_banner=coverage_banner(stage, row),
             coverage_banner_class=coverage_banner_class(stage),
-            pending_docs=pending_documents(catalog, airport.lid),
             facts=identity_facts(airport),
             place=place_line(airport, state),
             state=state,
@@ -1596,7 +1613,11 @@ def build(
         state_docs = [
             doc
             for doc in catalog.documents
-            if doc.state == state.code and doc.kind in {"statute", "sasp"}
+            if (
+                doc.state == state.code
+                and doc.kind in {"statute", "sasp"}
+                and visible_on_site(doc)
+            )
         ]
         render(
             "state.html",
@@ -1610,8 +1631,8 @@ def build(
             completeness_for=lambda lid, _catalog=catalog: completeness_for_airport(_catalog, lid),
             rss_links=[_rss_state(state), RSS_LAWS, RSS_ALL],
             lastmod=_sitemap_day(
-                *[doc.source_retrieved_at for doc in catalog.documents if doc.state == state.code],
-                *[doc.published_at for doc in catalog.documents if doc.state == state.code],
+                *[doc.source_retrieved_at for doc in listed if doc.state == state.code],
+                *[doc.published_at for doc in listed if doc.state == state.code],
             ),
             json_ld=[
                 _ld_state(state),
@@ -1641,11 +1662,19 @@ def build(
         elif state is not None:
             crumbs = [("States", "/states/"), (state.name, f"/states/{state.code}/")]
         crumbs.append((document.title or document.id, f"/documents/{document.id}/"))
+        superseded_document = (
+            catalog.documents_by_id.get(document.supersedes)
+            if document.supersedes
+            else None
+        )
+        if superseded_document is not None and not visible_on_site(superseded_document):
+            superseded_document = None
         render(
             "document.html",
             out_dir / "documents" / document.id / "index.html",
             f"/documents/{document.id}/",
             document=document,
+            superseded_document=superseded_document,
             airport=airport,
             kind_label=KIND_LABELS.get(document.kind, document.kind),
             finance_kind_label=FINANCE_KIND_LABELS.get(document.finance_kind or "", ""),
@@ -1815,7 +1844,11 @@ def build(
             rss_links=[RSS_ALL, RSS_LAWS],
         )
     if partial:
-        sitemap_pages = {**_load_sitemap_pages(out_dir), **sitemap_pages}
+        previous_sitemap = _load_sitemap_pages(out_dir)
+        for document in catalog.documents:
+            if not visible_on_site(document) and scope.wants_document(document):
+                previous_sitemap.pop(f"/documents/{document.id}/", None)
+        sitemap_pages = {**previous_sitemap, **sitemap_pages}
     emit(out_dir / "sitemap.xml", _sitemap_xml(sitemap_pages))
 
     status = {

@@ -25,14 +25,18 @@ _preview_catalog = None
 
 def files_dir(root: Path | None = None) -> Path:
     base = root or ROOT
-    raw = os.environ.get("FILES_PATH") or os.environ.get("APTPLANS_FILES") or ""
+    raw = (
+        os.environ.get("PUBLIC_FILES_PATH")
+        or os.environ.get("APTPLANS_PUBLIC_FILES")
+        or ""
+    )
     if raw.strip():
         return Path(raw)
-    return base / "data" / "files"
+    return base / "data" / "public-files"
 
 
 def resolve_file_request(url_path: str, files_root: Path) -> Path | None:
-    """Map /files/{name} onto FILES_PATH. Reject path traversal."""
+    """Map /files/{name} onto the public projection. Reject path traversal."""
     prefix = "/files/"
     if not url_path.startswith(prefix):
         return None

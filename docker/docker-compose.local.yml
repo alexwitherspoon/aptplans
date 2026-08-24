@@ -4,7 +4,7 @@ services:
       - "${APP_PORT:-8080}:80"
     volumes:
       - ../dist:/srv/site:ro
-      - ${FILES_PATH:-../data/files}:/srv/files:ro
+      - ${PUBLIC_FILES_PATH:-../data/public-files}:/srv/files:ro
     environment:
       - APP_ENV=local
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}
@@ -19,6 +19,7 @@ services:
     environment:
       - APP_ENV=local
       - APTPLANS_FILES=/var/lib/aptplans/files
+      - APTPLANS_PUBLIC_FILES=/var/lib/aptplans/public-files
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_TEXT=/var/lib/aptplans/text
@@ -37,12 +38,14 @@ services:
       - "127.0.0.1:8787:8787"
     volumes:
       - ..:/app
+      - ${FILES_PATH:-../data/files}:/var/lib/aptplans/files:ro
       - ${CATALOG_OVERLAY_PATH:-../data/catalog}:/var/lib/aptplans/catalog
       - ${REJECT_PATH:-../data/reject}:/var/lib/aptplans/reject
-      - ${QUEUE_PATH:-../data/queue}:/var/lib/aptplans/queue:ro
+      - ${QUEUE_PATH:-../data/queue}:/var/lib/aptplans/queue
       - ${LOGS_PATH:-../data/logs}:/var/lib/aptplans/logs:ro
     environment:
       - APP_ENV=local
+      - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_REJECT=/var/lib/aptplans/reject
       - APTPLANS_QUEUE=/var/lib/aptplans/queue

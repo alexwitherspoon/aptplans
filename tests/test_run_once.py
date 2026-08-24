@@ -11,7 +11,7 @@ from catalog.seed import seed_catalog
 from pipeline.lock import worker_lock
 from pipeline.boot_jobs import MAINTENANCE_JOB_KINDS
 from pipeline.queue import JobQueue, JobRetry, QueueJob
-from pipeline.run_once import process_next, run_once
+from pipeline.run_once import process_fetch, process_next, process_review, run_once
 
 INVENTORY = REFERENCE_FILES / "4s9-2008-inventory.pdf"
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +44,102 @@ def test_process_next_idle_is_false(tmp_path: Path) -> None:
         )
         is False
     )
+
+
+def test_process_review_promotes_and_revokes_public_artifact(tmp_path: Path) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    files_dir = tmp_path / "files"
+    overlay_dir = tmp_path / "overlay"
+    files_dir.mkdir()
+    sha = "b" * 64
+    (files_dir / f"{sha}.pdf").write_bytes(b"%PDF-reviewed")
+    write_overlay_update(
+        overlay_dir,
+        "review-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/review-plan.pdf",
+            "preserved_url": f"/files/{sha}.pdf",
+            "content_sha256": sha,
+            "completeness": "complete",
+            "review_status": "pending",
+            "airport_lid": "4S9",
+            "state": "OR",
+        },
+    )
+    promote = QueueJob(
+        kind="review",
+        document_id="review-plan",
+        source_url="https://example.com/review-plan.pdf",
+        airport_lid="4S9",
+        requested_review_status="published",
+        requested_by="operator",
+    )
+    assert process_review(promote, files_dir, overlay_dir, ROOT / "catalog") == "published"
+    assert load_overlay(overlay_dir)["review-plan"]["review_status"] == "published"
+    assert (tmp_path / "public-files" / f"{sha}.pdf").is_file()
+
+    revoke = QueueJob(
+        kind="review",
+        document_id="review-plan",
+        source_url="https://example.com/review-plan.pdf",
+        airport_lid="4S9",
+        requested_review_status="needs_human",
+        requested_by="operator",
+    )
+    assert process_review(revoke, files_dir, overlay_dir, ROOT / "catalog") == "needs_human"
+    assert not (tmp_path / "public-files" / f"{sha}.pdf").exists()
+    assert (files_dir / f"{sha}.pdf").is_file()
+
+
+def test_changed_published_bytes_return_to_pending_before_vet(tmp_path: Path) -> None:
+    from catalog.store import load_overlay, write_overlay_update
+
+    files_dir = tmp_path / "files"
+    public_dir = tmp_path / "public-files"
+    overlay_dir = tmp_path / "overlay"
+    files_dir.mkdir()
+    public_dir.mkdir()
+    old_sha = "c" * 64
+    old_name = f"{old_sha}.pdf"
+    (files_dir / old_name).write_bytes(b"%PDF-old")
+    (public_dir / old_name).write_bytes(b"%PDF-old")
+    write_overlay_update(
+        overlay_dir,
+        "changed-plan",
+        {
+            "kind": "master_plan",
+            "source_url": "https://example.com/changed-plan.pdf",
+            "preserved_url": f"/files/{old_name}",
+            "content_sha256": old_sha,
+            "completeness": "complete",
+            "review_status": "published",
+            "airport_lid": "4S9",
+            "state": "OR",
+        },
+    )
+    job = QueueJob(
+        kind="fetch",
+        document_id="changed-plan",
+        source_url="https://example.com/changed-plan.pdf",
+        airport_lid="4S9",
+        state="OR",
+        suggested_kind="master_plan",
+    )
+    assert (
+        process_fetch(
+            job,
+            files_dir,
+            overlay_dir,
+            ROOT / "catalog",
+            queue=JobQueue(tmp_path / "queue"),
+            data=INVENTORY.read_bytes(),
+        )
+        == "preserved"
+    )
+    assert load_overlay(overlay_dir)["changed-plan"]["review_status"] == "pending"
+    assert not (public_dir / old_name).exists()
 
 
 def test_run_once_preserves_fixture_and_writes_overlay(tmp_path: Path) -> None:

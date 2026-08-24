@@ -28,7 +28,7 @@ from pipeline.gates import evaluate_payload, filename_from_url, intake_status, s
 from pipeline.github import GitHubIntake, github_from_env
 from pipeline.intake import IntakeHint, hint_can_queue, parse_issue_body, resolve_intake
 from pipeline.parse import change_note, content_changed, content_fingerprint
-from pipeline.stages import review_after_snapshot, review_after_vet
+from pipeline.stages import apply_review_transition, review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
 from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
@@ -42,7 +42,7 @@ from pipeline.sanitize import redact_html_secrets
 log = logging.getLogger("aptplans.job")
 
 # Airport jobs that change published HTML; explore only updates pipeline.json.
-SITE_BUILD_TRIGGER_KINDS = frozenset({"fetch", "vet", "check"})
+SITE_BUILD_TRIGGER_KINDS = frozenset({"fetch", "vet", "review", "check"})
 
 
 def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
@@ -62,6 +62,14 @@ def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
                 "reject_expires_at": rejected.get("expires_at"),
                 "reject_stored": rejected.get("stored"),
             }
+        if job.kind == "review":
+            extra.update(
+                {
+                    "review_status": job.requested_review_status,
+                    "requested_by": job.requested_by,
+                    "reason": job.request_reason,
+                }
+            )
         record_outcome(
             overlay_dir,
             {
@@ -73,7 +81,7 @@ def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
                 "url": job.source_url,
                 "job_status": status,
                 "scored": scored or None,
-                "source": "worker",
+                "source": "operator" if job.kind == "review" else "worker",
                 **extra,
             },
         )
@@ -83,6 +91,20 @@ def _observe_job(overlay_dir: Path, job: QueueJob, status: str) -> None:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _reconcile_public_artifacts(
+    overlay_dir: Path,
+    catalog_root: Path,
+    files_dir: Path,
+) -> None:
+    from pipeline.public_files import reconcile_public_files
+
+    public_dir = Path(
+        os.environ.get("APTPLANS_PUBLIC_FILES", files_dir.parent / "public-files")
+    )
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    reconcile_public_files(catalog, private_dir=files_dir, public_dir=public_dir)
 
 
 def _keep_failed(
@@ -359,6 +381,14 @@ def process_fetch(
     title = previous.title if previous else filename
     if media == "html" and (not previous or not previous.title):
         title = page_title(data.decode("utf-8", "replace")) or title
+    review_status = review_after_snapshot(previous.review_status if previous else None)
+    if (
+        previous is not None
+        and previous.content_sha256
+        and previous.content_sha256 != stored.sha256
+        and visible_on_site(previous)
+    ):
+        review_status = "pending"
     updates = {
         "id": document_id,
         "kind": kind,
@@ -372,7 +402,7 @@ def process_fetch(
         "content_sha256": stored.sha256,
         "preserved_url": f"/files/{stored.sha256}{suffix}",
         "completeness": "complete",
-        "review_status": review_after_snapshot(previous.review_status if previous else None),
+        "review_status": review_status,
         "license_or_rights": previous.license_or_rights if previous else "public_record",
         "mirrors": mirrors,
         "supersedes": previous.supersedes if previous else None,
@@ -450,6 +480,7 @@ def process_fetch(
         except Exception:
             log.exception("unofficial note failed; preserve still counts")
     write_overlay_update(overlay_dir, document_id, updates)
+    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
     if job.airport_lid and kind in {"master_plan", "alp"}:
         try:
             from pipeline.overviews import upsert_overview_for
@@ -457,24 +488,12 @@ def process_fetch(
             upsert_overview_for(overlay_dir, catalog_root, job.airport_lid)
         except Exception:
             log.exception("overview refresh failed; preserve still counts")
-    listed = visible_on_site(
-        Document.from_dict(
-            {
-                "id": document_id,
-                "kind": kind,
-                "source_url": source_url,
-                "completeness": "complete",
-                "review_status": updates["review_status"],
-            }
-        )
-    )
-    if listed:
-        try:
-            from pipeline.search import upsert_preserved
+    try:
+        from pipeline.search import upsert_preserved
 
-            upsert_preserved(updates, pages)
-        except Exception:
-            log.exception("search index failed; preserve still counts")
+        upsert_preserved(updates, pages)
+    except Exception:
+        log.exception("search index failed; preserve still counts")
     if queue is not None:
         queue.enqueue(
             QueueJob(
@@ -648,10 +667,13 @@ def process_vet(
         log.exception("vet failed document=%s", job.document_id)
         return "pending"
     kind = str(scored.get("kind") or "")
-    review = review_after_vet(
-        official_plan=bool(scored.get("official_plan")),
-        same_airport=bool(scored.get("same_airport")),
-        kind=kind,
+    review = apply_review_transition(
+        review_after_vet(
+            official_plan=bool(scored.get("official_plan")),
+            same_airport=bool(scored.get("same_airport")),
+            kind=kind,
+        ),
+        authority="machine",
     )
     if kind == "not_plan":
         _keep_failed(job, files_dir, reason="not_plan", data=data)
@@ -675,15 +697,50 @@ def process_vet(
         except Exception:
             log.exception("finance classification audit failed document=%s", document.id)
     write_overlay_update(overlay_dir, document.id, updates)
-    if visible_on_site(document.overlay(updates)):
-        try:
-            from pipeline.search import upsert_preserved
+    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+    try:
+        from pipeline.search import upsert_preserved
 
-            upsert_preserved({**document.to_dict(), **updates}, [])
-        except Exception:
-            log.exception("search index failed after vet; review still written")
+        upsert_preserved({**document.to_dict(), **updates}, None)
+    except Exception:
+        log.exception("search index failed after vet; review still written")
     log.info("vet %s review=%s", document.id, review)
     return review
+
+
+def process_review(
+    job: QueueJob,
+    files_dir: Path,
+    overlay_dir: Path,
+    catalog_root: Path,
+) -> str:
+    """Apply an authenticated operator request inside the serial worker."""
+    if not job.document_id or not job.requested_review_status:
+        raise ValueError("review job requires document_id and requested_review_status")
+    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+    document = catalog.documents_by_id.get(job.document_id)
+    if document is None:
+        raise ValueError(f"unknown document: {job.document_id}")
+    requested = apply_review_transition(
+        job.requested_review_status,
+        authority="operator",
+    )
+    updates = {"review_status": requested}
+    write_overlay_update(overlay_dir, document.id, updates)
+    _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+    try:
+        from pipeline.search import upsert_preserved
+
+        upsert_preserved({**document.to_dict(), **updates}, None)
+    except Exception:
+        log.exception("search index failed after review; transition still written")
+    log.info(
+        "review %s status=%s requested_by=%s",
+        document.id,
+        requested,
+        job.requested_by or "operator",
+    )
+    return requested
 
 
 def _touch_job_status(queue: JobQueue, overlay_dir: Path, job: QueueJob, status: str) -> None:
@@ -727,6 +784,11 @@ def _run_claimed_job(
         return False
     if job.kind == "vet":
         status = process_vet(job, files_dir, overlay_dir, catalog_root)
+        _observe_job(overlay_dir, job, status)
+        _touch_job_status(queue, overlay_dir, job, status)
+        return status in {"auto_pass", "published"}
+    if job.kind == "review":
+        status = process_review(job, files_dir, overlay_dir, catalog_root)
         _observe_job(overlay_dir, job, status)
         _touch_job_status(queue, overlay_dir, job, status)
         return status in {"auto_pass", "published"}
@@ -847,7 +909,7 @@ def _finish_job(
     )
     with worker_lock(queue_dir):
         JobQueue(queue_dir).complete(job)
-    if job.kind in {"fetch", "explore", "vet", "check"}:
+    if job.kind in {"fetch", "explore", "vet", "review", "check"}:
         try:
             from pipeline.datasets import reconcile_catalog
 

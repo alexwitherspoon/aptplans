@@ -321,6 +321,131 @@ def test_verified_airport_shows_plan_insights(tmp_path: Path, monkeypatch) -> No
     assert "Not reviewed yet" not in mulino_feed
 
 
+def test_build_excludes_unvetted_documents_from_every_public_surface(tmp_path: Path) -> None:
+    import json
+
+    from catalog.models import Airport, Document, State
+    from catalog.store import Catalog, counts
+
+    airport = Airport(lid="ZZ9", name="Test Field", city="Test", state="OR")
+    state = State(code="OR", name="Oregon")
+    pending_plan = Document(
+        id="private-plan",
+        kind="master_plan",
+        source_url="https://example.com/private-plan.pdf",
+        completeness="complete",
+        review_status="pending",
+        airport_lid="ZZ9",
+        state="OR",
+        title="Unvetted Airport Plan",
+        source_retrieved_at="2026-08-24T00:00:00Z",
+    )
+    pending_state = Document(
+        id="private-state-plan",
+        kind="sasp",
+        source_url="https://example.com/private-state-plan.pdf",
+        completeness="complete",
+        review_status="needs_human",
+        state="OR",
+        title="Unvetted State Plan",
+        source_retrieved_at="2026-08-24T00:00:00Z",
+    )
+    catalog = Catalog(
+        airports=[airport],
+        states=[state],
+        documents=[pending_plan, pending_state],
+    )
+    out = tmp_path / "dist"
+    _load_build().build(out, catalog=catalog)
+
+    assert not (out / "documents" / "private-plan").exists()
+    assert not (out / "documents" / "private-state-plan").exists()
+    for relative in (
+        "airports/ZZ9/index.html",
+        "states/OR/index.html",
+        "sitemap.xml",
+        "feeds/all.xml",
+        "feeds/states/OR.xml",
+        "feeds/airports/ZZ9.xml",
+        "data/search.json",
+        "data/catalog.json",
+        "data/catalog.csv",
+    ):
+        text = (out / relative).read_text(encoding="utf-8")
+        assert "Unvetted Airport Plan" not in text
+        assert "Unvetted State Plan" not in text
+        assert "private-plan" not in text
+        assert "private-state-plan" not in text
+    public_catalog = json.loads((out / "data" / "catalog.json").read_text(encoding="utf-8"))
+    assert public_catalog["documents"] == []
+    assert counts(catalog)["documents"] == 0
+
+
+def test_visible_document_does_not_link_to_hidden_superseded_record(tmp_path: Path) -> None:
+    from catalog.models import Document
+    from catalog.store import Catalog
+
+    hidden = Document(
+        id="hidden-older-plan",
+        kind="master_plan",
+        source_url="https://example.com/old.pdf",
+        completeness="complete",
+        review_status="needs_human",
+        title="Hidden Older Plan",
+    )
+    visible = Document(
+        id="visible-plan",
+        kind="master_plan",
+        source_url="https://example.com/current.pdf",
+        completeness="complete",
+        review_status="published",
+        title="Visible Plan",
+        supersedes=hidden.id,
+    )
+    out = tmp_path / "dist"
+    _load_build().build(out, catalog=Catalog(documents=[hidden, visible]))
+
+    page = (out / "documents" / visible.id / "index.html").read_text(encoding="utf-8")
+    assert "hidden-older-plan" not in page
+    assert "Hidden Older Plan" not in page
+
+
+def test_partial_build_removes_revoked_document_page_and_sitemap_entry(tmp_path: Path) -> None:
+    from catalog.models import Airport, Document, State
+    from catalog.store import Catalog
+    from pipeline.site_scope import scope_for_document
+
+    airport = Airport(lid="ZZ9", name="Test Field", city="Test", state="OR")
+    state = State(code="OR", name="Oregon")
+    released = Document(
+        id="released-plan",
+        kind="master_plan",
+        source_url="https://example.com/plan.pdf",
+        completeness="complete",
+        review_status="auto_pass",
+        airport_lid="ZZ9",
+        state="OR",
+        title="Released Plan",
+    )
+    out = tmp_path / "dist"
+    build = _load_build()
+    build.build(
+        out,
+        catalog=Catalog(airports=[airport], states=[state], documents=[released]),
+    )
+    assert (out / "documents" / "released-plan" / "index.html").is_file()
+    assert "/documents/released-plan/" in (out / "sitemap.xml").read_text(encoding="utf-8")
+
+    revoked = released.overlay({"review_status": "needs_human"})
+    catalog = Catalog(airports=[airport], states=[state], documents=[revoked])
+    build.build(out, catalog=catalog, scope=scope_for_document(catalog, revoked.id))
+
+    assert not (out / "documents" / "released-plan").exists()
+    assert "/documents/released-plan/" not in (out / "sitemap.xml").read_text(encoding="utf-8")
+    airport_page = (out / "airports" / "ZZ9" / "index.html").read_text(encoding="utf-8")
+    assert "Released Plan" not in airport_page
+
+
 def test_page_overview_ignores_current_overlay() -> None:
     from catalog.models import visible_on_site
     from catalog.seed import seed_catalog

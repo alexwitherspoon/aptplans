@@ -370,6 +370,7 @@ COVERAGE_STAGES = AIRPORT_COVERAGE_STAGES
 
 def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int | None]:
     airport_status = [completeness_for_airport(catalog, airport.lid) for airport in catalog.airports]
+    listed_documents = [document for document in catalog.documents if visible_on_site(document)]
     queue = (pipeline or {}).get("queue") if isinstance(pipeline, dict) else {}
     coverage_raw = (pipeline or {}).get("coverage") if isinstance(pipeline, dict) else {}
     coverage = coverage_raw if isinstance(coverage_raw, dict) else {}
@@ -387,20 +388,24 @@ def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int |
     return {
         "airports": airports_total,
         "states": len(catalog.states),
-        "documents": len(catalog.documents),
+        "documents": len(listed_documents),
         "complete": sum(1 for status in airport_status if status == "complete"),
         "link_only": sum(1 for status in airport_status if status == "link_only"),
         "preserved_only": sum(1 for status in airport_status if status == "preserved_only"),
         "missing": sum(1 for status in airport_status if status == "missing"),
         "no_plan_known": sum(1 for status in airport_status if status == "no_plan_known"),
-        "documents_complete": sum(1 for doc in catalog.documents if doc.completeness == "complete"),
-        "documents_link_only": sum(1 for doc in catalog.documents if doc.completeness == "link_only"),
+        "documents_complete": sum(
+            1 for doc in listed_documents if doc.completeness == "complete"
+        ),
+        "documents_link_only": sum(
+            1 for doc in listed_documents if doc.completeness == "link_only"
+        ),
         "saved_copies": sum(
             1
             for doc in catalog.documents
             if doc.completeness == "complete" and visible_on_site(doc)
         ),
-        "listed_documents": sum(1 for doc in catalog.documents if visible_on_site(doc)),
+        "listed_documents": len(listed_documents),
         "airports_with_plans": sum(1 for status in airport_status if status == "complete"),
         "airports_with_master_plan": with_master_plan,
         "airports_with_alp": with_alp,
@@ -412,7 +417,7 @@ def counts(catalog: Catalog, *, pipeline: dict | None = None) -> dict[str, int |
         "snapshot_pending": int((coverage or {}).get("snapshot_pending") or 0),
         "searched": int((coverage or {}).get("searched") or 0) + int((coverage or {}).get("explored") or 0),
         "grants": len(catalog.grants),
-        "statutes": sum(1 for doc in catalog.documents if doc.kind in {"statute", "sasp"}),
+        "statutes": sum(1 for doc in listed_documents if doc.kind in {"statute", "sasp"}),
         "funding_federal_obligated": sum(
             grant.obligated or grant.amount or 0 for grant in federal_grants
         ),

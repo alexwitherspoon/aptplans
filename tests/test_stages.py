@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from catalog.models import Document, visible_on_site
 from pipeline.explore import confirm_jobs, explore_page
 from pipeline.stages import (
     STAGES,
+    apply_review_transition,
     review_after_snapshot,
     review_after_vet,
     source_family,
@@ -43,6 +46,14 @@ def test_snapshot_is_not_a_publish() -> None:
     assert review_after_vet(official_plan=True, same_airport=True, kind="master_plan") == "auto_pass"
     assert review_after_vet(official_plan=True, same_airport=True, kind="not_plan") == "pending"
     assert review_after_vet(official_plan=True, same_airport=True, kind="other") == "pending"
+
+
+def test_review_transition_separates_machine_and_operator_authority() -> None:
+    assert apply_review_transition("auto_pass", authority="machine") == "auto_pass"
+    assert apply_review_transition("published", authority="operator") == "published"
+    assert apply_review_transition("needs_human", authority="operator") == "needs_human"
+    with pytest.raises(ValueError, match="machine cannot"):
+        apply_review_transition("published", authority="machine")
 
 
 def test_worth_confirm_skips_minutes_and_unknown_pdfs() -> None:

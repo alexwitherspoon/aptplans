@@ -22,7 +22,7 @@ AptPlans serves public planning documents. It still must not become a dumping gr
 | Search snippets via Caddy | Meilisearch volume, master key |
 | Builder and Compose files | Model weights |
 
-Cloudflare is a cache. It is not an access-control layer for private files. If a file should not be on the public internet, do not store it under the Caddy docroot. Failed artifacts (including SSI-looking filenames) live in `/var/lib/aptplans/reject` for 90 days, mounted only on the worker and review API, never under Caddy `/files/`. Pull them over `https://aptplans.org/review` with `APTPLANS_REVIEW_TOKEN`. Do not commit those copies.
+Cloudflare is a cache. It is not an access-control layer for private files. Preserved source bytes live in `/var/lib/aptplans/files`, mounted writable on the worker and read-only on the authenticated review API; only reviewed artifacts are projected into `/var/lib/aptplans/public-files`, the directory mounted under Caddy `/files/`. Revocation removes that projection while retaining the private source for optional operator retrieval. Failed artifacts (including SSI-looking filenames) live in `/var/lib/aptplans/reject` for 90 days, mounted only on the worker and review API, never under Caddy `/files/`. Pull full payloads over `https://aptplans.org/review` with `APTPLANS_REVIEW_TOKEN`. Do not commit those copies.
 
 ## Takedown and copyright
 
@@ -30,7 +30,7 @@ Master plans and Airport Layout Plans often carry consultant copyright lines eve
 
 ## HTTP
 
-Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. HTML, RSS, and static assets send `Cache-Control: public, max-age=86400`. Hashed `/files/` objects send a one-year immutable header. Visitors use HTTPS at Cloudflare. Origin Caddy also listens on 443 with either a Cloudflare Origin CA cert or a self-signed cert. Use Cloudflare **Full (strict)** once Origin CA material is in GitHub secrets. Cloudflare cache should **Respect Existing Headers** so it does not pick its own TTL.
+Caddy sets `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. HTML, RSS, and static assets send `Cache-Control: public, max-age=86400`. Reviewed `/files/` objects send `Cache-Control: no-store` because review status can be revoked even though the content-addressed bytes are immutable. Visitors use HTTPS at Cloudflare. Origin Caddy also listens on 443 with either a Cloudflare Origin CA cert or a self-signed cert. Use Cloudflare **Full (strict)** once Origin CA material is in GitHub secrets. Cloudflare cache should **Respect Existing Headers** so it does not pick its own TTL.
 
 Hashed file URLs may be cached for a long time; a takedown needs an origin delete plus a Cloudflare purge of that object.
 

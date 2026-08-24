@@ -73,7 +73,7 @@ python3 scripts/eval_search_plan.py --overlay --provider brave --limit 10
 
 Optional `APTPLANS_GEMINI_KEY` plus `--escalate` runs one Gemini packet search after Brave stalls. Do not scrape result pages. `--enqueue` writes explore/fetch jobs into `data/queue`; `make pipeline` snapshots them as `pending`. They do not appear on the public pages until vet.
 
-`make dev` serves `dist/` at http://127.0.0.1:8080 without Docker and rebuilds when files under `site/` or `catalog/` change (reload the browser to see it). Hashed copies under `data/files` are served at `/files/`. Official PDFs that cannot be framed are fetched once into `data/files/preview/` (catalog URLs only) so the document page can show them. Prefer `make up` or `make stack` when you want the origin-shaped stack.
+`make dev` serves `dist/` at http://127.0.0.1:8080 without Docker and rebuilds when files under `site/` or `catalog/` change (reload the browser to see it). Reviewed projections under `data/public-files` are served at `/files/`; private preserved bytes remain in `data/files`. Official PDFs that cannot be framed are fetched once into `data/public-files/preview/` (catalog URLs only) so the document page can show them. Prefer `make up` or `make stack` when you want the origin-shaped stack.
 
 ## Docker
 
@@ -99,4 +99,4 @@ cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
 
 ## What not to put in this clone
 
-This GitHub repository holds code and test fixtures only. PDFs, model weights, extracted full text, NASR overlays, and compiled statute texts stay out of git. Local crawls write under `data/files/`, `data/queue/`, `data/catalog/`, and `data/text/`. Local Meilisearch data goes under `data/search/`. Local model weights go under `data/models/`. Do not commit those paths.
+This GitHub repository holds code and test fixtures only. PDFs, model weights, extracted full text, NASR overlays, and compiled statute texts stay out of git. Local crawls write private sources under `data/files/`, reviewed file projections under `data/public-files/`, and mutable state under `data/queue/`, `data/catalog/`, and `data/text/`. Local Meilisearch data goes under `data/search/`. Local model weights go under `data/models/`. Do not commit those paths.

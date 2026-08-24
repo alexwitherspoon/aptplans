@@ -201,7 +201,7 @@ def scope_after_airport_job(job: QueueJob, catalog: Catalog) -> BuildScope | Non
             document = None
         if document and document.airport_lid:
             lid = document.airport_lid.upper()
-    if job.kind == "vet":
+    if job.kind in {"vet", "review"}:
         if not lid:
             return None
         return scope_for_airport(

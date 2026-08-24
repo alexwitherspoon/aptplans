@@ -15,6 +15,7 @@ from pipeline.outcomes import (
 )
 from pipeline.review_api import make_server
 from pipeline.review_client import DEFAULT_URL, load_review_env, review_credentials
+from pipeline.queue import JobQueue
 
 
 def test_bucket_maps_job_and_review_status() -> None:
@@ -131,7 +132,17 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
 
     reconcile_catalog(overlay)
     token = "test-review-token"
-    server = make_server(overlay, token, host="127.0.0.1", port=0)
+    queue_dir = tmp_path / "queue"
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+    server = make_server(
+        overlay,
+        token,
+        host="127.0.0.1",
+        port=0,
+        files_dir=files_dir,
+        queue_dir=queue_dir,
+    )
     host, port = server.server_address[:2]
     import threading
     from urllib.error import HTTPError
@@ -238,6 +249,48 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
         except HTTPError as exc:
             denied_again = exc.code == 401
         assert denied_again
+        from catalog.store import load_overlay, write_overlay_update
+
+        document_sha = "d" * 64
+        (files_dir / f"{document_sha}.pdf").write_bytes(b"%PDF-operator-payload")
+        write_overlay_update(
+            overlay,
+            "pending-document",
+            {
+                "kind": "master_plan",
+                "source_url": "https://example.com/plan.pdf",
+                "completeness": "complete",
+                "review_status": "pending",
+                "content_sha256": document_sha,
+            },
+        )
+        full_payload = urlopen(
+            Request(
+                f"{base}/v1/documents/pending-document/bytes",
+                headers=headers,
+            ),
+            timeout=2,
+        ).read()
+        assert full_payload == b"%PDF-operator-payload"
+        mutation = json.dumps({"review_status": "published"}).encode("utf-8")
+        queued_review = json.loads(
+            urlopen(
+                Request(
+                    f"{base}/v1/documents/pending-document",
+                    data=mutation,
+                    headers=headers,
+                    method="PATCH",
+                ),
+                timeout=2,
+            ).read()
+        )
+        assert queued_review["requested_review_status"] == "published"
+        assert load_overlay(overlay)["pending-document"]["review_status"] == "pending"
+        queued = JobQueue(queue_dir).claim()
+        assert queued is not None
+        assert queued.kind == "review"
+        assert queued.document_id == "pending-document"
+        assert queued.requested_review_status == "published"
     finally:
         server.shutdown()
 

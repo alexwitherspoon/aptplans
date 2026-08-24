@@ -30,6 +30,7 @@ htmlcov/
 *.warc
 *.warc.gz
 data/files/
+data/public-files/
 data/queue/
 data/catalog/
 data/models/*
