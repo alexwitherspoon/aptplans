@@ -1431,6 +1431,8 @@ def build(
             pipeline_stages=stage_rows(pipeline.get("coverage")),
             classification_counts=classification_counts,
         )
+        if pipeline:
+            emit(out_dir / "data" / "pipeline.json", json.dumps(pipeline, indent=2) + "\n")
     if not partial or scope.include_search_page:
         render("search.html", out_dir / "search" / "index.html", "/search/")
     if not partial or scope.include_airports_index:

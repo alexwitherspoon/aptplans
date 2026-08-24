@@ -14,6 +14,7 @@ from pipeline.pipeline_status import (
     plan_panel_empty,
     record_discovery,
     record_job,
+    record_queue_completion,
     stage_rows,
 )
 from pipeline.queue import JobQueue, QueueJob
@@ -160,16 +161,16 @@ def test_next_queue_jobs_dedupe_airports(tmp_path: Path) -> None:
     ]
 
 
-def test_next_queue_jobs_skips_jobs_without_lid(tmp_path: Path) -> None:
+def test_next_queue_jobs_includes_maintenance_before_airports(tmp_path: Path) -> None:
     from pipeline.pipeline_status import _next_queue_jobs
 
     queue_dir = tmp_path / "queue"
     queue = JobQueue(queue_dir)
     queue.enqueue(
         QueueJob(
-            kind="fetch",
+            kind="pipeline_snapshot",
             document_id=None,
-            source_url="https://example.com/a.pdf",
+            source_url=None,
             airport_lid=None,
             state=None,
         )
@@ -184,8 +185,58 @@ def test_next_queue_jobs_skips_jobs_without_lid(tmp_path: Path) -> None:
         )
     )
     rows = _next_queue_jobs(queue)
-    assert len(rows) == 1
-    assert rows[0].airport_lid == "ZZ9"
+    assert len(rows) == 2
+    assert rows[0].kind == "pipeline_snapshot"
+    assert rows[1].airport_lid == "ZZ9"
+
+
+def test_last_job_reflects_queue_completion_not_airport_status(tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay"
+    queue_dir = tmp_path / "queue"
+    overlay.mkdir()
+    (overlay / "airports.jsonl").write_text(
+        '{"lid":"16S","name":"Test","city":"Test","state":"OR","website":""}\n',
+        encoding="utf-8",
+    )
+    vet = QueueJob(
+        kind="vet",
+        document_id="doc-1",
+        source_url="https://example.com/plan.pdf",
+        airport_lid="16S",
+        state="OR",
+    )
+    record_job(overlay, vet, "pending")
+    snapshot_job = QueueJob(
+        kind="pipeline_snapshot",
+        document_id=None,
+        source_url=None,
+        airport_lid=None,
+        state=None,
+    )
+    record_queue_completion(queue_dir, snapshot_job, "ok")
+    payload = build_public_snapshot(overlay, queue_dir, catalog_root=ROOT / "catalog")
+    last = payload["last_job"]
+    assert last["kind"] == "pipeline_snapshot"
+    assert last["status"] == "ok"
+    assert last["airport_lid"] is None
+    assert last["at"]
+
+
+def test_coverage_counts_match_discovery_scope(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APTPLANS_SEARCH_STATES", "OR")
+    overlay = tmp_path / "overlay"
+    queue_dir = tmp_path / "queue"
+    overlay.mkdir()
+    (overlay / "airports.jsonl").write_text(
+        '{"lid":"ZZ9","name":"Test Field","city":"Test","state":"OR","website":""}\n',
+        encoding="utf-8",
+    )
+    record_discovery(overlay, ["ZZ9"])
+    payload = build_public_snapshot(overlay, queue_dir, catalog_root=ROOT / "catalog")
+    coverage_total = sum(int(payload["coverage"].get(stage) or 0) for stage in payload["coverage"])
+    assert coverage_total == payload["discovery"]["scoped_airports"]
+    assert payload["coverage"]["searched"] >= 1
+    assert payload["discovery"]["scope_states"] == ["OR"]
 
 
 def test_discovery_defaults_tuned() -> None:

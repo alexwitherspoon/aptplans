@@ -113,7 +113,12 @@
   <section class="review-pipeline">
     <h2>Review Pipeline</h2>
     <p class="meta">
-      How airports move from FAA index rows to published plans. Counts are airports, not documents.
+      How airports move from FAA index rows to published plans. Counts are airports in the
+      {% if pipeline.discovery and pipeline.discovery.scope_states and pipeline.discovery.scope_states != ['*'] %}
+      discovery scope ({{ pipeline.discovery.scope_states|join(", ") }}), not documents.
+      {% else %}
+      the national catalog, not documents.
+      {% endif %}
       {% if pipeline and pipeline.generated_at %}Updated {{ pipeline.generated_at }}.{% endif %}
     </p>
     {% if pipeline_stages %}
@@ -154,7 +159,7 @@
       </ul>
       {% endif %}
       {% if pipeline.next_jobs %}
-      <h4>Next 10 airports in line</h4>
+      <h4>Next in queue</h4>
       <ul class="pipeline-jobs">
         {% for job in pipeline.next_jobs %}
         <li>{{ job.airport_lid or "—" }} · {{ job.kind }}{% if job.host %} · {{ job.host }}{% endif %}</li>

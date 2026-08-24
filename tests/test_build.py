@@ -452,6 +452,70 @@ def test_build_partial_about_only(tmp_path: Path) -> None:
     assert (out / "index.html").stat().st_mtime_ns == index_mtime
 
 
+def test_build_partial_about_syncs_pipeline_json(tmp_path: Path, monkeypatch) -> None:
+    import json
+
+    from catalog.seed import seed_catalog
+    from pipeline.pipeline_status import build_public_snapshot, record_queue_completion
+    from pipeline.queue import JobQueue, QueueJob
+    from pipeline.site_scope import scope_about
+
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(overlay))
+    (overlay / "airports.jsonl").write_text(
+        '{"lid":"ZZ9","name":"Test Field","city":"Test","state":"OR","website":""}\n',
+        encoding="utf-8",
+    )
+    queue_dir = tmp_path / "queue"
+    queue = JobQueue(queue_dir)
+    for _ in range(3):
+        queue.enqueue(
+            QueueJob(
+                kind="fetch",
+                document_id=None,
+                source_url="https://example.com/plan.pdf",
+                airport_lid="ZZ9",
+                state="OR",
+            )
+        )
+        job = queue.claim()
+        assert job is not None
+        queue.complete(job)
+        record_queue_completion(queue_dir, job, "preserved")
+    build_public_snapshot(overlay, queue_dir, catalog_root=ROOT / "catalog")
+
+    build = _load_build()
+    catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay)
+    out = tmp_path / "dist"
+    assert build.build(out, catalog=catalog) is True
+    first_done = json.loads((out / "data" / "pipeline.json").read_text(encoding="utf-8"))["queue"]["done"]
+
+    for _ in range(2):
+        queue.enqueue(
+            QueueJob(
+                kind="site_build",
+                document_id=None,
+                source_url=None,
+                airport_lid=None,
+                state=None,
+            )
+        )
+        job = queue.claim()
+        assert job is not None
+        queue.complete(job)
+        record_queue_completion(queue_dir, job, "ok")
+    build_public_snapshot(overlay, queue_dir, catalog_root=ROOT / "catalog")
+    overlay_pipeline = json.loads((overlay / "pipeline.json").read_text(encoding="utf-8"))
+    assert overlay_pipeline["queue"]["done"] > first_done
+
+    assert build.build(out, catalog=catalog, scope=scope_about()) is True
+    about = (out / "about" / "index.html").read_text(encoding="utf-8")
+    published = json.loads((out / "data" / "pipeline.json").read_text(encoding="utf-8"))
+    assert published == overlay_pipeline
+    assert str(overlay_pipeline["queue"]["done"]) in about
+
+
 def test_build_partial_index_only(tmp_path: Path) -> None:
     from catalog.seed import seed_catalog
     from pipeline.site_scope import BuildScope

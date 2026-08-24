@@ -32,7 +32,7 @@ from pipeline.stages import review_after_snapshot, review_after_vet
 from pipeline.lock import worker_lock
 from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
-from pipeline.pipeline_status import build_public_snapshot, record_job
+from pipeline.pipeline_status import build_public_snapshot, record_job, record_queue_completion
 from pipeline.queue import MAX_ATTEMPTS, JobQueue, JobRetry, QueueJob
 from pipeline.boot_jobs import BOOT_JOB_KINDS, MAINTENANCE_JOB_KINDS, enqueue_pipeline_snapshot, enqueue_post_overlay_refresh
 from pipeline.refresh import ROOT, overlay_dir_from_env
@@ -686,6 +686,17 @@ def process_vet(
     return review
 
 
+def _touch_job_status(queue: JobQueue, overlay_dir: Path, job: QueueJob, status: str) -> None:
+    try:
+        record_job(overlay_dir, job, status)
+    except Exception:
+        log.exception("pipeline status failed job=%s", job.id)
+    try:
+        record_queue_completion(queue.root, job, status)
+    except Exception:
+        log.exception("queue completion record failed job=%s", job.id)
+
+
 def _run_claimed_job(
     queue: JobQueue,
     job: QueueJob,
@@ -697,53 +708,36 @@ def _run_claimed_job(
     if job.kind == "check":
         status = process_check(job, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
-        try:
-            record_job(overlay_dir, job, status)
-        except Exception:
-            log.exception("pipeline status failed job=%s", job.id)
+        _touch_job_status(queue, overlay_dir, job, status)
         return status in {"dead", "moved", "live"}
     if job.kind == "site_build":
         status = process_site_build(job)
         _observe_job(overlay_dir, job, status)
-        try:
-            record_job(overlay_dir, job, status)
-        except Exception:
-            log.exception("pipeline status failed job=%s", job.id)
+        _touch_job_status(queue, overlay_dir, job, status)
         return False
     if job.kind in MAINTENANCE_JOB_KINDS and job.kind != "site_build":
         status = _run_maintenance_job(job, overlay_dir, queue.root, catalog_root)
         _observe_job(overlay_dir, job, status)
-        try:
-            record_job(overlay_dir, job, status)
-        except Exception:
-            log.exception("pipeline status failed job=%s", job.id)
+        _touch_job_status(queue, overlay_dir, job, status)
         return False
     if job.kind == "explore":
         status = process_explore(job, files_dir, overlay_dir, catalog_root, queue)
         _observe_job(overlay_dir, job, status)
-        try:
-            record_job(overlay_dir, job, status)
-        except Exception:
-            log.exception("pipeline status failed job=%s", job.id)
+        _touch_job_status(queue, overlay_dir, job, status)
         return False
     if job.kind == "vet":
         status = process_vet(job, files_dir, overlay_dir, catalog_root)
         _observe_job(overlay_dir, job, status)
-        try:
-            record_job(overlay_dir, job, status)
-        except Exception:
-            log.exception("pipeline status failed job=%s", job.id)
+        _touch_job_status(queue, overlay_dir, job, status)
         return status in {"auto_pass", "published"}
     if job.kind != "fetch":
         log.info("skip unsupported job kind %s", job.kind)
         _observe_job(overlay_dir, job, "skipped")
+        _touch_job_status(queue, overlay_dir, job, "skipped")
         return False
     status = process_fetch(job, files_dir, overlay_dir, catalog_root, queue=queue)
     _observe_job(overlay_dir, job, status)
-    try:
-        record_job(overlay_dir, job, status)
-    except Exception:
-        log.exception("pipeline status failed job=%s", job.id)
+    _touch_job_status(queue, overlay_dir, job, status)
     if status != "preserved":
         return False
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
@@ -775,7 +769,7 @@ def _execute_claimed(
             )
             try:
                 _observe_job(overlay_dir, job, "needs_human")
-                record_job(overlay_dir, job, "needs_human")
+                _touch_job_status(queue, overlay_dir, job, "needs_human")
                 _reply(job, "needs_human", None)
             except Exception:
                 log.exception("intake reply failed after giving up")

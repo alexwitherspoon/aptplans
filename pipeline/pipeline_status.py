@@ -17,6 +17,7 @@ from pipeline.search_scope import parse_search_states, scoped_overlay_airports
 STATUS_NAME = "pipeline_status.json"
 PUBLIC_NAME = "pipeline.json"
 DISCOVERY_CURSOR_NAME = "discovery_cursor.json"
+LAST_COMPLETED_NAME = "last_completed.json"
 
 STAGES = AIRPORT_COVERAGE_STAGES
 
@@ -142,6 +143,32 @@ def _host(url: str | None) -> str:
     if not url or not url.startswith("http"):
         return ""
     return urlparse(url).netloc or ""
+
+
+def record_queue_completion(queue_dir: Path, job: QueueJob, status: str, *, at: str | None = None) -> None:
+    """Remember the last queue job that finished (not per-airport touch history)."""
+    stamp = at or utc_now()
+    path = queue_dir / LAST_COMPLETED_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "at": stamp,
+        "kind": job.kind,
+        "airport_lid": _normalize_lid(job.airport_lid) or None,
+        "status": status,
+        "job_id": job.id,
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def load_last_queue_completion(queue_dir: Path) -> dict:
+    path = queue_dir / LAST_COMPLETED_NAME
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def record_job(
@@ -302,11 +329,11 @@ def _job_public(job: QueueJob) -> dict:
     }
 
 
-NEXT_QUEUE_AIRPORTS = 10
+NEXT_QUEUE_JOBS = 10
 
 
-def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_AIRPORTS) -> list[QueueJob]:
-    """Next airports in the pending queue, one row per LID in FIFO order."""
+def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_JOBS) -> list[QueueJob]:
+    """Next jobs in the pending queue. Airport jobs dedupe by LID; maintenance jobs keep FIFO."""
     rows: list[QueueJob] = []
     seen_lids: set[str] = set()
     for path in sorted(queue.pending.glob("*.json")):
@@ -315,9 +342,10 @@ def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_AIRPORTS) -> li
         except (OSError, json.JSONDecodeError, TypeError, KeyError):
             continue
         lid = _normalize_lid(job.airport_lid)
-        if not lid or lid in seen_lids:
-            continue
-        seen_lids.add(lid)
+        if lid:
+            if lid in seen_lids:
+                continue
+            seen_lids.add(lid)
         rows.append(job)
         if len(rows) >= limit:
             break
@@ -345,13 +373,22 @@ def _queue_snapshot(queue_dir: Path) -> dict:
     }
 
 
-def _coverage_stats(overlay_dir: Path, catalog_root: Path) -> dict[str, int]:
+def _coverage_stats(
+    overlay_dir: Path,
+    catalog_root: Path,
+    *,
+    states: frozenset[str] | None = None,
+) -> dict[str, int]:
     rows = load_status(overlay_dir)
     stats = {stage: 0 for stage in STAGES}
-    catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
-    for airport in catalog.airports:
+    if states is not None:
+        lids = [airport.lid for airport in scoped_overlay_airports(overlay_dir, states=states)]
+    else:
+        catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
+        lids = [airport.lid for airport in catalog.airports]
+    for lid in lids:
         stage = coverage_stage(
-            airport.lid,
+            lid,
             overlay_dir=overlay_dir,
             catalog_root=catalog_root,
             status_rows=rows,
@@ -384,14 +421,22 @@ def build_public_snapshot(
     states = parse_search_states()
     scoped = scoped_overlay_airports(overlay_dir, states=states)
     status_rows = load_status(overlay_dir)
-    last_lid = ""
-    last_at = ""
-    for lid, row in status_rows.items():
-        at = row.get("last_job_at") or ""
-        if at >= last_at:
-            last_at = at
-            last_lid = lid
-    last_row = status_rows.get(last_lid) or {}
+    last_job = load_last_queue_completion(queue_dir)
+    if not last_job.get("at"):
+        last_lid = ""
+        last_at = ""
+        for lid, row in status_rows.items():
+            at = row.get("last_job_at") or ""
+            if at >= last_at:
+                last_at = at
+                last_lid = lid
+        last_row = status_rows.get(last_lid) or {}
+        last_job = {
+            "at": last_at or None,
+            "airport_lid": last_lid or None,
+            "kind": last_row.get("last_job_kind"),
+            "status": last_row.get("last_job_status"),
+        }
     payload = {
         "generated_at": utc_now(),
         "queue": queue["counts"],
@@ -403,12 +448,12 @@ def build_public_snapshot(
             "scope_states": sorted(states) if states else ["*"],
             "scoped_airports": len(scoped),
         },
-        "coverage": _coverage_stats(overlay_dir, catalog_root),
+        "coverage": _coverage_stats(overlay_dir, catalog_root, states=states),
         "last_job": {
-            "at": last_at or None,
-            "airport_lid": last_lid or None,
-            "kind": last_row.get("last_job_kind"),
-            "status": last_row.get("last_job_status"),
+            "at": last_job.get("at"),
+            "airport_lid": last_job.get("airport_lid"),
+            "kind": last_job.get("kind"),
+            "status": last_job.get("status"),
         },
     }
     dest = public_path(overlay_dir)
