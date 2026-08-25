@@ -75,7 +75,9 @@ def test_domain_cutover_is_explicit_and_offline() -> None:
     script = DOMAIN_CUTOVER.read_text(encoding="utf-8")
     assert "domain_cutover" in workflow
     assert "domain-cutover.sh" in workflow
-    assert "stop worker review site" in script
-    assert "pre-domain-${STAMP}" in script
+    assert "--reset-preproduction" in workflow
+    assert "down --remove-orphans" in script
+    assert "Resetting disposable domain" in script
+    assert "--state OR" in script
     assert "--confirm-preproduction-cutover" in script
     assert "run_site_build" in script

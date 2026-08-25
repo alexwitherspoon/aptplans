@@ -218,7 +218,8 @@ jobs:
           ssh ${DEPLOY_SSH_OPTS} -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
           if [ "${{ inputs.domain_cutover || false }}" = "true" ]; then
-            sudo /opt/aptplans/scripts/host/domain-cutover.sh
+            sudo /opt/aptplans/scripts/host/domain-cutover.sh \
+              --reset-preproduction
           else
             sudo /opt/aptplans/scripts/host/remote-deploy.sh
           fi

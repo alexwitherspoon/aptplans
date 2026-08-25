@@ -76,14 +76,15 @@ Host layout:
 
 Do not deploy the domain ledger, review readers, and release paths independently.
 Dispatch the **Deploy** workflow with `domain_cutover` enabled. The guarded
-cutover stops all writers and readers, saves offline copies of both ledgers and
-the overlay under `/var/backups/aptplans`, imports strictly, builds the first
-complete generation, and restarts the stack.
+cutover stops the stack, discards the disposable domain, control, release, and
+search state, imports the Oregon subset strictly, builds the first complete
+generation, and restarts the stack. Preserved source bytes and extraction
+manifests remain private and are not part of the reset.
 
 The equivalent origin command is:
 
 ```bash
-sudo /opt/aptplans/scripts/host/domain-cutover.sh
+sudo /opt/aptplans/scripts/host/domain-cutover.sh --reset-preproduction
 ```
 
 The import rejects malformed JSON, duplicate entity keys, and ambiguous grant identities before committing. Keep the old entity JSONL files unchanged through the observation window; production readers and writers do not fall back to them.

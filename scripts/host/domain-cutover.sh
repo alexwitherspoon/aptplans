@@ -8,9 +8,11 @@ APP_USER="${APP_USER:-aptplans}"
 ENV_FILE="/home/${APP_USER}/.env.production"
 ENV_SECRETS="/home/${APP_USER}/.env.secrets"
 ENV_SEARCH="/home/${APP_USER}/.env.search"
-BACKUP_ROOT="/var/backups/aptplans"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-BACKUP_DIR="${BACKUP_ROOT}/pre-domain-${STAMP}"
+
+if [ "${1:-}" != "--reset-preproduction" ]; then
+    echo "refusing destructive reset without --reset-preproduction" >&2
+    exit 2
+fi
 
 COMPOSE=(
     docker compose
@@ -27,26 +29,28 @@ COMPOSE+=(
     -f "${REPO_ROOT}/docker/docker-compose.prod.yml"
 )
 
-echo "Stopping domain writers and readers"
-"${COMPOSE[@]}" stop worker review site
+echo "Stopping the pre-production stack"
+"${COMPOSE[@]}" down --remove-orphans
 
-echo "Saving offline pre-cutover state in ${BACKUP_DIR}"
-install -d -m 0750 "${BACKUP_DIR}"
-if [ -f /var/lib/aptplans/queue/jobs.sqlite3 ]; then
-    cp --preserve=mode,timestamps \
-        /var/lib/aptplans/queue/jobs.sqlite3* "${BACKUP_DIR}/"
-fi
-if [ -f /var/lib/aptplans/control/control.sqlite3 ]; then
-    cp --preserve=mode,timestamps \
-        /var/lib/aptplans/control/control.sqlite3* "${BACKUP_DIR}/"
-fi
-tar -C /var/lib/aptplans -czf "${BACKUP_DIR}/catalog.tgz" catalog
+echo "Resetting disposable domain, control, release, and search state"
+rm -rf \
+    /var/lib/aptplans/queue \
+    /var/lib/aptplans/control \
+    /var/lib/aptplans/releases \
+    /var/lib/aptplans/search
+install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" \
+    /var/lib/aptplans/queue \
+    /var/lib/aptplans/releases \
+    /var/lib/aptplans/search
+install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" \
+    /var/lib/aptplans/control
 
-echo "Importing legacy catalog into the domain ledger"
+echo "Importing the Oregon catalog into a clean domain ledger"
 "${COMPOSE[@]}" run --rm --no-deps worker \
     python3 -m pipeline.domain_cutover \
     /var/lib/aptplans/catalog \
     --queue-dir /var/lib/aptplans/queue \
+    --state OR \
     --confirm-preproduction-cutover
 
 echo "Building the first complete domain release"

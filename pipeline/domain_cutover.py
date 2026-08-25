@@ -44,11 +44,24 @@ def _read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
+def _in_state_scope(row: dict, state: str, airport_lids: set[str]) -> bool:
+    row_state = str(row.get("state") or "").strip().upper()
+    if row_state:
+        return row_state == state
+    lid = str(
+        row.get("airport_lid")
+        or row.get("lid")
+        or ""
+    ).strip().upper()
+    return bool(lid) and lid in airport_lids
+
+
 def import_overlays(
     overlay_dir: Path,
     ledger_root: Path,
     *,
     confirmed_preproduction: bool,
+    state_scope: str | None = None,
 ) -> dict:
     if not confirmed_preproduction:
         raise ValueError("cutover requires --confirm-preproduction-cutover")
@@ -56,10 +69,28 @@ def import_overlays(
     current_id = store.current_generation_id()
     current = store.snapshot(current_id) if current_id is not None else None
 
+    state_scope = (state_scope or "").strip().upper() or None
+    source_rows = {
+        filename: _read_jsonl(overlay_dir / filename)
+        for filename in ENTITY_FILES
+    }
+    airport_lids = {
+        str(row.get("lid") or "").strip().upper()
+        for row in source_rows["airports.jsonl"]
+        if not state_scope
+        or str(row.get("state") or "").strip().upper() == state_scope
+    }
+
     updates: dict[tuple[str, str], dict] = {}
     expected_counts: dict[str, int] = {}
     for filename, (entity_type, key_field) in ENTITY_FILES.items():
-        rows = _read_jsonl(overlay_dir / filename)
+        rows = source_rows[filename]
+        if state_scope:
+            rows = [
+                row
+                for row in rows
+                if _in_state_scope(row, state_scope, airport_lids)
+            ]
         expected_counts[entity_type] = len(rows)
         seen: set[str] = set()
         for row in rows:
@@ -79,6 +110,15 @@ def import_overlays(
         ):
             raise ValueError("datasets.json: invalid dataset catalog")
         dataset_state = dict(payload.get("datasets") or {})
+        if state_scope:
+            for entity_type, count in expected_counts.items():
+                if entity_type not in dataset_state:
+                    continue
+                dataset_state[entity_type] = {
+                    **dataset_state[entity_type],
+                    "rows": count,
+                    "scope": {"state": state_scope},
+                }
 
     if current is not None and current.entities:
         if current.entities != updates:
@@ -96,6 +136,12 @@ def import_overlays(
     audit_counts: dict[str, int] = {}
     for filename, stream in AUDIT_FILES.items():
         rows = _read_jsonl(overlay_dir / filename)
+        if state_scope:
+            rows = [
+                row
+                for row in rows
+                if _in_state_scope(row, state_scope, airport_lids)
+            ]
         for index, row in enumerate(rows, start=1):
             store.append_audit(
                 stream,
@@ -117,6 +163,7 @@ def import_overlays(
         "generation_id": snapshot.generation_id,
         "entities": actual_counts,
         "audit": audit_counts,
+        "state_scope": state_scope,
     }
 
 
@@ -124,12 +171,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("overlay_dir", type=Path)
     parser.add_argument("--queue-dir", type=Path)
+    parser.add_argument("--state")
     parser.add_argument("--confirm-preproduction-cutover", action="store_true")
     args = parser.parse_args()
     result = import_overlays(
         args.overlay_dir,
         queue_dir_from_env(args.queue_dir),
         confirmed_preproduction=args.confirm_preproduction_cutover,
+        state_scope=args.state,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

@@ -77,3 +77,54 @@ def test_cutover_requires_explicit_confirmation(tmp_path: Path) -> None:
             tmp_path / "ledger",
             confirmed_preproduction=False,
         )
+
+
+def test_cutover_can_initialize_one_state_only(tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    _write(
+        overlay / "airports.jsonl",
+        [
+            {"lid": "PDX", "state": "OR"},
+            {"lid": "SEA", "state": "WA"},
+        ],
+    )
+    _write(
+        overlay / "documents.jsonl",
+        [
+            {"id": "pdx-plan", "airport_lid": "PDX"},
+            {"id": "sea-plan", "airport_lid": "SEA"},
+        ],
+    )
+    _write(
+        overlay / "grants.jsonl",
+        [
+            {"grant_number": "OR-1", "airport_lid": "PDX"},
+            {"grant_number": "WA-1", "airport_lid": "SEA"},
+        ],
+    )
+    _write(
+        overlay / "outcomes.jsonl",
+        [
+            {"job_id": "or-job", "state": "OR"},
+            {"job_id": "wa-job", "state": "WA"},
+        ],
+    )
+    result = import_overlays(
+        overlay,
+        tmp_path / "ledger",
+        confirmed_preproduction=True,
+        state_scope="or",
+    )
+    assert result["state_scope"] == "OR"
+    assert result["entities"]["airports"] == 1
+    assert result["entities"]["documents"] == 1
+    assert result["entities"]["grants"] == 1
+    snapshot = DomainStore(tmp_path / "ledger").snapshot(
+        result["generation_id"]
+    )
+    assert snapshot.get("airports", "PDX") is not None
+    assert snapshot.get("airports", "SEA") is None
+    assert DomainStore(tmp_path / "ledger").audit_records("outcomes") == [
+        {"job_id": "or-job", "state": "OR"}
+    ]
