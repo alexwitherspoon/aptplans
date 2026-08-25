@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "oregon-substrate-v1",
+  "frozen_at": "2026-08-24",
+  "state": "OR",
+  "scope": "Milestone 2 clean-cutover regression; not Oregon product completeness",
+  "network_policy": "forbidden",
+  "model_policy": "forbidden",
+  "repeat_clean_runs": 2,
+  "reference_inputs": [
+    {
+      "path": "cases.json",
+      "bytes": 27214,
+      "sha256": "cfbeb52dd37338b317d9c79339667f09208053a736132812dae8f43501f337a2",
+      "purpose": "Oregon airport and official-document identity"
+    },
+    {
+      "path": "states.json",
+      "bytes": 8752,
+      "sha256": "ff62a283bfc295ee4da72adbe0bafa864634823e05dfb334f5f39fb743a147b8",
+      "purpose": "Static state release input"
+    },
+    {
+      "path": "statutes.json",
+      "bytes": 3056,
+      "sha256": "7112b5d2e2f794e09c99b9c2d583be85febe45e294a290e04a1355b009e22770",
+      "purpose": "Immutable reference documents"
+    },
+    {
+      "path": "files/4s9-hub-sharepoint.html",
+      "bytes": 101354,
+      "sha256": "e91a0c60790bd7ba2092fbec7057ba9ee8ef5ca7c1c612d0323986387f853558",
+      "purpose": "Oregon structured discovery HTML"
+    },
+    {
+      "path": "files/4s2-hub.html",
+      "bytes": 104152,
+      "sha256": "b968f0d4e36dbf58e44df936f0284d7861a7099c6ed627b23291b821116594b5",
+      "purpose": "Oregon airport-plan discovery HTML"
+    },
+    {
+      "path": "files/hio-hub.html",
+      "bytes": 48275,
+      "sha256": "22eeb7a150669b1ade94835bd1837b8d2eafa59050cdb68c4a1ddf2ed15b3fb5",
+      "purpose": "Oregon split-plan discovery HTML"
+    },
+    {
+      "path": "files/pdx-microsite.html",
+      "bytes": 63953,
+      "sha256": "8c1ba78551f7bb1d44447f92106bc06abd37c937352bf7df8971b2655434dc54",
+      "purpose": "Oregon large-hub planning microsite"
+    }
+  ],
+  "airports": ["PDX", "TTD", "4S9", "4S2"],
+  "artifacts": [
+    {
+      "id": "4s9-strategic-analysis",
+      "document_id": "4s9-2008-strategic-analysis",
+      "path": "files/4s9-2008-strategic-analysis.pdf",
+      "sha256": "18e40554c36db6f20fd28e7a8b9ba3bcfe9dc182c798b0ea630a544f2336f3e5",
+      "bytes": 415449,
+      "modality": "split_chapter_pdf",
+      "extract_full_only": {
+        "pages": 16,
+        "minimum_characters": 44000,
+        "required_phrases": ["mulino airport", "strategic analysis"]
+      }
+    },
+    {
+      "id": "4s9-inventory-born-digital",
+      "document_id": "4s9-2008-inventory",
+      "path": "files/4s9-2008-inventory.pdf",
+      "sha256": "1afc41dce1e9f2f1dd1309ebd58388017bf559d1273ea65be403edc21f0b7d89",
+      "bytes": 141617,
+      "modality": "born_digital_pdf",
+      "extract": {
+        "pages": 16,
+        "minimum_characters": 45000,
+        "required_phrases": ["mulino airport", "airport master plan"]
+      }
+    },
+    {
+      "id": "4s9-facility-requirements",
+      "document_id": "4s9-2008-facility-requirements",
+      "path": "files/4s9-2008-facility-requirements.pdf",
+      "sha256": "7663c9f42ac188533dae962303889c53299fc7e8a2a063c0a6f1c5da118c8fe2",
+      "bytes": 146569,
+      "modality": "split_chapter_pdf",
+      "extract_full_only": {
+        "pages": 16,
+        "minimum_characters": 41000,
+        "required_phrases": ["mulino airport", "facility requirements"]
+      }
+    },
+    {
+      "id": "4s9-alternatives",
+      "document_id": "4s9-2008-alternatives",
+      "path": "files/4s9-2008-alternatives.pdf",
+      "sha256": "1d5db7d230201b59de8a9dcd1d916a0dca78cfd05e960aeeb3df13d4f9d60857",
+      "bytes": 171142,
+      "modality": "split_chapter_pdf",
+      "extract_full_only": {
+        "pages": 20,
+        "minimum_characters": 46000,
+        "required_phrases": ["mulino airport", "airport development alternatives"]
+      }
+    },
+    {
+      "id": "4s2-bound-plan-chapters",
+      "document_id": "4s2-2018-chapters-1-4",
+      "path": "files/4s2-2018-chapters-1-4.pdf",
+      "sha256": "f04b6310e843aab44537545e39b7d1be97f5ea3056a37512f3a3870672d427d6",
+      "bytes": 7988410,
+      "modality": "bound_plan_pdf",
+      "extract_full_only": {
+        "pages": 121,
+        "minimum_characters": 250000,
+        "required_phrases": ["ken jernstedt airfield", "airport master plan"]
+      }
+    },
+    {
+      "id": "4s2-alp-drawing",
+      "document_id": "4s2-2018-alp-sheet",
+      "path": "files/4s2-2018-alp-sheet.pdf",
+      "sha256": "44cb5600718f96b2172dff552fb8d6a4619ff9840a1e59ce49534621a901bbd8",
+      "bytes": 797180,
+      "modality": "alp_drawing_pdf",
+      "extract": {
+        "pages": 1,
+        "minimum_characters": 4000,
+        "required_phrases": [
+          "ken jernstedt",
+          "airport layout plan",
+          "port of hood river"
+        ]
+      }
+    },
+    {
+      "id": "ttd-integrated-master-plan",
+      "document_id": "ttd-2016-shaping-our-future",
+      "path": "files/ttd-2016-shaping-our-future.pdf",
+      "sha256": "93675e6824939ec7087454d8df38f4cb8509486c6ed028a49095b9835f9580cf",
+      "bytes": 5800988,
+      "modality": "born_digital_pdf",
+      "extract": {
+        "pages": 86,
+        "minimum_characters": 175000,
+        "required_phrases": [
+          "troutdale airport master plan",
+          "airport layout plan"
+        ]
+      }
+    },
+    {
+      "id": "pdx-large-plan-volume",
+      "document_id": "pdx-2045-existing-conditions",
+      "path": "files/pdx-2045-existing-conditions.pdf",
+      "sha256": "833467cc93becf28d274bd3f72463b3ffe149e789294f7d3097487b01d52cd0e",
+      "bytes": 40048799,
+      "modality": "large_born_digital_pdf",
+      "extract_full_only": {
+        "pages": 137,
+        "minimum_characters": 270000,
+        "required_phrases": [
+          "pdx 2045",
+          "existing conditions",
+          "portland international airport"
+        ]
+      }
+    }
+  ],
+  "funding_expectations": {
+    "state_budget_id": "or-odav-lab-2025-27",
+    "state_budget_total": 45874157,
+    "state_budget_program_total": 45874157,
+    "state_budget_fund_total": 45874157,
+    "pdx_grant_count": 8,
+    "pdx_award_total": 61876159,
+    "pdx_obligation_total": 61930253,
+    "pdx_outlay_total": 30839446
+  },
+  "required_modalities": {
+    "born_digital_pdf": "covered",
+    "bound_plan_pdf": "covered_full_only",
+    "split_chapter_pdf": "covered_full_only",
+    "alp_drawing_pdf": "covered",
+    "large_born_digital_pdf": "covered_full_only",
+    "scanned_pdf_ocr": "missing",
+    "official_budget_table": "normalized_fixture_only",
+    "official_grant_spreadsheet": "normalized_fixture_only"
+  },
+  "claims": {
+    "milestone_2_clean_cutover_rerun": "passed",
+    "oregon_complete": false,
+    "milestone_4_oregon_vertical_proof": "blocked",
+    "milestone_5_statewide_expansion": "blocked",
+    "milestone_6_completion_contract": "blocked"
+  },
+  "known_gaps": [
+    "No frozen Oregon scanned-plan artifact exercises OCR.",
+    "The Oregon budget source is represented by reviewed normalized rows, not frozen source-table bytes.",
+    "FAA grant workbooks are represented by reviewed normalized rows, not a frozen source spreadsheet.",
+    "Self-hosted model quality and latency require an origin-hardware benchmark and are not a CI gate."
+  ]
+}

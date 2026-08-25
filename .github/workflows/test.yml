@@ -17,3 +17,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Tests
         run: make ci
+      - name: Oregon clean-cutover benchmark
+        timeout-minutes: 15
+        env:
+          OREGON_BENCHMARK_REPORT: /tmp/oregon-benchmark.json
+        run: make oregon-benchmark
