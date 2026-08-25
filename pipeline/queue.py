@@ -67,6 +67,22 @@ def _lease_seconds(value: int | None = None) -> int:
 
 
 def _connect(path: Path) -> sqlite3.Connection:
+    read_only = (
+        path.name == "jobs.sqlite3"
+        and os.environ.get("APTPLANS_JOB_LEDGER_READ_ONLY") == "1"
+    )
+    if read_only:
+        connection = sqlite3.connect(
+            f"file:{path}?mode=ro",
+            uri=True,
+            timeout=30.0,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=30.0, isolation_level=None)
     connection.row_factory = sqlite3.Row
@@ -169,6 +185,48 @@ def _payload(job: QueueJob) -> str:
     return json.dumps(job.to_dict(), ensure_ascii=True, separators=(",", ":"))
 
 
+def _continuation_key(job: QueueJob) -> str:
+    if job.dedupe_key:
+        return job.dedupe_key
+    parts = (
+        job.kind,
+        job.document_id,
+        job.source_url,
+        _normalize_lid(job.airport_lid),
+        job.requested_review_status,
+        job.expected_content_sha256,
+        job.report_type,
+        job.suggested_kind,
+    )
+    return "|".join("" if value is None else str(value) for value in parts)
+
+
+def _event(
+    connection: sqlite3.Connection,
+    event_type: str,
+    *,
+    job_id: str | None,
+    attempt_number: int | None = None,
+    actor: str = "system",
+    details: dict | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO job_events(
+            job_id, attempt_number, event_type, actor, occurred_at, details_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_id,
+            attempt_number,
+            event_type,
+            actor,
+            _utc_now(),
+            json.dumps(details or {}, ensure_ascii=True, separators=(",", ":")),
+        ),
+    )
+
+
 def _job_from_row(row: sqlite3.Row) -> QueueJob:
     data = json.loads(row["payload_json"])
     data.update(
@@ -197,8 +255,9 @@ class JobQueue:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.path = self.root / "jobs.sqlite3"
-        with _connect(self.path) as connection:
-            _migrate(connection, "jobs")
+        if os.environ.get("APTPLANS_JOB_LEDGER_READ_ONLY") != "1":
+            with _connect(self.path) as connection:
+                _migrate(connection, "jobs")
 
     def _connection(self) -> sqlite3.Connection:
         return _connect(self.path)
@@ -212,6 +271,14 @@ class JobQueue:
         )
 
     def enqueue(self, job: QueueJob) -> QueueJob:
+        if job.parent_job_id:
+            parent_job_id = job.parent_job_id
+            self.defer(parent_job_id, job)
+            self.materialize_continuations(parent_job_id)
+            return job
+        return self._enqueue_now(job)
+
+    def _enqueue_now(self, job: QueueJob) -> QueueJob:
         now = _utc_now()
         job.airport_lid = _normalize_lid(job.airport_lid)
         job.priority = self._priority(job)
@@ -248,6 +315,13 @@ class JobQueue:
                         job.created_at,
                         now,
                     ),
+                )
+                _event(
+                    connection,
+                    "enqueued",
+                    job_id=job.id,
+                    actor=job.requested_by or "scheduler",
+                    details={"kind": job.kind, "priority": job.priority},
                 )
                 connection.execute("COMMIT")
                 return job
@@ -391,6 +465,129 @@ class JobQueue:
             if cursor.rowcount != 1:
                 raise RuntimeError(f"pending job unavailable: {job.id}")
 
+    def defer(self, parent_job_id: str, child: QueueJob) -> bool:
+        """Persist a child specification without making it claimable."""
+        now = _utc_now()
+        child.parent_job_id = parent_job_id
+        key = _continuation_key(child)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            parent = connection.execute(
+                "SELECT state FROM jobs WHERE id=?",
+                (parent_job_id,),
+            ).fetchone()
+            if parent is None:
+                connection.execute("ROLLBACK")
+                raise ValueError(f"unknown continuation parent: {parent_job_id}")
+            if parent["state"] == "dead":
+                connection.execute("ROLLBACK")
+                return False
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO continuations(
+                    parent_job_id, dedupe_key, child_payload_json, created_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (parent_job_id, key, _payload(child), now),
+            )
+            if cursor.rowcount:
+                _event(
+                    connection,
+                    "continuation_deferred",
+                    job_id=parent_job_id,
+                    details={"child_id": child.id, "child_kind": child.kind},
+                )
+            connection.execute("COMMIT")
+        return bool(cursor.rowcount)
+
+    def materialize_continuations(self, parent_job_id: str | None = None) -> int:
+        """Materialize children only after the parent success is committed."""
+        clauses = ["c.state='pending'", "p.state='succeeded'"]
+        values: list[object] = []
+        if parent_job_id is not None:
+            clauses.append("c.parent_job_id=?")
+            values.append(parent_job_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT c.seq, c.parent_job_id, c.child_payload_json
+                FROM continuations c
+                JOIN jobs p ON p.id=c.parent_job_id
+                WHERE """
+                + " AND ".join(clauses)
+                + " ORDER BY c.seq",
+                values,
+            ).fetchall()
+        materialized = 0
+        for row in rows:
+            child = QueueJob.from_dict(json.loads(row["child_payload_json"]))
+            child.parent_job_id = None
+            existing = self.get(child.id)
+            if existing is None and child.kind == "site_build":
+                from pipeline.site_build import enqueue_site_build
+                from pipeline.site_scope import scope_from_job
+
+                enqueue_site_build(self.root, scope=scope_from_job(child))
+                existing = self.pending_job("site_build")
+                if existing is None:
+                    active = self.jobs(state="active", kind="site_build")
+                    existing = active[0] if active else None
+            elif existing is None:
+                existing = self._enqueue_now(child)
+            child_job_id = existing.id if existing is not None else child.id
+            now = _utc_now()
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """
+                    UPDATE continuations SET state='materialized',
+                        child_job_id=?, materialized_at=?
+                    WHERE seq=? AND state='pending'
+                    """,
+                    (child_job_id, now, row["seq"]),
+                )
+                if cursor.rowcount:
+                    _event(
+                        connection,
+                        "continuation_materialized",
+                        job_id=row["parent_job_id"],
+                        details={
+                            "child_id": child_job_id,
+                            "child_kind": child.kind,
+                        },
+                    )
+                    materialized += 1
+                connection.execute("COMMIT")
+        return materialized
+
+    def continuation_counts(self) -> dict[str, int]:
+        result = {"pending": 0, "materialized": 0, "cancelled": 0}
+        with self._connection() as connection:
+            for row in connection.execute(
+                "SELECT state, COUNT(*) AS n FROM continuations GROUP BY state"
+            ):
+                result[str(row["state"])] = int(row["n"])
+        return result
+
+    def events(self, job_id: str) -> list[dict]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_type, actor, occurred_at, details_json
+                FROM job_events WHERE job_id=? ORDER BY seq
+                """,
+                (job_id,),
+            ).fetchall()
+        return [
+            {
+                "event_type": row["event_type"],
+                "actor": row["actor"],
+                "occurred_at": row["occurred_at"],
+                "details": json.loads(row["details_json"]),
+            }
+            for row in rows
+        ]
+
     def _recover_expired(
         self,
         connection: sqlite3.Connection,
@@ -411,6 +608,13 @@ class JobQueue:
                 WHERE job_id=? AND attempt_number=? AND finished_at IS NULL
                 """,
                 (now, row["id"], row["attempts"]),
+            )
+            _event(
+                connection,
+                "lease_expired",
+                job_id=row["id"],
+                attempt_number=int(row["attempts"]),
+                details={"reason": "worker lease expired"},
             )
         cursor = connection.execute(
             """
@@ -438,6 +642,7 @@ class JobQueue:
         worker_id: str | None = None,
         lease_seconds: int | None = None,
     ) -> QueueJob | None:
+        self.materialize_continuations()
         owner = worker_id or _worker_id()
         now = _utc_now()
         with self._connection() as connection:
@@ -452,6 +657,14 @@ class JobQueue:
                 )
                 """,
                 (now, now),
+            )
+            connection.execute(
+                """
+                UPDATE continuations SET state='cancelled'
+                WHERE state='pending' AND parent_job_id IN (
+                    SELECT id FROM jobs WHERE state='dead'
+                )
+                """
             )
             leased = connection.execute(
                 """
@@ -552,6 +765,14 @@ class JobQueue:
                 """,
                 (row["id"], attempts, owner, token, now, now),
             )
+            _event(
+                connection,
+                "claimed",
+                job_id=row["id"],
+                attempt_number=attempts,
+                actor=owner,
+                details={"lease_expires_at": expires},
+            )
             if airport_limit <= 1 and row["airport_lid"]:
                 connection.execute(
                     """
@@ -578,6 +799,7 @@ class JobQueue:
         expires = _after(_lease_seconds(lease_seconds))
         progress_json = json.dumps(progress, separators=(",", ":")) if progress else None
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
                 """
                 UPDATE jobs SET heartbeat_at=?, lease_expires_at=?,
@@ -587,6 +809,7 @@ class JobQueue:
                 (now, expires, progress_json, now, job.id, job.lease_token),
             )
             if cursor.rowcount != 1:
+                connection.execute("ROLLBACK")
                 raise RuntimeError(f"job lease lost: {job.id}")
             connection.execute(
                 """
@@ -596,6 +819,16 @@ class JobQueue:
                 """,
                 (now, progress_json, job.id, job.attempts, job.lease_token),
             )
+            if progress is not None:
+                _event(
+                    connection,
+                    "progress",
+                    job_id=job.id,
+                    attempt_number=job.attempts,
+                    actor=job.lease_owner or "worker",
+                    details=progress,
+                )
+            connection.execute("COMMIT")
         job.lease_expires_at = expires
         if progress is not None:
             job.progress = progress
@@ -611,6 +844,7 @@ class JobQueue:
 
     def complete(self, job: QueueJob) -> None:
         self._finish_attempt(job, state="succeeded", outcome="succeeded")
+        self.materialize_continuations(job.id)
 
     def dead_letter(self, job: QueueJob, *, error: str) -> None:
         self._finish_attempt(job, state="dead", outcome="dead", error=error)
@@ -655,6 +889,29 @@ class JobQueue:
                 """,
                 (now, outcome, error, job.id, job.attempts, job.lease_token),
             )
+            _event(
+                connection,
+                {
+                    "succeeded": "completed",
+                    "retry": "retry_scheduled",
+                    "dead": "dead_lettered",
+                }.get(outcome, outcome),
+                job_id=job.id,
+                attempt_number=job.attempts,
+                actor=job.lease_owner or "worker",
+                details={
+                    "error": error,
+                    "next_attempt_at": next_attempt_at,
+                },
+            )
+            if state == "dead":
+                connection.execute(
+                    """
+                    UPDATE continuations SET state='cancelled'
+                    WHERE parent_job_id=? AND state='pending'
+                    """,
+                    (job.id,),
+                )
             if job.airport_lid:
                 remaining = connection.execute(
                     """
@@ -691,12 +948,14 @@ class JobQueue:
 
     def backup(self, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
         with self._connection() as source:
-            target = sqlite3.connect(destination)
+            target = sqlite3.connect(temporary)
             try:
                 source.backup(target)
             finally:
                 target.close()
+        os.replace(temporary, destination)
         return destination
 
     def ingest_controls(self, controls: ControlQueue | None = None) -> int:
@@ -723,7 +982,7 @@ class ControlQueue:
     """API-writable command inbox kept separate from the worker job ledger."""
 
     def __init__(self, root: Path) -> None:
-        self.root = Path(root)
+        self.root = Path(os.environ.get("APTPLANS_CONTROL_QUEUE") or root)
         self.path = self.root / "control.sqlite3"
         with _connect(self.path) as connection:
             _migrate(connection, "control")
@@ -731,8 +990,33 @@ class ControlQueue:
     def _connection(self) -> sqlite3.Connection:
         return _connect(self.path)
 
+    @staticmethod
+    def _record_event(
+        connection: sqlite3.Connection,
+        command_id: str,
+        event_type: str,
+        *,
+        actor: str,
+        details: dict | None = None,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO control_events(
+                command_id, event_type, actor, occurred_at, details_json
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                command_id,
+                event_type,
+                actor,
+                _utc_now(),
+                json.dumps(details or {}, ensure_ascii=True, separators=(",", ":")),
+            ),
+        )
+
     def enqueue(self, job: QueueJob) -> QueueJob:
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """
                 INSERT INTO controls(
@@ -747,6 +1031,14 @@ class ControlQueue:
                     job.created_at,
                 ),
             )
+            self._record_event(
+                connection,
+                job.id,
+                "requested",
+                actor=job.requested_by or "operator",
+                details={"kind": job.kind},
+            )
+            connection.execute("COMMIT")
         return job
 
     def pending(self) -> list[dict]:
@@ -768,6 +1060,7 @@ class ControlQueue:
 
     def accept(self, command_id: str, worker_job_id: str) -> None:
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """
                 UPDATE controls SET state='accepted', accepted_at=?,
@@ -776,9 +1069,18 @@ class ControlQueue:
                 """,
                 (_utc_now(), worker_job_id, command_id),
             )
+            self._record_event(
+                connection,
+                command_id,
+                "accepted",
+                actor="worker",
+                details={"worker_job_id": worker_job_id},
+            )
+            connection.execute("COMMIT")
 
     def reject(self, command_id: str, error: str) -> None:
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """
                 UPDATE controls SET state='rejected', accepted_at=?, error=?
@@ -786,6 +1088,14 @@ class ControlQueue:
                 """,
                 (_utc_now(), error, command_id),
             )
+            self._record_event(
+                connection,
+                command_id,
+                "rejected",
+                actor="worker",
+                details={"error": error},
+            )
+            connection.execute("COMMIT")
 
     def counts(self) -> dict[str, int]:
         result = {"pending": 0, "accepted": 0, "rejected": 0}
@@ -796,6 +1106,68 @@ class ControlQueue:
                 result[str(row["state"])] = int(row["n"])
         return result
 
+    def events(self, command_id: str) -> list[dict]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_type, actor, occurred_at, details_json
+                FROM control_events WHERE command_id=? ORDER BY seq
+                """,
+                (command_id,),
+            ).fetchall()
+        return [
+            {
+                "event_type": row["event_type"],
+                "actor": row["actor"],
+                "occurred_at": row["occurred_at"],
+                "details": json.loads(row["details_json"]),
+            }
+            for row in rows
+        ]
+
+    def append_audit(
+        self,
+        stream: str,
+        payload: dict,
+        *,
+        event_key: str | None = None,
+    ) -> bool:
+        if stream not in {"classifications", "outcomes"}:
+            raise ValueError(f"unknown audit stream: {stream}")
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO audit_records(
+                    stream, event_key, occurred_at, payload_json
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    stream,
+                    event_key,
+                    _utc_now(),
+                    json.dumps(
+                        payload,
+                        ensure_ascii=True,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ),
+            )
+        return bool(cursor.rowcount)
+
+    def audit_records(self, stream: str) -> list[dict]:
+        if stream not in {"classifications", "outcomes"}:
+            raise ValueError(f"unknown audit stream: {stream}")
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json FROM audit_records
+                WHERE stream=? ORDER BY seq
+                """,
+                (stream,),
+            ).fetchall()
+        return [json.loads(row["payload_json"]) for row in rows]
+
     def integrity_check(self) -> str:
         with self._connection() as connection:
             row = connection.execute("PRAGMA integrity_check").fetchone()
@@ -803,10 +1175,12 @@ class ControlQueue:
 
     def backup(self, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
         with self._connection() as source:
-            target = sqlite3.connect(destination)
+            target = sqlite3.connect(temporary)
             try:
                 source.backup(target)
             finally:
                 target.close()
+        os.replace(temporary, destination)
         return destination

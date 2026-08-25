@@ -55,11 +55,23 @@ def enqueue_site_build(
     parent_job_id: str | None = None,
 ) -> bool:
     """Queue one HTML rebuild, merging scope into an existing pending job when possible."""
-    from catalog.seed import seed_catalog
-
     root = queue_dir_from_env(queue_dir)
     queue = JobQueue(root)
-    catalog = seed_catalog(ROOT / "catalog")
+    if parent_job_id is not None:
+        job = QueueJob(
+            kind="site_build",
+            document_id=None,
+            source_url=None,
+            airport_lid=None,
+            dedupe_key="maintenance:site_build",
+            retry_class="continuous",
+            parent_job_id=parent_job_id,
+        )
+        apply_scope_to_job(job, scope)
+        queued = queue.defer(parent_job_id, job)
+        if queued:
+            log.info("site_build deferred %s", _scope_log(scope))
+        return queued
     existing_scope, existing = pending_site_build_scope(queue)
     if existing is not None:
         merged = merge_scopes(existing_scope, scope)
@@ -73,12 +85,18 @@ def enqueue_site_build(
         queue.update_pending(existing)
         log.info("site_build scope widened to %s", _scope_log(merged))
         return True
+    active = queue.jobs(state="active", kind="site_build")
+    dedupe_key = (
+        f"maintenance:site_build:after:{active[0].id}"
+        if active
+        else "maintenance:site_build"
+    )
     job = QueueJob(
         kind="site_build",
         document_id=None,
         source_url=None,
         airport_lid=None,
-        dedupe_key="maintenance:site_build",
+        dedupe_key=dedupe_key,
         retry_class="continuous",
         parent_job_id=parent_job_id,
     )
@@ -98,6 +116,77 @@ def run_site_build(scope=None) -> str:
     if not builder.is_file():
         log.error("site builder missing: %s", builder)
         return "error"
+    if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        releases_root = os.environ.get("APTPLANS_RELEASES", "").strip()
+        if not releases_root:
+            log.error("generation release build requires APTPLANS_RELEASES")
+            return "error"
+        from catalog.seed import seed_catalog_snapshot
+        from pipeline.domain_store import DomainStore
+        from pipeline.public_files import reconcile_public_files
+        from pipeline.release_coordinator import ReleaseCoordinator
+        from pipeline.status import queue_dir_from_env
+
+        ledger_root = queue_dir_from_env()
+        domain = DomainStore(ledger_root)
+        domain_snapshot = domain.snapshot()
+        snapshot = seed_catalog_snapshot(ROOT / "catalog", domain_snapshot)
+        from pipeline.queue import _utc_now
+
+        audit_cutoff = _utc_now()
+
+        def build_release(staged_site: Path, staged_files: Path) -> None:
+            environment = dict(os.environ)
+            environment["APTPLANS_DOMAIN_GENERATION"] = snapshot.generation_id
+            environment["APTPLANS_AUDIT_CUTOFF"] = audit_cutoff
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-u",
+                    str(builder),
+                    "--out",
+                    str(staged_site),
+                    "--full",
+                ],
+                cwd=str(ROOT),
+                env=environment,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"site builder failed exit={result.returncode}")
+            reconcile_public_files(snapshot.catalog, public_dir=staged_files)
+
+        coordinator = ReleaseCoordinator(ledger_root, Path(releases_root))
+        coordinator.recover()
+        previous_id = coordinator.releases.current_generation_id()
+        if previous_id == snapshot.generation_id:
+            log.info("generation release unchanged generation=%s", snapshot.generation_id)
+            return "unchanged"
+        previous = (
+            seed_catalog_snapshot(ROOT / "catalog", domain.snapshot(previous_id))
+            if previous_id
+            else None
+        )
+        try:
+            coordinator.stage(
+                snapshot,
+                build_release,
+                metadata={
+                    "domain_generation_id": snapshot.generation_id,
+                    "domain_committed_at": snapshot.committed_at,
+                    "audit_cutoff": audit_cutoff,
+                },
+            )
+            coordinator.activate(snapshot, previous=previous)
+        except Exception:
+            log.exception("generation release failed generation=%s", snapshot.generation_id)
+            return "error"
+        log.info("generation release active generation=%s", snapshot.generation_id)
+        return "built"
     cmd = [sys.executable, "-u", str(builder), "--out", site_dir]
     if scope is None:
         cmd.append("--full")

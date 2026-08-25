@@ -96,6 +96,8 @@ def reconcile_public_files(
 
 
 def main() -> int:
+    if os.environ.get("APTPLANS_DOMAIN_STORE") == "1":
+        raise RuntimeError("domain mode public files activate through a full release")
     catalog = seed_catalog(ROOT / "catalog", overlay_dir=overlay_dir_from_env())
     result = reconcile_public_files(catalog)
     print(

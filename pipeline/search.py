@@ -40,8 +40,17 @@ SETTINGS = {
         "document_id",
         "summary",
         "text",
+        "_generation",
     ],
-    "filterableAttributes": ["type", "state", "kind", "completeness", "document_id", "outlook"],
+    "filterableAttributes": [
+        "type",
+        "state",
+        "kind",
+        "completeness",
+        "document_id",
+        "outlook",
+        "_generation",
+    ],
     "pagination": {"maxTotalHits": 100},
 }
 
@@ -244,51 +253,56 @@ def document_from_updates(updates: dict) -> Document:
     )
 
 
-def ensure_index() -> None:
+def ensure_index(index: str = INDEX) -> None:
     try:
-        _enqueue("POST", "/indexes", {"uid": INDEX, "primaryKey": "id"})
+        _enqueue("POST", "/indexes", {"uid": index, "primaryKey": "id"})
     except RuntimeError as exc:
         if "already exists" not in str(exc).lower() and " 409 " not in str(exc):
             raise
-    _enqueue("PATCH", f"/indexes/{INDEX}/settings", SETTINGS)
+    _enqueue("PATCH", f"/indexes/{index}/settings", SETTINGS)
 
 
-def has_page_docs() -> bool:
+def has_page_docs(index: str = INDEX) -> bool:
     body = _request(
         "POST",
-        f"/indexes/{INDEX}/search",
+        f"/indexes/{index}/search",
         {"q": "", "filter": "type = page", "limit": 1},
     )
     hits = body.get("estimatedTotalHits") or len(body.get("hits") or [])
     return int(hits) > 0
 
 
-def upsert(records: list[dict]) -> None:
+def upsert(records: list[dict], *, index: str = INDEX) -> None:
     if not records:
         return
     for start in range(0, len(records), BATCH):
-        _enqueue("POST", f"/indexes/{INDEX}/documents", records[start : start + BATCH])
+        _enqueue("POST", f"/indexes/{index}/documents", records[start : start + BATCH])
 
 
-def delete_pages(document_id: str) -> None:
+def delete_pages(document_id: str, *, index: str = INDEX) -> None:
     _enqueue(
         "POST",
-        f"/indexes/{INDEX}/documents/delete",
+        f"/indexes/{index}/documents/delete",
         {"filter": f'type = page AND document_id = "{document_id}"'},
     )
 
 
-def remove_document(document_id: str) -> None:
+def remove_document(document_id: str, *, index: str = INDEX) -> None:
     """Remove every public search record derived from one document."""
     _enqueue(
         "POST",
-        f"/indexes/{INDEX}/documents/delete-batch",
+        f"/indexes/{index}/documents/delete-batch",
         [f"document-{document_id}"],
     )
-    delete_pages(document_id)
+    delete_pages(document_id, index=index)
 
 
-def sync_catalog(catalog: Catalog) -> None:
+def sync_catalog(
+    catalog: Catalog,
+    *,
+    index: str = INDEX,
+    generation_id: str | None = None,
+) -> None:
     visible_documents = [document for document in catalog.documents if visible_on_site(document)]
     records = [
         airport_record(airport, catalog.overview_for(airport.lid))
@@ -297,14 +311,27 @@ def sync_catalog(catalog: Catalog) -> None:
     records += [state_record(state) for state in catalog.states]
     records += [document_record(document) for document in visible_documents]
     records += [funding_record(grant) for grant in catalog.grants if grant.airport_lid]
-    upsert(records)
+    if generation_id:
+        records = [{**record, "_generation": generation_id} for record in records]
+    if index == INDEX:
+        upsert(records)
+    else:
+        upsert(records, index=index)
     for document in catalog.documents:
         if not visible_on_site(document):
-            remove_document(document.id)
+            if index == INDEX:
+                remove_document(document.id)
+            else:
+                remove_document(document.id, index=index)
     log.info("search catalog records upserted=%s", len(records))
 
 
-def sync_airports(catalog: Catalog, lids: list[str] | None = None) -> None:
+def sync_airports(
+    catalog: Catalog,
+    lids: list[str] | None = None,
+    *,
+    index: str = INDEX,
+) -> None:
     """Refresh airport Meilisearch docs after fact sheets change."""
     if not configured():
         return
@@ -314,7 +341,10 @@ def sync_airports(catalog: Catalog, lids: list[str] | None = None) -> None:
         for airport in catalog.airports
         if wanted is None or airport.lid in wanted
     ]
-    upsert(records)
+    if index == INDEX:
+        upsert(records)
+    else:
+        upsert(records, index=index)
 
 
 def backfill_text(
@@ -341,7 +371,13 @@ def backfill_text(
     return written
 
 
-def sync_pages(catalog: Catalog, dest: Path | None = None) -> None:
+def sync_pages(
+    catalog: Catalog,
+    dest: Path | None = None,
+    *,
+    index: str = INDEX,
+    generation_id: str | None = None,
+) -> None:
     dest = dest or text_dir()
     records: list[dict] = []
     for document in catalog.documents:
@@ -352,11 +388,20 @@ def sync_pages(catalog: Catalog, dest: Path | None = None) -> None:
         ):
             continue
         for row in read_pages(dest, document.content_sha256):
-            records.append(page_record(document, int(row["page"]), str(row["text"])))
+            record = page_record(document, int(row["page"]), str(row["text"]))
+            if generation_id:
+                record["_generation"] = generation_id
+            records.append(record)
             if len(records) >= BATCH:
-                upsert(records)
+                if index == INDEX:
+                    upsert(records)
+                else:
+                    upsert(records, index=index)
                 records = []
-    upsert(records)
+    if index == INDEX:
+        upsert(records)
+    else:
+        upsert(records, index=index)
     log.info("search page records upserted")
 
 
@@ -383,11 +428,137 @@ def upsert_preserved(
     upsert([page_record(document, int(row["page"]), str(row["text"])) for row in pages])
 
 
+def generation_index_uid(generation_id: str) -> str:
+    safe = "".join(character for character in generation_id.lower() if character.isalnum())
+    if not safe:
+        raise ValueError("generation id cannot produce a search index uid")
+    return f"aptplans_g_{safe[:24]}"
+
+
+def stage_generation_index(
+    catalog: Catalog,
+    generation_id: str,
+    *,
+    dest: Path | None = None,
+) -> tuple[str, int] | None:
+    """Build and validate a generation-specific index without touching live search."""
+    if not configured():
+        return None
+    index = generation_index_uid(generation_id)
+    try:
+        _enqueue("DELETE", f"/indexes/{index}")
+    except RuntimeError as exc:
+        if "404" not in str(exc):
+            raise
+    ensure_index(index)
+    backfill_text(catalog, dest=dest)
+    sync_catalog(catalog, index=index, generation_id=generation_id)
+    sync_pages(catalog, dest, index=index, generation_id=generation_id)
+    stats = _request("GET", f"/indexes/{index}/stats")
+    count = int(stats.get("numberOfDocuments") or 0)
+    visible = sum(1 for document in catalog.documents if visible_on_site(document))
+    minimum = len(catalog.airports) + len(catalog.states) + visible
+    if count < minimum:
+        raise RuntimeError(
+            f"staged search index incomplete: {count} documents, expected at least {minimum}"
+        )
+    generation_stats = _request(
+        "POST",
+        f"/indexes/{index}/search",
+        {
+            "q": "",
+            "filter": f'_generation = "{generation_id}"',
+            "limit": 0,
+        },
+    )
+    generation_count = int(generation_stats.get("estimatedTotalHits") or 0)
+    if generation_count != count:
+        raise RuntimeError(
+            f"staged search generation mismatch: {generation_count} of {count} records"
+        )
+    return index, count
+
+
+def remove_revoked_before_release(
+    previous: Catalog | None,
+    upcoming: Catalog,
+    *,
+    index: str = INDEX,
+) -> list[str]:
+    """Conservatively hide revocations before the corresponding site swap."""
+    if not configured() or previous is None:
+        return []
+    old_visible = {
+        document.id for document in previous.documents if visible_on_site(document)
+    }
+    new_visible = {
+        document.id for document in upcoming.documents if visible_on_site(document)
+    }
+    revoked = sorted(old_visible - new_visible)
+    for document_id in revoked:
+        remove_document(document_id, index=index)
+    return revoked
+
+
+def index_generation_id(index: str) -> str | None:
+    if not configured():
+        return None
+    try:
+        result = _request(
+            "POST",
+            f"/indexes/{index}/search",
+            {
+                "q": "",
+                "filter": "_generation IS NOT NULL",
+                "attributesToRetrieve": ["_generation"],
+                "limit": 1,
+            },
+        )
+    except RuntimeError as exc:
+        if "404" in str(exc):
+            return None
+        raise
+    hits = result.get("hits") or []
+    value = str(hits[0].get("_generation") if hits else "").strip()
+    return value or None
+
+
+def live_generation_id() -> str | None:
+    return index_generation_id(INDEX)
+
+
+def activate_generation_index(staged_index: str, generation_id: str) -> None:
+    """Swap once, retaining a marker until durable activation is recorded."""
+    if not configured():
+        return
+    if live_generation_id() == generation_id:
+        return
+    ensure_index(INDEX)
+    _enqueue(
+        "POST",
+        "/swap-indexes",
+        [{"indexes": [INDEX, staged_index]}],
+    )
+    if live_generation_id() != generation_id:
+        raise RuntimeError("search index swap did not expose the expected generation")
+
+
+def finalize_generation_index(staged_index: str, generation_id: str) -> None:
+    if not configured():
+        return
+    if live_generation_id() != generation_id:
+        raise RuntimeError("cannot finalize an inactive search generation")
+    # The staged UID now contains the prior live index. Keep it for rollback;
+    # generation-aware garbage collection removes it after a later release.
+
+
 def reindex(
     catalog: Catalog | None = None,
     overlay_dir: Path | None = None,
     dest: Path | None = None,
 ) -> None:
+    if os.environ.get("APTPLANS_DOMAIN_STORE") == "1":
+        raise RuntimeError("domain mode search must activate through a full release")
     overlay = overlay_dir or overlay_dir_from_env()
     catalog = catalog or seed_catalog(ROOT / "catalog", overlay_dir=overlay)
     ensure_index()
@@ -401,6 +572,8 @@ def reindex(
 
 
 def boot_sync() -> None:
+    if os.environ.get("APTPLANS_DOMAIN_STORE") == "1":
+        raise RuntimeError("domain mode search must activate through a full release")
     if not configured():
         log.info("search index off (MEILI_URL or MEILI_MASTER_KEY unset)")
         return

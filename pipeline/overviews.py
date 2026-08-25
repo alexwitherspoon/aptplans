@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -100,7 +101,7 @@ def upsert_overview_for(
     upsert_overview_overlay(overlay_dir, row)
     catalog.overviews[lid] = row
     airport = catalog.airports_by_lid.get(lid)
-    if airport is not None:
+    if airport is not None and os.environ.get("APTPLANS_DOMAIN_STORE") != "1":
         from pipeline.search import upsert as search_upsert, airport_record, configured
 
         if configured():
@@ -131,7 +132,7 @@ def refresh_overviews(
         catalog.overviews[lid] = row
         wrote += 1
         updated.append(lid)
-    if updated:
+    if updated and os.environ.get("APTPLANS_DOMAIN_STORE") != "1":
         from pipeline.search import sync_airports
 
         sync_airports(catalog, updated)

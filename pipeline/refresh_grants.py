@@ -17,10 +17,11 @@ from catalog.grants import (
 )
 from catalog.models import Grant
 from catalog.store import load_grants_overlay, write_grants_overlay
+from pipeline.datasets import dataset_should_refresh
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.grant_classify import enrich_grants, reclassify_grants_overlay
 from pipeline.ollama import llm_calls_enabled
-from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path, should_refresh
+from pipeline.refresh import PAUSE_SECONDS, overlay_dir_from_env, overlay_grants_path
 from pipeline.usaspending import fetch_award_status
 
 log = logging.getLogger("aptplans.grants")
@@ -98,7 +99,7 @@ def maybe_refresh_grants(
     post_json=None,
 ) -> int | None:
     path = overlay_grants_path(overlay_dir)
-    if not force and not should_refresh(path):
+    if not force and not dataset_should_refresh(overlay_dir, "grants"):
         log.info("grant overlay is current: %s", path)
         return None
     return refresh_grants(overlay_dir, fetch=fetch, sleep=sleep, post_json=post_json)

@@ -59,7 +59,7 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "APTPLANS_REJECT=/var/lib/aptplans/reject" in text
     assert "APTPLANS_REJECT=/var/lib/aptplans/reject" in prod
     assert "/srv/reject" not in prod
-    assert "/srv/files" in prod
+    assert "/srv/releases" in prod
     assert "OLLAMA_HOST=http://ollama:11434" in text
     assert "APTPLANS_FETCH_PROXY=http://egress:8888" in prod
     assert "APTPLANS_DEV_PREVIEW=0" in prod
@@ -76,7 +76,10 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "APTPLANS_GEMINI_MONTHLY_BUDGET_USD=${APTPLANS_GEMINI_MONTHLY_BUDGET_USD:-25}" in prod
     assert "APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog" in prod
     assert "APTPLANS_QUEUE=/var/lib/aptplans/queue" in prod
-    assert "APTPLANS_SITE=/var/lib/aptplans/site" in prod
+    assert "APTPLANS_SITE=/var/lib/aptplans/releases/current/site" in prod
+    assert "APTPLANS_RELEASES=/var/lib/aptplans/releases" in prod
+    assert "APTPLANS_DOMAIN_STORE=1" in prod
+    assert "APTPLANS_JOB_LEDGER_READ_ONLY=1" in prod
     assert "APTPLANS_LLM=1" in prod
     assert "OLLAMA_NO_CLOUD=1" in text
     assert "OLLAMA_KEEP_ALIVE=-1" in text
@@ -94,8 +97,8 @@ def test_compose_stack_is_site_worker_ollama() -> None:
     assert "0.0.0.0:11434" not in local
     assert "7700:7700" not in local
     assert "aptplanslocalkey1" in local
-    assert "${PUBLIC_FILES_PATH:-../data/public-files}:/srv/files:ro" in local
-    assert "${FILES_PATH:-../data/files}:/srv/files:ro" not in local
+    assert "${PUBLIC_FILES_PATH:-../data/public-files}:/srv/releases/current/public-files:ro" in local
+    assert "${FILES_PATH:-../data/files}:/srv/releases/current/public-files:ro" not in local
 
 
 def test_llm_calls_enabled_defaults(monkeypatch) -> None:

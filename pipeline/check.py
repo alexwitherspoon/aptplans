@@ -221,7 +221,13 @@ def check_document(
     )
 
 
-def _enqueue_fetch(queue: JobQueue, document: Document, url: str) -> None:
+def _enqueue_fetch(
+    queue: JobQueue,
+    document: Document,
+    url: str,
+    *,
+    parent_job_id: str | None = None,
+) -> None:
     queue.enqueue(
         QueueJob(
             kind="fetch",
@@ -230,6 +236,7 @@ def _enqueue_fetch(queue: JobQueue, document: Document, url: str) -> None:
             airport_lid=document.airport_lid,
             state=document.state,
             suggested_kind=document.kind,
+            parent_job_id=parent_job_id,
         )
     )
 
@@ -239,10 +246,17 @@ def apply_outcome(
     document: Document,
     overlay_dir: Path,
     queue: JobQueue | None,
+    *,
+    parent_job_id: str | None = None,
 ) -> None:
     write_overlay_update(overlay_dir, document.id, outcome.updates)
     if outcome.fetch_url and queue is not None:
-        _enqueue_fetch(queue, document, outcome.fetch_url)
+        _enqueue_fetch(
+            queue,
+            document,
+            outcome.fetch_url,
+            parent_job_id=parent_job_id,
+        )
 
 
 def run_check_pass(
@@ -255,6 +269,7 @@ def run_check_pass(
     wayback_fn=None,
     sleep=time.sleep,
     pause_seconds: float = PAUSE_SECONDS,
+    parent_job_id: str | None = None,
 ) -> int:
     catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
     cap = limit if limit is not None else int(os.environ.get("APTPLANS_CHECK_LIMIT", DEFAULT_LIMIT))
@@ -271,7 +286,13 @@ def run_check_pass(
             sleep(pause_seconds)
         last_host = host
         outcome = check_document(document, probe_fn=probe, wayback_fn=wayback)
-        apply_outcome(outcome, document, overlay_dir, queue)
+        apply_outcome(
+            outcome,
+            document,
+            overlay_dir,
+            queue,
+            parent_job_id=parent_job_id,
+        )
         checked += 1
     log.info("checked %s official URLs", checked)
     return checked

@@ -6,10 +6,9 @@ services:
     # NUMA node 0 (4 cores / 8 threads). Leaves nodes 1-3 for Ollama.
     cpuset: ${SITE_CPUSET:-0-3,16-19}
     volumes:
-      # Keep files off the site mount. A nested bind under /srv/site:ro fails
-      # because Docker cannot mkdir the mountpoint on a read-only volume.
-      - ${SITE_PATH:-/var/lib/aptplans/site}:/srv/site:ro
-      - ${PUBLIC_FILES_PATH:-/var/lib/aptplans/public-files}:/srv/files:ro
+      # Mount the release root so Caddy follows the atomic `current` symlink
+      # on every request instead of pinning one bind-mounted generation.
+      - ${RELEASES_PATH:-/var/lib/aptplans/releases}:/srv/releases:ro
       - ${TLS_PATH:-/var/lib/aptplans/tls}:/certs:ro
       - ${REPO_PATH:-/opt/aptplans}/docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
     environment:
@@ -42,10 +41,11 @@ services:
       - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
       - ${PUBLIC_FILES_PATH:-/var/lib/aptplans/public-files}:/var/lib/aptplans/public-files
       - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue
+      - ${CONTROL_PATH:-/var/lib/aptplans/control}:/var/lib/aptplans/control
       - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
       - ${TEXT_PATH:-/var/lib/aptplans/text}:/var/lib/aptplans/text
       - ${REJECT_PATH:-/var/lib/aptplans/reject}:/var/lib/aptplans/reject
-      - ${SITE_PATH:-/var/lib/aptplans/site}:/var/lib/aptplans/site
+      - ${RELEASES_PATH:-/var/lib/aptplans/releases}:/var/lib/aptplans/releases
       - ${LOGS_PATH:-/var/lib/aptplans/logs}:/var/lib/aptplans/logs
     environment:
       - APP_ENV=production
@@ -54,11 +54,15 @@ services:
       - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_PUBLIC_FILES=/var/lib/aptplans/public-files
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control
+      - APTPLANS_DOMAIN_STORE=1
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_TEXT=/var/lib/aptplans/text
       - APTPLANS_REJECT=/var/lib/aptplans/reject
       - APTPLANS_LOGS=/var/lib/aptplans/logs
-      - APTPLANS_SITE=/var/lib/aptplans/site
+      - APTPLANS_SITE=/var/lib/aptplans/releases/current/site
+      - APTPLANS_PUBLIC_FILES=/var/lib/aptplans/releases/current/public-files
+      - APTPLANS_RELEASES=/var/lib/aptplans/releases
       - APTPLANS_USER_AGENT=aptplans.org
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=bonsai-27b
@@ -88,7 +92,8 @@ services:
       - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files:ro
       - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
       - ${REJECT_PATH:-/var/lib/aptplans/reject}:/var/lib/aptplans/reject
-      - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue
+      - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue:ro
+      - ${CONTROL_PATH:-/var/lib/aptplans/control}:/var/lib/aptplans/control
       - ${LOGS_PATH:-/var/lib/aptplans/logs}:/var/lib/aptplans/logs:ro
     environment:
       - APP_ENV=production
@@ -96,6 +101,10 @@ services:
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_REJECT=/var/lib/aptplans/reject
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control
+      - APTPLANS_DOMAIN_STORE=1
+      - APTPLANS_CONTROL_WRITER=1
+      - APTPLANS_JOB_LEDGER_READ_ONLY=1
       - APTPLANS_LOGS=/var/lib/aptplans/logs
       - APTPLANS_REVIEW_BIND=0.0.0.0:8787
       - APTPLANS_REVIEW_TOKEN=${APTPLANS_REVIEW_TOKEN:-}

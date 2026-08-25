@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 
 from pipeline.evidence import Packet, score_packet
 from pipeline.refresh import overlay_dir_from_env
@@ -144,6 +145,50 @@ def record_outcome(
         }
         payload["bucket"] = payload["bucket"] if payload["bucket"] in BUCKETS else "uncertain"
         payload = _json_safe(payload)
+        if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            from pipeline.status import queue_dir_from_env
+
+            root = queue_dir_from_env()
+            if os.environ.get("APTPLANS_CONTROL_WRITER") == "1":
+                from pipeline.queue import ControlQueue
+
+                audit = ControlQueue(root)
+            else:
+                from pipeline.domain_store import DomainStore
+
+                audit = DomainStore(root)
+            job_id = payload.get("job_id")
+            event_key = (
+                "job:"
+                + ":".join(
+                    str(value or "")
+                    for value in (
+                        job_id,
+                        payload.get("job_status"),
+                        payload.get("review_status"),
+                    )
+                )
+                if job_id
+                else None
+            )
+            if not audit.append_audit(
+                "outcomes",
+                payload,
+                event_key=event_key,
+            ):
+                for existing in reversed(audit.audit_records("outcomes")):
+                    if (
+                        existing.get("job_id") == job_id
+                        and existing.get("job_status") == payload.get("job_status")
+                        and existing.get("review_status")
+                        == payload.get("review_status")
+                    ):
+                        return existing
+            return payload
         dest = outcomes_path(overlay_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
         job_id = payload.get("job_id")
@@ -165,6 +210,20 @@ def record_outcome(
 
 
 def load_outcomes(overlay_dir: Path | None = None) -> list[dict]:
+    if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        from pipeline.domain_store import DomainStore
+        from pipeline.queue import ControlQueue
+        from pipeline.status import queue_dir_from_env
+
+        root = queue_dir_from_env()
+        rows = DomainStore(root).audit_records("outcomes")
+        rows += ControlQueue(root).audit_records("outcomes")
+        rows.sort(key=lambda row: str(row.get("at") or ""))
+        return rows
     path = outcomes_path(overlay_dir)
     if not path.is_file():
         return []

@@ -68,6 +68,8 @@ def enqueue_search_session(
     queue: JobQueue,
     identity: SearchIdentity,
     session: SearchSession,
+    *,
+    parent_job_id: str | None = None,
 ) -> tuple[int, int]:
     """Queue explore jobs for hubs and fetch jobs for plan-shaped search hits."""
     explore_urls = [hit.url for hit in session.hits if hit_worth_explore(hit, identity)]
@@ -95,6 +97,7 @@ def enqueue_search_session(
                 state=identity.state,
                 suggested_kind="other",
                 found_on=url,
+                parent_job_id=parent_job_id,
             )
         )
         explore_jobs += 1
@@ -110,6 +113,7 @@ def enqueue_search_session(
                 airport_lid=identity.lid,
                 state=identity.state,
                 found_on="",
+                parent_job_id=parent_job_id,
             )
         )
         fetch_jobs += 1
@@ -124,6 +128,7 @@ def discover_next_airports(
     max_steps: int | None = None,
     search_fn: Callable[[str], list[SearchHit]] | None = None,
     escalate_fn=None,
+    parent_job_id: str | None = None,
 ) -> dict:
     """Run the search ladder for the next airports in scope and enqueue jobs."""
     if not live_search_enabled():
@@ -170,7 +175,12 @@ def discover_next_airports(
             max_steps=steps,
             escalate_fn=escalate,
         )
-        explore_jobs, fetch_jobs = enqueue_search_session(queue, identity, session)
+        explore_jobs, fetch_jobs = enqueue_search_session(
+            queue,
+            identity,
+            session,
+            parent_job_id=parent_job_id,
+        )
         total_explore += explore_jobs
         total_fetch += fetch_jobs
         processed.append(airport.lid)

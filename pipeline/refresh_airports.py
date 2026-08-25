@@ -24,6 +24,7 @@ from catalog.ourairports import (
     parse_ourairports_csv,
 )
 from catalog.store import load_airports_overlay, load_overlay, write_airports_overlay
+from pipeline.datasets import dataset_should_refresh
 from pipeline.fetch import fetch_bytes, post_json
 from pipeline.lock import worker_lock
 from pipeline.refresh import (
@@ -96,7 +97,7 @@ def maybe_refresh(
     post_json=None,
 ) -> int | None:
     path = overlay_airports_path(overlay_dir)
-    if not force and not should_refresh(path):
+    if not force and not dataset_should_refresh(overlay_dir, "airports"):
         log.info("airport overlay is current: %s", path)
         airports_count = None
     else:

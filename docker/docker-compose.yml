@@ -73,6 +73,7 @@ services:
       - ${FILES_PATH:-/var/lib/aptplans/files}:/var/lib/aptplans/files
       - ${PUBLIC_FILES_PATH:-/var/lib/aptplans/public-files}:/var/lib/aptplans/public-files
       - ${QUEUE_PATH:-/var/lib/aptplans/queue}:/var/lib/aptplans/queue
+      - ${CONTROL_PATH:-/var/lib/aptplans/control}:/var/lib/aptplans/control
       - ${CATALOG_OVERLAY_PATH:-/var/lib/aptplans/catalog}:/var/lib/aptplans/catalog
       - ${TEXT_PATH:-/var/lib/aptplans/text}:/var/lib/aptplans/text
       - ${REJECT_PATH:-/var/lib/aptplans/reject}:/var/lib/aptplans/reject
@@ -81,6 +82,7 @@ services:
       - APTPLANS_FILES=/var/lib/aptplans/files
       - APTPLANS_PUBLIC_FILES=/var/lib/aptplans/public-files
       - APTPLANS_QUEUE=/var/lib/aptplans/queue
+      - APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control
       - APTPLANS_CATALOG_OVERLAY=/var/lib/aptplans/catalog
       - APTPLANS_TEXT=/var/lib/aptplans/text
       - APTPLANS_REJECT=/var/lib/aptplans/reject

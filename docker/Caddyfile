@@ -8,13 +8,13 @@
 	}
 
 	handle_path /files/* {
-		root * /srv/files
+		root * /srv/releases/current/public-files
 		header Cache-Control "no-store"
 		file_server
 	}
 
 	handle {
-		root * /srv/site
+		root * /srv/releases/current/site
 		header Cache-Control "no-store"
 		file_server
 	}

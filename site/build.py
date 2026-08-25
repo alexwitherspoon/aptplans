@@ -1251,6 +1251,7 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
     if brief_mod.is_file():
         digest.update(brief_mod.read_bytes())
     digest.update(os.environ.get("APTPLANS_DEV_PREVIEW", "").strip().encode("utf-8"))
+    digest.update(os.environ.get("APTPLANS_DOMAIN_GENERATION", "").strip().encode("utf-8"))
     payload = {
         "airports": [item.to_dict() for item in catalog.airports],
         "states": [item.to_dict() for item in catalog.states],
@@ -1263,7 +1264,14 @@ def _inputs_sha256(catalog: Catalog, year: int) -> str:
         json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     )
     overlay_dir = _overlay_dir() or overlay_dir_from_env()
-    for name in ("pipeline.json", "pipeline_status.json", "classifications.jsonl"):
+    digest.update(
+        json.dumps(
+            classification_stats(overlay_dir),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    for name in ("pipeline.json", "pipeline_status.json"):
         path = overlay_dir / name
         if path.is_file():
             digest.update(name.encode("utf-8"))
@@ -1985,6 +1993,13 @@ def main() -> None:
     )
     add_scope_arguments(parser)
     args = parser.parse_args()
+    active_site = os.environ.get("APTPLANS_SITE", "").strip()
+    if (
+        os.environ.get("APTPLANS_DOMAIN_STORE") == "1"
+        and active_site
+        and args.out.resolve() == Path(active_site).resolve()
+    ):
+        parser.error("domain mode site output must activate through a staged release")
     catalog = _catalog()
     scope = scope_cli_flags(args, catalog)
     if not build(args.out, catalog=catalog, scope=scope):

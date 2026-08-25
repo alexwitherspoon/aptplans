@@ -3,8 +3,8 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
     volumes:
-      - ../dist:/srv/site:ro
-      - ${PUBLIC_FILES_PATH:-../data/public-files}:/srv/files:ro
+      - ../dist:/srv/releases/current/site:ro
+      - ${PUBLIC_FILES_PATH:-../data/public-files}:/srv/releases/current/public-files:ro
     environment:
       - APP_ENV=local
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-aptplanslocalkey1}

@@ -109,6 +109,14 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _generation_publication_enabled() -> bool:
+    return os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def _reconcile_public_artifacts(
     overlay_dir: Path,
     catalog_root: Path,
@@ -135,6 +143,9 @@ def _apply_review_updates(
     from pipeline.search import upsert_preserved
 
     target = document.overlay(updates)
+    if _generation_publication_enabled():
+        write_overlay_update(overlay_dir, document.id, updates)
+        return
     promotion = not visible_on_site(document) and visible_on_site(target)
     write_overlay_update(overlay_dir, document.id, updates)
     try:
@@ -285,9 +296,18 @@ def _run_maintenance_job(
     if job.kind == "pipeline_snapshot":
         return run_pipeline_snapshot(overlay_dir, queue_dir, catalog_root)
     if job.kind == "discovery":
-        return run_discovery(overlay_dir, queue_dir)
+        return run_discovery(
+            overlay_dir,
+            queue_dir,
+            parent_job_id=job.id,
+        )
     if job.kind == "link_check":
-        return run_link_check(overlay_dir, queue_dir, catalog_root)
+        return run_link_check(
+            overlay_dir,
+            queue_dir,
+            catalog_root,
+            parent_job_id=job.id,
+        )
     if job.kind == "overlay_refresh":
         return run_overlay_refresh(overlay_dir)
     if job.kind == "grant_spend":
@@ -348,6 +368,8 @@ def _record_source_issue(
         "source_issue": issue,
     }
     write_overlay_update(overlay_dir, previous.id, updates)
+    if _generation_publication_enabled():
+        return
     from pipeline.search import upsert_preserved
 
     try:
@@ -446,18 +468,18 @@ def process_fetch(
 
     suffix = ".pdf" if media == "pdf" else ".html" if media == "html" else ".bin"
     stored = store_bytes(data, files_dir, suffix=suffix)
+    admitted_airport = None
     if job.airport_lid and job.airport_lid not in catalog.airports_by_lid:
-        upsert_airport_overlay(
-            overlay_dir,
-            Airport(
-                lid=job.airport_lid,
-                name=job.airport_lid,
-                city="",
-                state=job.state or "",
-                admitted=True,
-                sources=["intake"],
-            ),
+        admitted_airport = Airport(
+            lid=job.airport_lid,
+            name=job.airport_lid,
+            city="",
+            state=job.state or "",
+            admitted=True,
+            sources=["intake"],
         )
+        if not _generation_publication_enabled():
+            upsert_airport_overlay(overlay_dir, admitted_airport)
     text_sha = None
     images_sha = None
     try:
@@ -563,24 +585,24 @@ def process_fetch(
         prior = prior_work_document(catalog.documents, incoming)
         if prior is not None:
             updates["supersedes"] = prior.id
+    change_event = None
     if previous and previous.content_sha256 and previous.content_sha256 != stored.sha256:
         note = change_note(
             True,
             content_changed(previous.text_sha256, previous.images_sha256, text_sha, images_sha),
         )
-        append_change(
-            overlay_dir,
-            ChangeEvent(
-                id=f"{document_id}-{stored.sha256[:12]}",
-                entity_type="document",
-                entity_id=document_id,
-                detected_at=_utc_now(),
-                review_status="pending",
-                from_sha256=previous.content_sha256,
-                to_sha256=stored.sha256,
-                unofficial_note=note,
-            ),
+        change_event = ChangeEvent(
+            id=f"{document_id}-{stored.sha256[:12]}",
+            entity_type="document",
+            entity_id=document_id,
+            detected_at=_utc_now(),
+            review_status="pending",
+            from_sha256=previous.content_sha256,
+            to_sha256=stored.sha256,
+            unofficial_note=note,
         )
+        if not _generation_publication_enabled():
+            append_change(overlay_dir, change_event)
     from pipeline.ollama import llm_calls_enabled, unofficial_note_from_text
     from pipeline.parse import extract_text
 
@@ -591,11 +613,30 @@ def process_fetch(
                 updates["summary"] = unofficial_note_from_text(text)
         except Exception:
             log.exception("unofficial note failed; preserve still counts")
-    write_overlay_update(overlay_dir, document_id, updates)
-    try:
-        _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
-    except Exception as exc:
-        raise PublicationSyncError("public artifact reconciliation failed") from exc
+    if _generation_publication_enabled():
+        from pipeline.domain_store import DomainStore
+        from pipeline.status import queue_dir_from_env
+
+        document_payload = previous.to_dict() if previous else {}
+        document_payload.update(updates)
+        domain_updates = {("documents", document_id): document_payload}
+        if admitted_airport is not None:
+            domain_updates[("airports", admitted_airport.lid)] = (
+                admitted_airport.to_dict()
+            )
+        if change_event is not None:
+            domain_updates[("changes", change_event.id)] = change_event.to_dict()
+        DomainStore(queue_dir_from_env()).commit(
+            domain_updates,
+            reason=f"preserve document {document_id}",
+        )
+    else:
+        write_overlay_update(overlay_dir, document_id, updates)
+    if not _generation_publication_enabled():
+        try:
+            _reconcile_public_artifacts(overlay_dir, catalog_root, files_dir)
+        except Exception as exc:
+            raise PublicationSyncError("public artifact reconciliation failed") from exc
     if job.airport_lid and kind in {"master_plan", "alp"}:
         try:
             from pipeline.overviews import upsert_overview_for
@@ -603,14 +644,25 @@ def process_fetch(
             upsert_overview_for(overlay_dir, catalog_root, job.airport_lid)
         except Exception:
             log.exception("overview refresh failed; preserve still counts")
-    from pipeline.search import upsert_preserved
+    if not _generation_publication_enabled():
+        from pipeline.search import upsert_preserved
 
-    try:
-        upsert_preserved(updates, pages)
-    except Exception as exc:
-        raise PublicationSyncError("search synchronization failed") from exc
+        try:
+            upsert_preserved(updates, pages)
+        except Exception as exc:
+            raise PublicationSyncError("search synchronization failed") from exc
+    parent_is_durable = queue is not None and queue.get(job.id) is not None
+
+    def enqueue_followup(child: QueueJob) -> None:
+        if queue is None:
+            return
+        if parent_is_durable:
+            queue.defer(job.id, child)
+        else:
+            queue.enqueue(child)
+
     if queue is not None:
-        queue.enqueue(
+        enqueue_followup(
             QueueJob(
                 kind="vet",
                 document_id=document_id,
@@ -618,7 +670,7 @@ def process_fetch(
                 airport_lid=job.airport_lid,
                 state=job.state,
                 found_on=job.found_on or updates.get("found_on"),
-            )
+            ),
         )
     if media == "html" and queue is not None and job.source_url:
         result = explore_page(
@@ -633,7 +685,7 @@ def process_fetch(
             state=job.state,
         ):
             if child.source_url and child.source_url != job.source_url:
-                queue.enqueue(child)
+                enqueue_followup(child)
                 log.info("explore queued %s from %s", child.source_url, job.source_url)
         first_hop = not job.found_on or job.found_on.rstrip("/") == job.source_url.rstrip("/")
         if first_hop:
@@ -642,7 +694,7 @@ def process_fetch(
                 airport_lid=job.airport_lid,
                 state=job.state,
             ):
-                queue.enqueue(child)
+                enqueue_followup(child)
                 log.info("explore follow-up %s from %s", child.source_url, job.source_url)
     _reply(job, "preserved", None)
     log.info(
@@ -915,6 +967,8 @@ def _rollback_failed_promotion(
     overlay_dir: Path,
     catalog_root: Path,
 ) -> None:
+    if _generation_publication_enabled():
+        return
     if initial is None or visible_on_site(initial):
         return
     current = seed_catalog(
@@ -1158,7 +1212,7 @@ def _lease_heartbeat(queue: JobQueue, job: QueueJob):
     stop = threading.Event()
 
     def beat() -> None:
-        while not stop.wait(30.0):
+        while not stop.wait(10.0):
             try:
                 queue.heartbeat(job)
             except Exception:

@@ -8,9 +8,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from catalog.geo import US_STATES
-from catalog.models import Airport, Budget, Document, Grant, State
+from catalog.models import Airport, Budget, ChangeEvent, Document, Grant, State
 from catalog.store import (
     Catalog,
+    CatalogSnapshot,
     load_airports_overlay,
     load_budgets_overlay,
     load_changes_overlay,
@@ -133,7 +134,10 @@ def _reference_budgets(catalog_root: Path) -> list[Budget]:
     return [Budget.from_dict(row) for row in rows]
 
 
-def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog:
+def _seed_catalog_legacy(
+    catalog_root: Path,
+    overlay_dir: Path | None = None,
+) -> Catalog:
     use_reference = reference_seed_enabled()
     by_lid = {airport.lid: airport for airport in load_airports_overlay(overlay_dir)}
     documents: list[Document] = _reference_statutes(catalog_root)
@@ -157,3 +161,73 @@ def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog
     if overlay:
         return merge_overlay(catalog, overlay)
     return catalog
+
+
+def seed_catalog(catalog_root: Path, overlay_dir: Path | None = None) -> Catalog:
+    if _truthy("APTPLANS_DOMAIN_STORE"):
+        from pipeline.domain_store import DomainStore
+        from pipeline.status import queue_dir_from_env
+
+        generation_id = os.environ.get("APTPLANS_DOMAIN_GENERATION", "").strip()
+        snapshot = DomainStore(queue_dir_from_env()).snapshot(generation_id or None)
+        return seed_catalog_snapshot(catalog_root, snapshot).catalog
+    return _seed_catalog_legacy(catalog_root, overlay_dir)
+
+
+def seed_catalog_snapshot(
+    catalog_root: Path,
+    domain_snapshot,
+) -> CatalogSnapshot:
+    """Build a typed catalog from one committed immutable domain generation."""
+    baseline = _seed_catalog_legacy(catalog_root)
+    airport_rows = domain_snapshot.rows("airports")
+    grant_rows = domain_snapshot.rows("grants")
+    budget_rows = domain_snapshot.rows("budgets")
+    change_rows = domain_snapshot.rows("changes")
+    overview_rows = domain_snapshot.rows("overviews")
+    document_rows = domain_snapshot.rows("documents")
+
+    documents = {document.id: document for document in baseline.documents}
+    for row in document_rows:
+        document_id = str(row.get("id") or "")
+        if not document_id:
+            continue
+        current = documents.get(document_id)
+        documents[document_id] = (
+            current.overlay(row) if current is not None else Document.from_dict(row)
+        )
+    catalog = Catalog(
+        airports=(
+            [Airport.from_dict(row) for row in airport_rows]
+            if airport_rows
+            else list(baseline.airports)
+        ),
+        states=list(baseline.states),
+        documents=list(documents.values()),
+        changes=(
+            [ChangeEvent.from_dict(row) for row in change_rows]
+            if change_rows
+            else list(baseline.changes)
+        ),
+        grants=(
+            [Grant.from_dict(row) for row in grant_rows]
+            if grant_rows
+            else list(baseline.grants)
+        ),
+        budgets=(
+            [Budget.from_dict(row) for row in budget_rows]
+            if budget_rows
+            else list(baseline.budgets)
+        ),
+        overviews={
+            str(row["airport_lid"]): row
+            for row in overview_rows
+            if row.get("airport_lid")
+        },
+    )
+    return CatalogSnapshot(
+        generation_id=domain_snapshot.generation_id,
+        committed_at=domain_snapshot.committed_at,
+        dataset_state=dict(domain_snapshot.dataset_state),
+        catalog=catalog,
+    )

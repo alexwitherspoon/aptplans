@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from pipeline.queue import ControlQueue, JobQueue, JobRetry, QueueJob
 
 
@@ -194,11 +196,14 @@ def test_parent_continuation_waits_for_committed_success(tmp_path: Path) -> None
     child.priority = 1000
     child.parent_job_id = parent.id
     queue.enqueue(child)
+    assert queue.get(child.id) is None
+    assert queue.continuation_counts()["pending"] == 1
     claimed_parent = queue.claim(airport_limit=2)
     assert claimed_parent is not None
     assert claimed_parent.id == parent.id
     assert JobQueue(tmp_path).claim(airport_limit=2) is None
     queue.complete(claimed_parent)
+    assert queue.continuation_counts()["materialized"] == 1
     claimed_child = queue.claim(airport_limit=2)
     assert claimed_child is not None
     assert claimed_child.id == child.id
@@ -246,6 +251,10 @@ def test_control_inbox_is_separate_and_worker_ingest_is_idempotent(
     assert jobs.ingest_controls(controls) == 0
     assert jobs.counts()["pending"] == 1
     assert controls.counts()["accepted"] == 1
+    assert [event["event_type"] for event in controls.events(command.id)] == [
+        "requested",
+        "accepted",
+    ]
 
 
 def test_control_import_recovers_after_job_insert_before_audit_accept(
@@ -288,3 +297,17 @@ def test_same_airport_is_serialized_even_with_multiple_slots(tmp_path: Path) -> 
     assert JobQueue(tmp_path).claim(airport_limit=2) is None
     queue.complete(first)
     assert queue.claim(airport_limit=2) is not None
+
+
+def test_job_events_are_append_only_and_cover_execution(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path)
+    queued = queue.enqueue(_job("a", "PDX"))
+    claimed = queue.claim()
+    assert claimed is not None
+    queue.heartbeat(claimed, progress={"page": 2})
+    queue.complete(claimed)
+    event_types = [event["event_type"] for event in queue.events(queued.id)]
+    assert event_types == ["enqueued", "claimed", "progress", "completed"]
+    with sqlite3.connect(queue.path) as connection:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            connection.execute("DELETE FROM job_events WHERE job_id=?", (queued.id,))

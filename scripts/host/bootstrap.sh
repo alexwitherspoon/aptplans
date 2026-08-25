@@ -12,9 +12,10 @@ HOST_CONFIG="${REPO_ROOT}/config/host"
 
 APP_USER="${APP_USER:-aptplans}"
 REPO_DIR="${REPO_DIR:-/opt/aptplans}"
-SITE_DIR="${SITE_DIR:-/var/lib/aptplans/site}"
+RELEASES_DIR="${RELEASES_DIR:-/var/lib/aptplans/releases}"
 FILES_DIR="${FILES_DIR:-/var/lib/aptplans/files}"
 QUEUE_DIR="${QUEUE_DIR:-/var/lib/aptplans/queue}"
+CONTROL_DIR="${CONTROL_DIR:-/var/lib/aptplans/control}"
 CATALOG_OVERLAY_DIR="${CATALOG_OVERLAY_DIR:-/var/lib/aptplans/catalog}"
 TLS_DIR="${TLS_DIR:-/var/lib/aptplans/tls}"
 OLLAMA_DIR="${OLLAMA_DIR:-/var/lib/aptplans/ollama}"
@@ -147,9 +148,10 @@ seed_app_user_keys() {
 ensure_directories() {
     log "ensuring data directories"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${REPO_DIR}"
-    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${SITE_DIR}"
+    as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${RELEASES_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${FILES_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${QUEUE_DIR}"
+    as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${CONTROL_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${CATALOG_OVERLAY_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${TLS_DIR}"
     as_root install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${OLLAMA_DIR}"
@@ -159,8 +161,8 @@ ensure_directories() {
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${REJECT_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${LOGS_DIR}"
     as_root install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "${EGRESS_DIR}"
-    as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${SITE_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
-    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}" "${REJECT_DIR}" "${LOGS_DIR}" "${EGRESS_DIR}"
+    as_root chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}" "${RELEASES_DIR}" "${TLS_DIR}" "${OLLAMA_DIR}" "${MODELS_DIR}"
+    as_root chown "${APP_USER}:${APP_USER}" "${FILES_DIR}" "${QUEUE_DIR}" "${CONTROL_DIR}" "${CATALOG_OVERLAY_DIR}" "${TEXT_DIR}" "${SEARCH_DIR}" "${REJECT_DIR}" "${LOGS_DIR}" "${EGRESS_DIR}"
 }
 
 ensure_origin_tls() {
@@ -248,9 +250,10 @@ write_env_file() {
     local env_file="/home/${APP_USER}/.env.production"
     as_root tee "${env_file}" >/dev/null <<EOF
 # Written by scripts/host/bootstrap.sh - do not commit.
-SITE_PATH=${SITE_DIR}
+RELEASES_PATH=${RELEASES_DIR}
 FILES_PATH=${FILES_DIR}
 QUEUE_PATH=${QUEUE_DIR}
+CONTROL_PATH=${CONTROL_DIR}
 CATALOG_OVERLAY_PATH=${CATALOG_OVERLAY_DIR}
 REPO_PATH=${REPO_DIR}
 TLS_PATH=${TLS_DIR}

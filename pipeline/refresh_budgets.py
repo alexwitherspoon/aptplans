@@ -43,7 +43,6 @@ def enrich_budgets_overlay(
 
 def maybe_enrich_budgets(overlay_dir=None) -> int | None:
     overlay = overlay_dir_from_env(overlay_dir)
-    path = overlay / "budgets.jsonl"
-    if not path.is_file():
+    if not load_budgets_overlay(overlay):
         return None
     return enrich_budgets_overlay(overlay)

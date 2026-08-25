@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import os
 
 from pipeline.refresh import overlay_dir_from_env
 
@@ -17,6 +18,13 @@ def classifications_path(overlay_dir: Path | None = None) -> Path:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _at_release_cutoff(rows: list[dict]) -> list[dict]:
+    cutoff = os.environ.get("APTPLANS_AUDIT_CUTOFF", "").strip()
+    if not cutoff:
+        return rows
+    return [row for row in rows if str(row.get("at") or "") <= cutoff]
 
 
 def record_classification(
@@ -36,6 +44,23 @@ def record_classification(
         "classifier": classifier,
         "reason": (reason or "")[:200],
     }
+    if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        from pipeline.status import queue_dir_from_env
+
+        root = queue_dir_from_env()
+        if os.environ.get("APTPLANS_CONTROL_WRITER") == "1":
+            from pipeline.queue import ControlQueue
+
+            ControlQueue(root).append_audit("classifications", row)
+        else:
+            from pipeline.domain_store import DomainStore
+
+            DomainStore(root).append_audit("classifications", row)
+        return
     path = classifications_path(overlay_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -43,6 +68,20 @@ def record_classification(
 
 
 def load_classifications(overlay_dir: Path | None = None) -> list[dict]:
+    if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        from pipeline.domain_store import DomainStore
+        from pipeline.queue import ControlQueue
+        from pipeline.status import queue_dir_from_env
+
+        root = queue_dir_from_env()
+        rows = DomainStore(root).audit_records("classifications")
+        rows += ControlQueue(root).audit_records("classifications")
+        rows.sort(key=lambda row: str(row.get("at") or ""))
+        return _at_release_cutoff(rows)
     path = classifications_path(overlay_dir)
     if not path.is_file():
         return []
@@ -55,7 +94,7 @@ def load_classifications(overlay_dir: Path | None = None) -> list[dict]:
             rows.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    return rows
+    return _at_release_cutoff(rows)
 
 
 def classification_stats(overlay_dir: Path | None = None) -> dict:

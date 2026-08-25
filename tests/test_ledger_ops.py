@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -28,6 +29,8 @@ def test_backup_restore_recreates_operable_ledgers(tmp_path: Path) -> None:
     )
     destination = tmp_path / "backup"
     assert backup(root, destination) == {"jobs": "ok", "control": "ok"}
+    manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest["sha256"]) == {"jobs.sqlite3", "control.sqlite3"}
 
     restored = tmp_path / "restored"
     assert restore(restored, destination, confirmed_offline=True) == {
@@ -58,3 +61,18 @@ def test_reset_creates_clean_versioned_ledgers(tmp_path: Path) -> None:
     }
     assert JobQueue(root).counts()["pending"] == 0
     assert integrity(root) == {"jobs": "ok", "control": "ok"}
+
+
+def test_restore_rejects_changed_backup_bytes(tmp_path: Path) -> None:
+    root = tmp_path / "queue"
+    JobQueue(root).enqueue(_job())
+    destination = tmp_path / "backup"
+    backup(root, destination)
+    with (destination / "jobs.sqlite3").open("ab") as handle:
+        handle.write(b"changed")
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        restore(
+            tmp_path / "restored",
+            destination,
+            confirmed_offline=True,
+        )

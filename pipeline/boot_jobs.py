@@ -14,20 +14,14 @@ from pipeline.fetch import fetch_bytes, post_json
 from pipeline.ollama import llm_calls_enabled
 from pipeline.queue import JobQueue, QueueJob
 from pipeline.datasets import (
+    dataset_should_refresh,
     mark_dataset_building,
     mark_dataset_failed,
     mark_dataset_ready,
     reconcile_catalog,
 )
 from pipeline.overlay_readiness import discovery_ready, grant_spend_ready
-from pipeline.refresh import (
-    ROOT,
-    overlay_airports_path,
-    overlay_dir_from_env,
-    overlay_grants_path,
-    overlays_need_fetch,
-    should_refresh,
-)
+from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.status import queue_dir_from_env
 
 log = logging.getLogger("aptplans.boot_jobs")
@@ -128,7 +122,11 @@ def enqueue_boot_jobs(queue_dir: Path | None = None) -> list[str]:
     enqueued: list[str] = []
     overlay = overlay_dir_from_env()
 
-    if os.environ.get("APTPLANS_REFRESH_AIRPORTS") == "1" and overlays_need_fetch(overlay):
+    needs_refresh = dataset_should_refresh(
+        overlay,
+        "airports",
+    ) or dataset_should_refresh(overlay, "grants")
+    if os.environ.get("APTPLANS_REFRESH_AIRPORTS") == "1" and needs_refresh:
         if enqueue_job(queue_dir, "overlay_refresh"):
             enqueued.append("overlay_refresh")
 
@@ -163,7 +161,12 @@ def run_pipeline_snapshot(
     return "ok"
 
 
-def run_discovery(overlay_dir: Path | None = None, queue_dir: Path | None = None) -> str:
+def run_discovery(
+    overlay_dir: Path | None = None,
+    queue_dir: Path | None = None,
+    *,
+    parent_job_id: str | None = None,
+) -> str:
     from pipeline.discover_overlay import discover_next_airports
     from pipeline.pipeline_status import record_discovery
 
@@ -173,7 +176,11 @@ def run_discovery(overlay_dir: Path | None = None, queue_dir: Path | None = None
     if not ready:
         log.info("discovery deferred: %s", reason)
         return "deferred"
-    result = discover_next_airports(overlay, queue)
+    result = discover_next_airports(
+        overlay,
+        queue,
+        parent_job_id=parent_job_id,
+    )
     if result.get("skipped"):
         return "skipped"
     if result.get("airports"):
@@ -187,6 +194,8 @@ def run_link_check(
     overlay_dir: Path | None = None,
     queue_dir: Path | None = None,
     catalog_root: Path | None = None,
+    *,
+    parent_job_id: str | None = None,
 ) -> str:
     from pipeline.check import run_check_pass
     from pipeline.site_build import enqueue_site_build
@@ -198,9 +207,14 @@ def run_link_check(
         overlay_dir=overlay,
         catalog_root=catalog_root or ROOT / "catalog",
         queue_dir=queue_path,
+        parent_job_id=parent_job_id,
     )
     if count:
-        enqueue_site_build(queue_path, scope=scope_after_link_check())
+        enqueue_site_build(
+            queue_path,
+            scope=scope_after_link_check(),
+            parent_job_id=parent_job_id,
+        )
         return "ok"
     return "skipped"
 
@@ -212,10 +226,8 @@ def run_overlay_refresh(overlay_dir: Path | None = None) -> str:
     from pipeline.refresh_airports import refresh_airports
     from pipeline.refresh_grants import maybe_refresh_grants
 
-    airports_path = overlay_airports_path(overlay)
-    grants_path = overlay_grants_path(overlay)
-    airports_stale = should_refresh(airports_path)
-    grants_stale = should_refresh(grants_path)
+    airports_stale = dataset_should_refresh(overlay, "airports")
+    grants_stale = dataset_should_refresh(overlay, "grants")
     airports_refreshed = False
     grant_count: int | None = None
     try:
@@ -223,7 +235,7 @@ def run_overlay_refresh(overlay_dir: Path | None = None) -> str:
             mark_dataset_building(overlay, "airports", job_kind="overlay_refresh")
         if grants_stale:
             mark_dataset_building(overlay, "grants", job_kind="overlay_refresh")
-        if overlays_need_fetch(overlay):
+        if airports_stale:
             log.info("FAA airport overlay fetch starting")
             refresh_airports(overlay, fetch=fetch_bytes, sleep=time.sleep)
             airports_refreshed = True
@@ -302,10 +314,16 @@ def run_overview_refresh(overlay_dir: Path | None = None) -> str:
 
 
 def run_search_sync(overlay_dir: Path | None = None) -> str:
-    from pipeline.search import boot_sync
-
-    boot_sync()
     overlay = overlay_dir_from_env(overlay_dir)
+    if os.environ.get("APTPLANS_DOMAIN_STORE") == "1":
+        from pipeline.site_build import run_site_build
+
+        if run_site_build() == "error":
+            raise RuntimeError("generation search release failed")
+    else:
+        from pipeline.search import boot_sync
+
+        boot_sync()
     mark_dataset_ready(overlay, "search_index", job_kind="search_sync")
     return "ok"
 

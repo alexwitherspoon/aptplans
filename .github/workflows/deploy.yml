@@ -93,8 +93,8 @@ jobs:
         run: |
           ssh ${DEPLOY_SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
           set -euo pipefail
-          sudo mkdir -p /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
-          sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/site /var/lib/aptplans/tls
+          sudo mkdir -p /opt/aptplans /var/lib/aptplans/releases /var/lib/aptplans/control /var/lib/aptplans/tls
+          sudo chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/aptplans /var/lib/aptplans/releases /var/lib/aptplans/control /var/lib/aptplans/tls
           EOF
           rsync -az --delete \
             --exclude '.git/' \

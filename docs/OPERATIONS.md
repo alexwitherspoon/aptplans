@@ -1,6 +1,6 @@
 # Operations
 
-Steady state should be boring: unattended-upgrades, a Monday reboot, a worker that drains the document queue continuously (one job at a time), a daily official-URL check, a monthly NASR/NPIAS/OurAirports/grant and overlay fact-sheet refresh (airport HTML extracts the sheet on each site generate), and an occasional GitHub issue or PR. After reboot the worker starts, sees current overlay files, and does not hit FAA again.
+Steady state should be boring: unattended-upgrades, a Monday reboot, a worker that drains the document queue continuously, a daily official-URL check, a monthly NASR/NPIAS/OurAirports/grant and fact-sheet refresh, and an occasional GitHub issue or PR. After reboot the worker reads dataset readiness from the current domain generation and does not hit FAA again when sources are current.
 
 ## Deploy
 
@@ -108,32 +108,32 @@ docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 
 ## Site rebuild
 
-CD rebuilds HTML on the GitHub runner from the git catalog and rsyncs `dist/` to `/var/lib/aptplans/site`. Origin then rebuilds again from git plus `/var/lib/aptplans/catalog` overlay so hashed completeness from the worker is not wiped. Caddy bind-mounts that directory.
+The origin worker builds every public surface from one pinned domain generation. It stages HTML/RSS/JSON/sitemaps, the visible file projection, and a generation-tagged Meilisearch index under `/var/lib/aptplans/releases/<generation>`, validates them, then atomically advances `current`. Caddy mounts the release root and follows that symlink per request.
 
-Public HTML, RSS, JSON, sitemaps, assets, and `/files/` currently send `no-store`. Cloudflare must respect those headers. Review and vet transitions synchronously rebuild their public scope before leaving the active queue, then durably queue the pipeline snapshot. Pending snapshot and site-build jobs preempt ordinary bulk airport work. Synchronization failures roll back new promotions and retry without the ordinary attempt limit.
+Public HTML, RSS, JSON, sitemaps, assets, and `/files/` currently send `no-store`. Review and vet transitions commit desired domain state, then synchronously attempt a complete release before leaving the active queue. A failed projection retries continuously while the prior release remains served; authoritative review state is not rolled back.
 
-On the first deployment of the private/public file split, run `docker compose exec worker python3 -m pipeline.public_files` before restarting Caddy, then purge the existing Cloudflare cache once. Older `/files/` responses were emitted with a one-year immutable lifetime and otherwise outlive the new origin projection policy.
-
-Rebuild the public search index after a bulk text restore or a Meilisearch volume wipe. `--reindex` extracts missing page JSONL from hashed PDFs, then replaces the daemon index from overlay plus those sidecars. A worker boot does the same page backfill when the index has no page hits:
+Rebuild after a bulk text restore or Meilisearch wipe by enqueueing a full release. Staging extracts missing page sidecars, builds a complete new search index, and swaps it only after validation:
 
 ```bash
 docker compose --env-file /home/aptplans/.env.production \
   --env-file /home/aptplans/.env.secrets \
   --env-file /home/aptplans/.env.search \
   -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
-  exec -T worker python3 -m pipeline.search --reindex
+  exec -T worker python3 -c 'from pipeline.site_build import enqueue_site_build; from pipeline.status import queue_dir_from_env; enqueue_site_build(queue_dir_from_env())'
 ```
 
 Worker overlay and queue:
 
 | Path | Contents |
 | --- | --- |
-| `/var/lib/aptplans/files` | hashed PDFs |
+| `/var/lib/aptplans/files` | private content-addressed source bytes |
 | `/var/lib/aptplans/reject` | 90-day private copies of artifacts that failed a check (not Caddy) |
 | `/var/lib/aptplans/text` | gated page JSONL (not served) |
 | `/var/lib/aptplans/search` | Meilisearch data (no host port) |
-| `/var/lib/aptplans/catalog` | overlay JSONL (`airports.jsonl` from NASR+NPIAS, `grants.jsonl` from AIP histories, plus document completeness and hashes) |
-| `/var/lib/aptplans/queue` | serial job JSON |
+| `/var/lib/aptplans/catalog` | legacy cutover input and operational snapshots, not entity authority |
+| `/var/lib/aptplans/queue` | jobs, domain generations, worker audit, and release journal |
+| `/var/lib/aptplans/control` | API commands and human audit |
+| `/var/lib/aptplans/releases` | validated immutable site/file generations |
 | `/var/lib/aptplans/logs` | redacted worker JSONL (`GET /review/v1/logs`) |
 
 Seed known official PDFs onto the queue for local backfill only (does not fetch). Production is the default; this no-ops unless reference seed is enabled:
@@ -148,6 +148,8 @@ docker compose --env-file /home/aptplans/.env.production \
 ## Completeness and freshness
 
 The public site should expose corpus counts and coverage status (`complete` / `link_only` / `missing`, and so on). Treat `complete` count over months as the success metric. Queue depth should sit near zero once backfill is done.
+
+Run the frozen clean-cutover benchmark with `make oregon-benchmark`. It hash-checks all eight committed Oregon PDFs plus seven reference/HTML inputs, extracts the complete PDF set, reconciles reviewed funding lifecycle totals, and compares semantic digests from two independent empty domain/release roots. Pending replay documents must remain absent from public files, pages, and static search. The report deliberately returns `passed_with_known_gaps` until the corpus includes a real scanned/OCR plan, official budget-table bytes, an official grant workbook, and an origin-hardware model run. The faster `python3 -m pipeline.oregon_benchmark` is only a core smoke run; `--require-complete-corpus` fails while those modality gaps remain.
 
 Official URL health is a daily pass (`python3 -m pipeline.check`): live, moved, or dead. Live URLs are rechecked after 7 days; dead after 30. 5xx and robots denials are errors, not dead. A dead official URL with a preserved copy becomes `preserved_only`. Without a copy it becomes `missing` and the worker tries listed mirrors, then Wayback CDX when `APTPLANS_WAYBACK=1`. A moved URL queues a fetch of the new location. Same URL plus a new SHA-256 is a content version on the next fetch.
 
@@ -228,24 +230,21 @@ python3 -m pipeline.ledger_ops integrity
 $COMPOSE_PROD logs --tail=80 worker
 ```
 
-The API writes review commands only to `control.sqlite3`; the worker imports them idempotently into `jobs.sqlite3`. Both use WAL mode. Back them up online and test an offline restore:
+The API mounts `jobs.sqlite3` read-only and writes review commands/human audit only to `/var/lib/aptplans/control/control.sqlite3`; the worker imports commands idempotently. Both use WAL mode. Back them up online and test an offline restore:
 
 ```bash
-python3 -m pipeline.ledger_ops backup /var/backups/aptplans/ledger-$(date +%F)
+APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control \
+  python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/queue \
+  backup /var/backups/aptplans/ledger-$(date +%F)
 $COMPOSE_PROD down
-python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test \
+APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control-restore-test \
+  python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test \
   restore /var/backups/aptplans/ledger-YYYY-MM-DD --confirm-offline
-python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test integrity
+APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control-restore-test \
+  python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test integrity
 ```
 
-For the pre-production cutover, stop the worker, discard the legacy `pending/`, `active/`, `done/`, and `.airport_cursor` paths with the other derived runtime state, then initialize empty versioned ledgers:
-
-```bash
-$COMPOSE_PROD down
-rm -rf /var/lib/aptplans/queue/pending /var/lib/aptplans/queue/active \
-  /var/lib/aptplans/queue/done /var/lib/aptplans/queue/.airport_cursor
-python3 -m pipeline.ledger_ops reset --confirm-preproduction-reset
-```
+The coordinated pre-production JSONL-to-domain procedure is in [DEPLOYMENT.md](DEPLOYMENT.md). Do not initialize an empty domain ledger while legacy overlays still contain the only catalog copy, and do not enable generation publication before the import and first validated release.
 
 **Discovery priority triage** (`pipeline/discovery_priority.py`) reorders scoped airports before each discovery pass. Every airport is still visited; only the order changes. Tiers (searched sooner → later):
 
@@ -256,9 +255,9 @@ python3 -m pipeline.ledger_ops reset --confirm-preproduction-reset
 5. Prior pass found no plan
 6. Already published on site
 
-Within a tier, never-evaluated airports precede stale ones, then higher total grant dollars (sum of federal, state, and local rows in overlay `grants.jsonl`), then NPIAS, then `(state, lid)`. Env: `APTPLANS_DISCOVERY_FUNDED_FIRST` (default on; legacy `APTPLANS_DISCOVERY_FEDERAL_FIRST`), `APTPLANS_DISCOVERY_RECENCY_DAYS` (default 30).
+Within a tier, never-evaluated airports precede stale ones, then higher total grant dollars from the pinned domain generation, then NPIAS, then `(state, lid)`. Env: `APTPLANS_DISCOVERY_FUNDED_FIRST` (default on; legacy `APTPLANS_DISCOVERY_FEDERAL_FIRST`), `APTPLANS_DISCOVERY_RECENCY_DAYS` (default 30).
 
-**System health** (`pipeline/health.py`, overlay `datasets.json`) is the single readiness model for workers and `GET /v1/status`. Producers (`overlay_refresh`, `grant_spend`, `overview_refresh`, `pipeline_snapshot`, `search_sync`) mark datasets `building` / `ready` / `failed`. Consumers call `requirements_met()` before enqueue and at runtime. `summary.discovery_ready` and `summary.blocking` explain deferrals; `datasets` lists each overlay file; `services` covers worker/search/LLM signals; `pipeline` holds queue, outcomes, and rejects. Discovery waits for `airports` (and `grants` when funded triage is on) and defers while `overlay_refresh` is in flight. After `overlay_refresh` completes, the post-overlay chain enqueues `discovery`; the daily timer is a backstop.
+**System health** (`pipeline/health.py`, generation `dataset_state_json`) is the single readiness model for workers and `GET /v1/status`. Producers mark datasets `building` / `ready` / `failed`; consumers gate on that metadata from the same domain snapshot. `services` covers worker/search/LLM signals and `pipeline` holds queue, outcomes, and rejects.
 
 **Stuck `docker compose run` containers** from an old deploy (names like `aptplans-worker-run-*`) can be removed:
 

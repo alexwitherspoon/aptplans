@@ -196,6 +196,7 @@ def system_health(
     }
     pipeline = {
         "queue": _queue_counts(queue_path),
+        "continuations": queue.continuation_counts(),
         "controls": ControlQueue(queue_path).counts(),
         "ledger_integrity": queue.integrity_check(),
         "outcomes": outcome_stats(overlay_dir=overlay_dir),

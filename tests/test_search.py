@@ -276,7 +276,7 @@ def test_caddy_search_proxy_is_post_only() -> None:
         assert 'Cache-Control "no-store"' in files_handler
         assert 'Cache-Control "no-store"' in text
         assert 'Cache-Control "public, max-age=86400"' not in text
-        assert "root * /srv/files" in text
+        assert "root * /srv/releases/current/public-files" in text
         assert "/dumps" not in text
         assert "/indexes/aptplans/documents" not in text
 

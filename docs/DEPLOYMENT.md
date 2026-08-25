@@ -55,13 +55,14 @@ Host layout:
 | Path | Contents |
 | --- | --- |
 | `/opt/aptplans` | rsynced git tree |
-| `/var/lib/aptplans/site` | generated HTML |
-| `/var/lib/aptplans/files` | hashed PDFs (not in git; Caddy mounts this at `/srv/files`) |
+| `/var/lib/aptplans/releases` | immutable static/file generations plus atomic `current` symlink |
+| `/var/lib/aptplans/files` | private content-addressed source bytes (not mounted by Caddy) |
 | `/var/lib/aptplans/reject` | 90-day private failed artifacts (not in git; not on Caddy) |
 | `/var/lib/aptplans/text` | gated native page JSONL (not in git; not on Caddy) |
 | `/var/lib/aptplans/search` | Meilisearch data (not in git; no host port) |
-| `/var/lib/aptplans/catalog` | worker overlay (airport identity, completeness, hashes; not in git) |
-| `/var/lib/aptplans/queue` | serial job JSON |
+| `/var/lib/aptplans/catalog` | legacy cutover input plus operational snapshots; not domain authority |
+| `/var/lib/aptplans/queue` | WAL jobs, immutable domain generations, and release journal |
+| `/var/lib/aptplans/control` | API-writable commands and human audit rows |
 | `/var/lib/aptplans/logs` | redacted worker JSONL for the review API |
 | `/var/lib/aptplans/tls` | origin certificate |
 | `/var/lib/aptplans/ollama` | Ollama blobs (not in git) |
@@ -70,6 +71,44 @@ Host layout:
 | `/home/aptplans/.env.production` | Compose paths (rewritten each bootstrap) |
 | `/home/aptplans/.env.secrets` | PIA VPN (`PIA_OPENVPN_*`) + intake GitHub token + review token + Brave/Gemini search keys (CD; bootstrap does not overwrite) |
 | `/home/aptplans/.env.search` | Meilisearch master key (bootstrap writes once; CD does not overwrite) |
+
+## One-time pre-production domain cutover
+
+Do not deploy the domain ledger, review readers, and release paths independently. Stop all writers, back up both ledgers and the overlay, import strictly, build the first complete generation, then restart the stack:
+
+```bash
+cd /opt/aptplans
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  stop worker review site
+sudo install -d -m 0750 -o "$(id -un)" -g "$(id -gn)" /var/backups/aptplans
+APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control \
+  python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/queue \
+  backup /var/backups/aptplans/pre-domain
+tar -C /var/lib/aptplans -czf /var/backups/aptplans/pre-domain-overlay.tgz catalog
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  run --rm --no-deps worker python3 -m pipeline.domain_cutover \
+  /var/lib/aptplans/catalog --queue-dir /var/lib/aptplans/queue \
+  --confirm-preproduction-cutover
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d search
+docker compose --env-file /home/aptplans/.env.production \
+  --env-file /home/aptplans/.env.secrets \
+  --env-file /home/aptplans/.env.search \
+  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
+  run --rm --no-deps worker python3 -c \
+  'from pipeline.site_build import run_site_build; raise SystemExit(run_site_build() != "built")'
+sudo /opt/aptplans/scripts/host/remote-deploy.sh
+```
+
+The import rejects malformed JSON, duplicate entity keys, and ambiguous grant identities before committing. Keep the old entity JSONL files unchanged through the observation window; production readers and writers do not fall back to them.
 
 ## Manual deploy
 

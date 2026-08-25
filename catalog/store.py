@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +23,19 @@ COMPLETENESS_RANK = {
     "no_plan_known": 1,
     "missing": 0,
 }
+
+
+def _domain_store():
+    if os.environ.get("APTPLANS_DOMAIN_STORE", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return None
+    from pipeline.domain_store import DomainStore
+    from pipeline.status import queue_dir_from_env
+
+    return DomainStore(queue_dir_from_env())
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -188,6 +202,14 @@ class Catalog:
         return cls()
 
 
+@dataclass(frozen=True)
+class CatalogSnapshot:
+    generation_id: str
+    committed_at: str
+    dataset_state: dict[str, dict]
+    catalog: Catalog
+
+
 def merge_overlay(catalog: Catalog, overlay: dict[str, dict]) -> Catalog:
     by_id = {document.id: document for document in catalog.documents}
     for document_id, updates in overlay.items():
@@ -210,6 +232,13 @@ def merge_overlay(catalog: Catalog, overlay: dict[str, dict]) -> Catalog:
 
 
 def load_overlay(overlay_dir: Path | None) -> dict[str, dict]:
+    domain = _domain_store()
+    if domain is not None:
+        return {
+            str(row["id"]): row
+            for row in domain.snapshot().rows("documents")
+            if row.get("id")
+        }
     if overlay_dir is None:
         return {}
     path = overlay_dir / "documents.jsonl"
@@ -222,12 +251,24 @@ def load_overlay(overlay_dir: Path | None) -> dict[str, dict]:
 
 
 def load_airports_overlay(overlay_dir: Path | None) -> list[Airport]:
+    domain = _domain_store()
+    if domain is not None:
+        return [Airport.from_dict(row) for row in domain.snapshot().rows("airports")]
     if overlay_dir is None:
         return []
     return [Airport.from_dict(row) for row in _read_jsonl(overlay_dir / "airports.jsonl")]
 
 
 def write_airports_overlay(overlay_dir: Path, airports: list[Airport]) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.replace(
+            "airports",
+            [airport.to_dict() for airport in airports],
+            key_field="lid",
+            reason="replace airport catalog",
+        )
+        return
     rows = [
         airport.to_dict()
         for airport in sorted(airports, key=lambda item: (item.state, item.lid))
@@ -236,12 +277,24 @@ def write_airports_overlay(overlay_dir: Path, airports: list[Airport]) -> None:
 
 
 def load_budgets_overlay(overlay_dir: Path | None) -> list[Budget]:
+    domain = _domain_store()
+    if domain is not None:
+        return [Budget.from_dict(row) for row in domain.snapshot().rows("budgets")]
     if overlay_dir is None:
         return []
     return [Budget.from_dict(row) for row in _read_jsonl(overlay_dir / "budgets.jsonl")]
 
 
 def write_budgets_overlay(overlay_dir: Path, budgets: list[Budget]) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.replace(
+            "budgets",
+            [budget.to_dict() for budget in budgets],
+            key_field="id",
+            reason="replace budget catalog",
+        )
+        return
     rows = [
         budget.to_dict()
         for budget in sorted(budgets, key=lambda item: (item.state, item.biennium or "", item.id))
@@ -250,12 +303,24 @@ def write_budgets_overlay(overlay_dir: Path, budgets: list[Budget]) -> None:
 
 
 def load_grants_overlay(overlay_dir: Path | None) -> list[Grant]:
+    domain = _domain_store()
+    if domain is not None:
+        return [Grant.from_dict(row) for row in domain.snapshot().rows("grants")]
     if overlay_dir is None:
         return []
     return [Grant.from_dict(row) for row in _read_jsonl(overlay_dir / "grants.jsonl")]
 
 
 def write_grants_overlay(overlay_dir: Path, grants: list[Grant]) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.replace(
+            "grants",
+            [grant.to_dict() for grant in grants],
+            key_field="grant_number",
+            reason="replace grant catalog",
+        )
+        return
     rows = [
         grant.to_dict()
         for grant in sorted(
@@ -267,6 +332,13 @@ def write_grants_overlay(overlay_dir: Path, grants: list[Grant]) -> None:
 
 
 def load_overviews_overlay(overlay_dir: Path | None) -> dict[str, dict]:
+    domain = _domain_store()
+    if domain is not None:
+        return {
+            str(row["airport_lid"]): row
+            for row in domain.snapshot().rows("overviews")
+            if row.get("airport_lid")
+        }
     if overlay_dir is None:
         return {}
     rows: dict[str, dict] = {}
@@ -278,6 +350,15 @@ def load_overviews_overlay(overlay_dir: Path | None) -> dict[str, dict]:
 
 
 def write_overviews_overlay(overlay_dir: Path, overviews: dict[str, dict]) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.replace(
+            "overviews",
+            list(overviews.values()),
+            key_field="airport_lid",
+            reason="replace airport overviews",
+        )
+        return
     rows = [overviews[lid] for lid in sorted(overviews)]
     _write_jsonl(overlay_dir / "overviews.jsonl", rows)
 
@@ -286,30 +367,63 @@ def upsert_overview_overlay(overlay_dir: Path, row: dict) -> None:
     lid = row.get("airport_lid")
     if not lid:
         return
+    domain = _domain_store()
+    if domain is not None:
+        domain.commit(
+            {("overviews", str(lid)): dict(row)},
+            reason=f"update overview {lid}",
+        )
+        return
     current = load_overviews_overlay(overlay_dir)
     current[lid] = row
     write_overviews_overlay(overlay_dir, current)
 
 
 def load_changes_overlay(overlay_dir: Path | None) -> list[ChangeEvent]:
+    domain = _domain_store()
+    if domain is not None:
+        return [ChangeEvent.from_dict(row) for row in domain.snapshot().rows("changes")]
     if overlay_dir is None:
         return []
     return [ChangeEvent.from_dict(row) for row in _read_jsonl(overlay_dir / "changes.jsonl")]
 
 
 def append_change(overlay_dir: Path, event: ChangeEvent) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.commit(
+            {("changes", event.id): event.to_dict()},
+            reason=f"append change {event.id}",
+        )
+        return
     rows = load_changes_overlay(overlay_dir)
     rows.append(event)
     _write_jsonl(overlay_dir / "changes.jsonl", [item.to_dict() for item in rows])
 
 
 def upsert_airport_overlay(overlay_dir: Path, airport: Airport) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.commit(
+            {("airports", airport.lid): airport.to_dict()},
+            reason=f"update airport {airport.lid}",
+        )
+        return
     by_lid = {item.lid: item for item in load_airports_overlay(overlay_dir)}
     by_lid[airport.lid] = airport
     write_airports_overlay(overlay_dir, list(by_lid.values()))
 
 
 def write_overlay_update(overlay_dir: Path, document_id: str, updates: dict) -> None:
+    domain = _domain_store()
+    if domain is not None:
+        domain.patch(
+            "documents",
+            document_id,
+            {**updates, "id": document_id},
+            reason=f"update document {document_id}",
+        )
+        return
     overlay = load_overlay(overlay_dir)
     current = dict(overlay.get(document_id) or {})
     current.update(updates)

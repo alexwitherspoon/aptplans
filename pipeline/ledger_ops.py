@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,10 +15,27 @@ from pipeline.queue import ControlQueue, JobQueue
 from pipeline.status import queue_dir_from_env
 
 
+def _control_root(root: Path) -> Path:
+    return Path(os.environ.get("APTPLANS_CONTROL_QUEUE") or root)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _check_file(path: Path) -> str:
     connection = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
     try:
-        return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        result = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        if result != "ok":
+            return result
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            return "foreign_key_error"
+        return "ok"
     finally:
         connection.close()
 
@@ -40,6 +58,10 @@ def backup(root: Path, destination: Path) -> dict[str, str]:
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "schema": 1,
         "integrity": result,
+        "sha256": {
+            "jobs.sqlite3": _sha256(jobs),
+            "control.sqlite3": _sha256(control),
+        },
     }
     (destination / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
@@ -53,23 +75,34 @@ def restore(root: Path, source: Path, *, confirmed_offline: bool) -> dict[str, s
         raise ValueError("restore requires --confirm-offline")
     source_jobs = source / "jobs.sqlite3"
     source_control = source / "control.sqlite3"
+    manifest_path = source / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected = manifest.get("sha256") or {}
+        actual = {
+            "jobs.sqlite3": _sha256(source_jobs),
+            "control.sqlite3": _sha256(source_control),
+        }
+        if expected and actual != expected:
+            raise RuntimeError("restore source checksum mismatch")
     checks = {
         "jobs": _check_file(source_jobs),
         "control": _check_file(source_control),
     }
     if set(checks.values()) != {"ok"}:
         raise RuntimeError(f"restore source integrity failed: {checks}")
-    root.mkdir(parents=True, exist_ok=True)
-    for name, source_path in (
-        ("jobs.sqlite3", source_jobs),
-        ("control.sqlite3", source_control),
-    ):
-        destination = root / name
-        temporary = root / f".{name}.restore"
+    destinations = (
+        (root, "jobs.sqlite3", source_jobs),
+        (_control_root(root), "control.sqlite3", source_control),
+    )
+    for destination_root, name, source_path in destinations:
+        destination_root.mkdir(parents=True, exist_ok=True)
+        destination = destination_root / name
+        temporary = destination_root / f".{name}.restore"
         shutil.copy2(source_path, temporary)
         os.replace(temporary, destination)
         for suffix in ("-wal", "-shm"):
-            sidecar = root / f"{name}{suffix}"
+            sidecar = destination_root / f"{name}{suffix}"
             if sidecar.exists():
                 sidecar.unlink()
     return integrity(root)
@@ -78,9 +111,12 @@ def restore(root: Path, source: Path, *, confirmed_offline: bool) -> dict[str, s
 def reset(root: Path, *, confirmed_preproduction: bool) -> dict[str, str]:
     if not confirmed_preproduction:
         raise ValueError("reset requires --confirm-preproduction-reset")
-    for name in ("jobs.sqlite3", "control.sqlite3"):
+    for directory, name in (
+        (root, "jobs.sqlite3"),
+        (_control_root(root), "control.sqlite3"),
+    ):
         for suffix in ("", "-wal", "-shm"):
-            path = root / f"{name}{suffix}"
+            path = directory / f"{name}{suffix}"
             if path.exists():
                 path.unlink()
     return integrity(root)
