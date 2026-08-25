@@ -491,6 +491,31 @@ def _domain_release_once(
         for document_id in expected_documents:
             if (current / "site" / "documents" / document_id).exists():
                 raise ValueError(f"pending document page was released: {document_id}")
+        semantic_site: list[dict] = []
+        for row in manifest["site"]:
+            semantic_row = {
+                "path": row["path"],
+                "sha256": row["sha256"],
+                "bytes": row["bytes"],
+            }
+            if row["path"] == "status.json":
+                status_payload = json.loads(
+                    (current / "site" / "status.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                status_payload.pop("generated_at", None)
+                normalized_status = json.dumps(
+                    status_payload,
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                semantic_row["sha256"] = hashlib.sha256(
+                    normalized_status
+                ).hexdigest()
+                semantic_row["bytes"] = len(normalized_status)
+            semantic_site.append(semantic_row)
         semantic = {
             "entities": [
                 {
@@ -500,14 +525,7 @@ def _domain_release_once(
                 }
                 for (entity_type, key), payload in sorted(updates.items())
             ],
-            "site": [
-                {
-                    "path": row["path"],
-                    "sha256": row["sha256"],
-                    "bytes": row["bytes"],
-                }
-                for row in manifest["site"]
-            ],
+            "site": semantic_site,
             "public_files": manifest["public_files"],
         }
         semantic_digest = hashlib.sha256(
