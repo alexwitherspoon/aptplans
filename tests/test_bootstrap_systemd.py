@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SYSTEMD = ROOT / "systemd"
 BOOTSTRAP = ROOT / "scripts" / "host" / "bootstrap.sh"
 REMOTE_DEPLOY = ROOT / "scripts" / "host" / "remote-deploy.sh"
+DOMAIN_CUTOVER = ROOT / "scripts" / "host" / "domain-cutover.sh"
 DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
 COMPOSE_PROD = ROOT / "docker" / "docker-compose.prod.yml"
 
@@ -67,3 +68,14 @@ def test_deploy_health_does_not_require_an_active_site_release() -> None:
     assert endpoint in REMOTE_DEPLOY.read_text(encoding="utf-8")
     assert endpoint in COMPOSE_PROD.read_text(encoding="utf-8")
     assert "/review/v1/health" in DEPLOY.read_text(encoding="utf-8")
+
+
+def test_domain_cutover_is_explicit_and_offline() -> None:
+    workflow = DEPLOY.read_text(encoding="utf-8")
+    script = DOMAIN_CUTOVER.read_text(encoding="utf-8")
+    assert "domain_cutover" in workflow
+    assert "domain-cutover.sh" in workflow
+    assert "stop worker review site" in script
+    assert "pre-domain-${STAMP}" in script
+    assert "--confirm-preproduction-cutover" in script
+    assert "run_site_build" in script

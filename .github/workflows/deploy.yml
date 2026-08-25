@@ -11,6 +11,11 @@ on:
         description: Reason for this deploy
         required: true
         type: string
+      domain_cutover:
+        description: Run the one-time pre-production domain cutover
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-production
@@ -212,7 +217,11 @@ jobs:
         run: |
           ssh ${DEPLOY_SSH_OPTS} -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<'EOF'
           set -euo pipefail
-          sudo /opt/aptplans/scripts/host/remote-deploy.sh
+          if [ "${{ inputs.domain_cutover || false }}" = "true" ]; then
+            sudo /opt/aptplans/scripts/host/domain-cutover.sh
+          else
+            sudo /opt/aptplans/scripts/host/remote-deploy.sh
+          fi
           EOF
 
       - name: Smoke check from runner

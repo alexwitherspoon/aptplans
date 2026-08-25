@@ -74,38 +74,16 @@ Host layout:
 
 ## One-time pre-production domain cutover
 
-Do not deploy the domain ledger, review readers, and release paths independently. Stop all writers, back up both ledgers and the overlay, import strictly, build the first complete generation, then restart the stack:
+Do not deploy the domain ledger, review readers, and release paths independently.
+Dispatch the **Deploy** workflow with `domain_cutover` enabled. The guarded
+cutover stops all writers and readers, saves offline copies of both ledgers and
+the overlay under `/var/backups/aptplans`, imports strictly, builds the first
+complete generation, and restarts the stack.
+
+The equivalent origin command is:
 
 ```bash
-cd /opt/aptplans
-docker compose --env-file /home/aptplans/.env.production \
-  --env-file /home/aptplans/.env.secrets \
-  --env-file /home/aptplans/.env.search \
-  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
-  stop worker review site
-sudo install -d -m 0750 -o "$(id -un)" -g "$(id -gn)" /var/backups/aptplans
-APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control \
-  python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/queue \
-  backup /var/backups/aptplans/pre-domain
-tar -C /var/lib/aptplans -czf /var/backups/aptplans/pre-domain-overlay.tgz catalog
-docker compose --env-file /home/aptplans/.env.production \
-  --env-file /home/aptplans/.env.secrets \
-  --env-file /home/aptplans/.env.search \
-  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
-  run --rm --no-deps worker python3 -m pipeline.domain_cutover \
-  /var/lib/aptplans/catalog --queue-dir /var/lib/aptplans/queue \
-  --confirm-preproduction-cutover
-docker compose --env-file /home/aptplans/.env.production \
-  --env-file /home/aptplans/.env.secrets \
-  --env-file /home/aptplans/.env.search \
-  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d search
-docker compose --env-file /home/aptplans/.env.production \
-  --env-file /home/aptplans/.env.secrets \
-  --env-file /home/aptplans/.env.search \
-  -f docker/docker-compose.yml -f docker/docker-compose.prod.yml \
-  run --rm --no-deps worker python3 -c \
-  'from pipeline.site_build import run_site_build; raise SystemExit(run_site_build() != "built")'
-sudo /opt/aptplans/scripts/host/remote-deploy.sh
+sudo /opt/aptplans/scripts/host/domain-cutover.sh
 ```
 
 The import rejects malformed JSON, duplicate entity keys, and ambiguous grant identities before committing. Keep the old entity JSONL files unchanged through the observation window; production readers and writers do not fall back to them.
