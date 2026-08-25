@@ -2,7 +2,7 @@
 #
 # See docs/LOCAL_SETUP.md and docs/TESTING.md
 
-.PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes ledger-integrity ledger-backup oregon-benchmark
+.PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes ledger-integrity ledger-backup oregon-benchmark ocr-benchmark
 
 COMPOSE_ENV_FILE := $(wildcard .env)
 COMPOSE := docker compose $(if $(COMPOSE_ENV_FILE),--env-file .env,) -f docker/docker-compose.yml -f docker/docker-compose.local.yml
@@ -16,6 +16,7 @@ export QUEUE_PATH ?= $(CURDIR)/data/queue
 export CATALOG_OVERLAY_PATH ?= $(CURDIR)/data/catalog
 export MODELS_PATH ?= $(CURDIR)/data/models
 export TEXT_PATH ?= $(CURDIR)/data/text
+export EXTRACTIONS_PATH ?= $(CURDIR)/data/extractions
 export SEARCH_PATH ?= $(CURDIR)/data/search
 export REJECT_PATH ?= $(CURDIR)/data/reject
 export LOGS_PATH ?= $(CURDIR)/data/logs
@@ -29,7 +30,7 @@ help: ## Show this help message
 	@grep -E '^(site|dev|up|stack|down|down-clean|pipeline|worker|links|model|llm):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Testing:'
-	@grep -E '^(test|test-unit|ci|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes|oregon-benchmark):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^(test|test-unit|ci|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes|oregon-benchmark|ocr-benchmark):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Build & cleanup:'
 	@grep -E '^(build|clean|ledger-integrity|ledger-backup):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -49,6 +50,9 @@ ledger-backup: ## Back up ledgers to LEDGER_BACKUP_DIR
 
 oregon-benchmark: ## Run frozen Oregon substrate gate and report known corpus gaps
 	$(PY) -m pipeline.oregon_benchmark --full $(if $(OREGON_BENCHMARK_REPORT),--output "$(OREGON_BENCHMARK_REPORT)",)
+
+ocr-benchmark: ## Benchmark Brookings OCR in the worker container
+	$(COMPOSE) run --rm worker python3 -m pipeline.ocr_benchmark $(if $(OCR_BENCHMARK_REPORT),--output "$(OCR_BENCHMARK_REPORT)",)
 
 test-unit: ## Run unit tests only (reference fixtures via tests/conftest.py)
 	$(PY) -m pytest tests -q

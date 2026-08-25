@@ -17,6 +17,11 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Tests
         run: make ci
+      - name: Build self-hosted OCR worker
+        run: docker build -f docker/Dockerfile.worker -t aptplans-worker .
+      - name: Brookings image-only OCR benchmark
+        timeout-minutes: 5
+        run: docker run --rm aptplans-worker python3 -m pipeline.ocr_benchmark
       - name: Oregon clean-cutover benchmark
         timeout-minutes: 15
         env:

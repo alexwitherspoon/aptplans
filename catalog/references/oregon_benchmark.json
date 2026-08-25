@@ -236,7 +236,7 @@
       "fiscal_year": "2025-26",
       "document_pages": 81,
       "airport_narrative_page": 56,
-      "airport_image_only_pages": [57, 58, 59, 60, 61, 62, 63, 64],
+      "airport_image_only_pages": [57, 58],
       "minimum_full_page_image_pixels": 6000000,
       "producer_contains": "Canon"
     }
@@ -270,7 +270,7 @@
     "milestone_6_completion_contract": "blocked"
   },
   "known_gaps": [
-    "The Brookings budget supplies image-only airport tables, but no AptPlans-owned OCR engine extracts them yet.",
+    "The Brookings image-only tables have not yet been OCR-gold-labeled or benchmarked with Tesseract on origin hardware.",
     "Self-hosted model quality and latency require an origin-hardware benchmark and are not a CI gate."
   ]
 }

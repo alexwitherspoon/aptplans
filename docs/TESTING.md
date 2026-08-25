@@ -9,9 +9,9 @@ make ci
 
 `make ci` runs pytest, then a full `site/build.py` into `dist/` with `APTPLANS_DEV_PREVIEW=1`. `make test` is an alias. `make test-unit` is pytest only (reference fixtures come from `tests/conftest.py`).
 
-CI (`.github/workflows/test.yml`) runs `make ci` on Python 3.12, then runs the 15-minute-bounded `make oregon-benchmark` gate.
+CI (`.github/workflows/test.yml`) runs `make ci` on Python 3.12, builds the worker image, runs the five-minute-bounded Brookings Poppler/Tesseract OCR gate, then runs the 15-minute-bounded `make oregon-benchmark` gate.
 
-The Oregon gate forbids network and model access, pins all eight committed Oregon plan PDFs plus eleven source/reference inputs by bytes and SHA-256, and compares normalized semantic output from two independent empty SQLite/release roots. The frozen sources include the official FAA FY2025 AIP workbook, ODAV 2025-27 Legislatively Adopted Budget PDF, State Library copy of the 1988 Cottage Grove State Airport master-plan scan, and City of Brookings FY2025-26 adopted budget. The gate parses the workbook and verifies its PDX rows on every run. It keeps all replayed documents pending and private. The faster `python3 -m pipeline.oregon_benchmark` extracts only the core three plan artifacts and reports `core_smoke_passed`; `make oregon-benchmark` extracts all eight plan artifacts, the 366-page ODAV budget, and the 162-page historical scan. It also verifies that Brookings airport-fund pages 57-64 remain image-only full-page scans.
+The Oregon gate forbids network and model access, pins all eight committed Oregon plan PDFs plus eleven source/reference inputs by bytes and SHA-256, and compares normalized semantic output from two independent empty SQLite/release roots. The frozen sources include the official FAA FY2025 AIP workbook, ODAV 2025-27 Legislatively Adopted Budget PDF, State Library copy of the 1988 Cottage Grove State Airport master-plan scan, and City of Brookings FY2025-26 adopted budget. The gate parses the workbook and verifies its PDX rows on every run. It keeps all replayed documents pending and private. The faster `python3 -m pipeline.oregon_benchmark` extracts only the core three plan artifacts and reports `core_smoke_passed`; `make oregon-benchmark` extracts all eight plan artifacts, the 366-page ODAV budget, and the 162-page historical scan. It also verifies that Brookings airport-fund pages 57-58 remain image-only full-page scans.
 
 ## What is covered now
 
@@ -42,7 +42,7 @@ The Oregon gate forbids network and model access, pins all eight committed Orego
 
 ## What is not covered yet
 
-Live crawls, live FAA NASR/NPIAS fetches, live USAspending posts, origin disk I/O, and Ollama summaries stay off CI. The Brookings budget supplies an image-only airport-fund fixture, but AptPlans does not yet have an OCR engine to extract those tables. The benchmark explicitly blocks Oregon-completeness and later-milestone claims because that OCR path and an origin-model run are still absent.
+Live crawls, live FAA NASR/NPIAS fetches, live USAspending posts, origin disk I/O, and Ollama summaries stay off CI. The Brookings budget supplies an image-only airport-fund fixture. Unit tests inject a deterministic OCR backend to test routing, coordinates, immutable manifests, and cache reuse; the worker-image gate runs real Poppler/Tesseract against pages 57-58. Production-host latency and the self-hosted model lane still require origin-hardware runs, so the benchmark continues to block Oregon-completeness and later-milestone claims.
 
 ## Manual check
 
