@@ -12,6 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
+from catalog.grants import parse_aip_grants_bytes
 from catalog.models import Airport, Budget, Document, Grant
 from catalog.seed import seed_catalog_snapshot
 from pipeline.domain_store import DomainStore, entity_key
@@ -36,6 +37,7 @@ MANIFEST_FIELDS = frozenset(
         "reference_inputs",
         "airports",
         "artifacts",
+        "official_source_expectations",
         "funding_expectations",
         "required_modalities",
         "claims",
@@ -224,6 +226,91 @@ def _artifact_gate(manifest: dict, *, full: bool) -> dict:
         "status": "passed",
         "seconds": round(perf_counter() - started, 3),
         "artifacts": metrics,
+    }
+
+
+def _official_source_gate(manifest: dict, *, full: bool) -> dict:
+    started = perf_counter()
+    inputs = {
+        str(row["path"]): row for row in manifest["reference_inputs"]
+    }
+    expectations = manifest["official_source_expectations"]
+
+    workbook = expectations["faa_grant_workbook"]
+    workbook_row = inputs.get(str(workbook["path"]))
+    if workbook_row is None:
+        raise ValueError("FAA grant workbook is not a frozen reference input")
+    workbook_path = _verify_frozen_input(workbook_row)
+    grants = parse_aip_grants_bytes(
+        workbook_path.read_bytes(),
+        fiscal_year=int(workbook["fiscal_year"]),
+    )
+    airport_grants = [
+        grant
+        for grant in grants
+        if grant.airport_lid == str(workbook["airport_lid"])
+    ]
+    workbook_actual = {
+        "total_grant_rows": len(grants),
+        "airport_lid": str(workbook["airport_lid"]),
+        "airport_grant_count": len(airport_grants),
+        "airport_award_total": sum(
+            int(grant.amount or 0) for grant in airport_grants
+        ),
+    }
+    for key in ("total_grant_rows", "airport_grant_count", "airport_award_total"):
+        if workbook_actual[key] != int(workbook[key]):
+            raise ValueError(
+                f"FAA grant workbook golden changed: "
+                f"{key}={workbook_actual[key]}"
+            )
+
+    def extract_pdf(name: str, label: str) -> dict[str, object]:
+        expected = expectations[name]
+        frozen_row = inputs.get(str(expected["path"]))
+        if frozen_row is None:
+            raise ValueError(f"{label} is not a frozen reference input")
+        path = _verify_frozen_input(frozen_row)
+        actual: dict[str, object] = {
+            "bytes": path.stat().st_size,
+            "extracted": False,
+        }
+        if not full:
+            return actual
+        extraction = expected["extract_full_only"]
+        pages = extract_pages(path.read_bytes())
+        text = "\n".join(pages)
+        normalized = text.lower()
+        if len(pages) != int(extraction["pages"]):
+            raise ValueError(f"{label} extracted page count changed")
+        if len(text) < int(extraction["minimum_characters"]):
+            raise ValueError(f"{label} text fell below golden floor")
+        missing = [
+            phrase
+            for phrase in extraction["required_phrases"]
+            if str(phrase).lower() not in normalized
+        ]
+        if missing:
+            raise ValueError(
+                f"{label} missing golden phrases: " + ", ".join(missing)
+            )
+        actual.update(
+            {
+                "extracted": True,
+                "pages": len(pages),
+                "characters": len(text),
+            }
+        )
+        return actual
+
+    budget_actual = extract_pdf("odav_budget_pdf", "ODAV budget PDF")
+    scan_actual = extract_pdf("historical_plan_scan", "historical plan scan")
+    return {
+        "status": "passed",
+        "seconds": round(perf_counter() - started, 3),
+        "faa_grant_workbook": workbook_actual,
+        "odav_budget_pdf": budget_actual,
+        "historical_plan_scan": scan_actual,
     }
 
 
@@ -427,6 +514,7 @@ def run(*, full: bool = False, require_complete_corpus: bool = False) -> dict:
             "frozen_at": manifest["frozen_at"],
             "scope": manifest["scope"],
             "artifact_gate": _artifact_gate(manifest, full=full),
+            "official_source_gate": _official_source_gate(manifest, full=full),
             "funding_gate": _funding_gate(manifest, grants, budgets),
             "domain_release_gate": _domain_release_gate(
                 airports,
@@ -461,7 +549,7 @@ def main() -> int:
     parser.add_argument(
         "--full",
         action="store_true",
-        help="also extract the 40 MB PDX volume",
+        help="also extract large plan artifacts and the ODAV budget",
     )
     parser.add_argument(
         "--require-complete-corpus",

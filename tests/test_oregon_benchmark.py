@@ -31,6 +31,10 @@ def test_manifest_covers_every_committed_oregon_pdf_and_blocks_later_claims() ->
     }
     assert {row["document_id"] for row in manifest["artifacts"]} == expected
     assert len(manifest["artifacts"]) == 8
+    reference_paths = {row["path"] for row in manifest["reference_inputs"]}
+    assert "files/faa-fy2025-aip-grants.xlsx" in reference_paths
+    assert "files/odav-2025-27-lab.pdf" in reference_paths
+    assert "files/cottage-grove-1988-master-plan.pdf" in reference_paths
     assert manifest["claims"]["oregon_complete"] is False
     assert all(
         manifest["claims"][name] == "blocked"
@@ -59,6 +63,23 @@ def test_oregon_substrate_benchmark_round_trips_frozen_core() -> None:
     assert result["funding_gate"]["state_budget_total"] == 45874157
     assert result["funding_gate"]["consolidated_budget_total"] == 45874157
     assert result["funding_gate"]["pdx_grant_count"] == 8
+    assert (
+        result["official_source_gate"]["faa_grant_workbook"][
+            "airport_grant_count"
+        ]
+        == 5
+    )
+    assert (
+        result["official_source_gate"]["faa_grant_workbook"][
+            "airport_award_total"
+        ]
+        == 31796669
+    )
+    assert result["official_source_gate"]["odav_budget_pdf"]["extracted"] is False
+    assert (
+        result["official_source_gate"]["historical_plan_scan"]["extracted"]
+        is False
+    )
     assert result["domain_release_gate"]["status"] == "passed"
     assert result["domain_release_gate"]["repeat_clean_runs"] == 2
     assert {
@@ -75,11 +96,7 @@ def test_oregon_substrate_benchmark_round_trips_frozen_core() -> None:
         result["claims"]["milestone_2_clean_cutover_rerun"]
         == "core_smoke_only"
     )
-    assert result["incomplete_modalities"] == [
-        "scanned_pdf_ocr",
-        "official_budget_table",
-        "official_grant_spreadsheet",
-    ]
+    assert result["incomplete_modalities"] == ["image_only_pdf_ocr"]
 
 
 def test_complete_corpus_gate_refuses_known_modality_gaps(monkeypatch) -> None:
@@ -97,6 +114,11 @@ def test_complete_corpus_gate_refuses_known_modality_gaps(monkeypatch) -> None:
         oregon_benchmark,
         "_funding_gate",
         lambda _manifest, _grants, _budgets: {"status": "passed"},
+    )
+    monkeypatch.setattr(
+        oregon_benchmark,
+        "_official_source_gate",
+        lambda _manifest, full: {"status": "passed"},
     )
     monkeypatch.setattr(
         oregon_benchmark,

@@ -49,6 +49,24 @@
       "bytes": 63953,
       "sha256": "8c1ba78551f7bb1d44447f92106bc06abd37c937352bf7df8971b2655434dc54",
       "purpose": "Oregon large-hub planning microsite"
+    },
+    {
+      "path": "files/faa-fy2025-aip-grants.xlsx",
+      "bytes": 430906,
+      "sha256": "1c16930f818879bc144d5d531c85f4dc1c3e992b08ceb937dadddc4a7484adcb",
+      "purpose": "Official FAA FY2025 AIP grant workbook"
+    },
+    {
+      "path": "files/odav-2025-27-lab.pdf",
+      "bytes": 21434901,
+      "sha256": "834373fae3cef455e823df17f31071e2aa4fa4e67158a528601de1f86428a224",
+      "purpose": "Official ODAV 2025-27 Legislatively Adopted Budget"
+    },
+    {
+      "path": "files/cottage-grove-1988-master-plan.pdf",
+      "bytes": 10486654,
+      "sha256": "809a7ebfb94207df624f18bf9b3ff9e80c2fdfc9d241520766de79625ac25fff",
+      "purpose": "State Library scan with an embedded OCR text layer"
     }
   ],
   "airports": ["PDX", "TTD", "4S9", "4S2"],
@@ -169,6 +187,44 @@
       }
     }
   ],
+  "official_source_expectations": {
+    "faa_grant_workbook": {
+      "path": "files/faa-fy2025-aip-grants.xlsx",
+      "fiscal_year": 2025,
+      "total_grant_rows": 3326,
+      "airport_lid": "PDX",
+      "airport_grant_count": 5,
+      "airport_award_total": 31796669
+    },
+    "odav_budget_pdf": {
+      "path": "files/odav-2025-27-lab.pdf",
+      "extract_full_only": {
+        "pages": 366,
+        "minimum_characters": 490000,
+        "required_phrases": [
+          "45,874,157",
+          "Legislatively Adopted Budget",
+          "Oregon Department of Aviation",
+          "General Aviation Entitlement"
+        ]
+      }
+    },
+    "historical_plan_scan": {
+      "path": "files/cottage-grove-1988-master-plan.pdf",
+      "source_record_url": "https://digitalcollections.library.oregon.gov/nodes/view/32604",
+      "text_layer": "embedded_ocr",
+      "extract_full_only": {
+        "pages": 162,
+        "minimum_characters": 300000,
+        "required_phrases": [
+          "Cottage Grove State Airport",
+          "Airport Master Plan",
+          "April 1988",
+          "Federal Aviation Administration"
+        ]
+      }
+    }
+  },
   "funding_expectations": {
     "state_budget_id": "or-odav-lab-2025-27",
     "state_budget_total": 45874157,
@@ -185,9 +241,10 @@
     "split_chapter_pdf": "covered_full_only",
     "alp_drawing_pdf": "covered",
     "large_born_digital_pdf": "covered_full_only",
-    "scanned_pdf_ocr": "missing",
-    "official_budget_table": "normalized_fixture_only",
-    "official_grant_spreadsheet": "normalized_fixture_only"
+    "scanned_pdf_with_ocr_text_layer": "covered_full_only",
+    "image_only_pdf_ocr": "missing",
+    "official_budget_table": "covered_full_only",
+    "official_grant_spreadsheet": "covered"
   },
   "claims": {
     "milestone_2_clean_cutover_rerun": "passed",
@@ -197,9 +254,7 @@
     "milestone_6_completion_contract": "blocked"
   },
   "known_gaps": [
-    "No frozen Oregon scanned-plan artifact exercises OCR.",
-    "The Oregon budget source is represented by reviewed normalized rows, not frozen source-table bytes.",
-    "FAA grant workbooks are represented by reviewed normalized rows, not a frozen source spreadsheet.",
+    "The historical scan has an embedded OCR text layer; no image-only fixture exercises an AptPlans-owned OCR engine.",
     "Self-hosted model quality and latency require an origin-hardware benchmark and are not a CI gate."
   ]
 }

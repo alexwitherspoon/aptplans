@@ -11,7 +11,7 @@ make ci
 
 CI (`.github/workflows/test.yml`) runs `make ci` on Python 3.12, then runs the 15-minute-bounded `make oregon-benchmark` gate.
 
-The Oregon gate forbids network and model access, pins all eight committed Oregon PDFs plus seven reference/HTML inputs by bytes and SHA-256, and compares normalized semantic output from two independent empty SQLite/release roots. It keeps all replayed documents pending and private. The faster `python3 -m pipeline.oregon_benchmark` extracts only the core three artifacts and reports `core_smoke_passed`; `make oregon-benchmark` extracts all eight.
+The Oregon gate forbids network and model access, pins all eight committed Oregon plan PDFs plus ten source/reference inputs by bytes and SHA-256, and compares normalized semantic output from two independent empty SQLite/release roots. The frozen sources include the official FAA FY2025 AIP workbook, ODAV 2025-27 Legislatively Adopted Budget PDF, and State Library copy of the 1988 Cottage Grove State Airport master-plan scan. The gate parses the workbook and verifies its PDX rows on every run. It keeps all replayed documents pending and private. The faster `python3 -m pipeline.oregon_benchmark` extracts only the core three plan artifacts and reports `core_smoke_passed`; `make oregon-benchmark` extracts all eight plan artifacts, the 366-page ODAV budget, and the 162-page historical scan.
 
 ## What is covered now
 
@@ -42,7 +42,7 @@ The Oregon gate forbids network and model access, pins all eight committed Orego
 
 ## What is not covered yet
 
-Live crawls, live FAA NASR/NPIAS fetches, live USAspending posts, origin disk I/O, and Ollama summaries stay off CI. The benchmark explicitly blocks Oregon-completeness and later-milestone claims because no frozen scanned/OCR plan, official budget-table PDF, official grant workbook, or origin-model run exists yet.
+Live crawls, live FAA NASR/NPIAS fetches, live USAspending posts, origin disk I/O, and Ollama summaries stay off CI. The historical scan has a searchable OCR text layer supplied by the archive; AptPlans does not yet have an OCR engine or an image-only fixture. The benchmark explicitly blocks Oregon-completeness and later-milestone claims because that OCR path and an origin-model run are still absent.
 
 ## Manual check
 
