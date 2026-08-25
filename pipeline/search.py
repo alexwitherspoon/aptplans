@@ -16,7 +16,12 @@ from catalog.models import Airport, Document, Grant, State, visible_on_site
 from catalog.seed import seed_catalog
 from catalog.store import Catalog
 from pipeline.refresh import ROOT, overlay_dir_from_env
-from pipeline.textstore import pages_path, read_pages, text_dir, write_pages
+from pipeline.textstore import (
+    projection_matches,
+    read_pages,
+    text_dir,
+    write_pages,
+)
 
 log = logging.getLogger("aptplans.search")
 
@@ -375,11 +380,18 @@ def backfill_text(
             content_sha256=document.content_sha256,
             ocr=ocr,
         )
-        if not pages_path(dest, document.content_sha256).is_file():
+        if not projection_matches(
+            dest,
+            document.content_sha256,
+            manifest_key=manifest.manifest_key,
+            manifest_sha256=manifest.manifest_sha256,
+        ):
             write_pages(
                 dest,
                 document.content_sha256,
                 manifest.page_text(),
+                manifest_key=manifest.manifest_key,
+                manifest_sha256=manifest.manifest_sha256,
             )
             written += 1
     if written:

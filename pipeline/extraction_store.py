@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+import fcntl
 import hashlib
 from importlib.metadata import version as package_version
 import json
@@ -43,6 +45,37 @@ def _canonical(payload: object) -> bytes:
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _durable_mkdir(path: Path) -> None:
+    missing: list[Path] = []
+    candidate = path
+    while not candidate.exists():
+        missing.append(candidate)
+        candidate = candidate.parent
+    path.mkdir(parents=True, exist_ok=True)
+    for created in reversed(missing):
+        _fsync_directory(created.parent)
+
+
+@contextmanager
+def _manifest_lock(root: Path, manifest_key: str):
+    lock_dir = root / ".locks"
+    _durable_mkdir(lock_dir)
+    with (lock_dir / f"{manifest_key}.lock").open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -95,6 +128,10 @@ class ExtractionManifest:
     def page_text(self) -> list[str]:
         return [str(page.get("text") or "") for page in self.pages]
 
+    @property
+    def manifest_sha256(self) -> str:
+        return _sha256(_canonical(self.to_dict()) + b"\n")
+
 
 class ExtractionStore:
     """Index immutable manifests in SQLite and keep full payloads on disk."""
@@ -127,6 +164,9 @@ class ExtractionStore:
             raise ValueError(f"corrupt extraction manifest: {manifest_key}")
         return ExtractionManifest.from_dict(json.loads(payload))
 
+    def get(self, manifest_key: str) -> ExtractionManifest | None:
+        return self._read_indexed(manifest_key)
+
     def extract_pdf(
         self,
         source: Path,
@@ -150,7 +190,8 @@ class ExtractionStore:
                 ocr_version = "unavailable"
         extractor_version = (
             f"{EXTRACTION_ALGORITHM_VERSION}+"
-            f"pypdf/{package_version('pypdf')}+ocr/{ocr_version}"
+            f"pypdf/{package_version('pypdf')}+"
+            f"Pillow/{package_version('Pillow')}+ocr/{ocr_version}"
         )
         options = {
             "minimum_native_characters": int(minimum_native_characters),
@@ -160,6 +201,10 @@ class ExtractionStore:
             "ocr_page_segmentation_mode": getattr(
                 ocr, "page_segmentation_mode", None
             ),
+            "ocr_engine_mode": 1 if ocr is not None else None,
+            "ocr_timeout_seconds": getattr(ocr, "timeout_seconds", None),
+            "ocr_locale": "C" if ocr is not None else None,
+            "ocr_thread_limit": 1 if ocr is not None else None,
         }
         options_sha256 = _sha256(_canonical(options))
         manifest_key = _sha256(
@@ -204,31 +249,28 @@ class ExtractionStore:
                 and largest_image_pixels >= minimum_image_pixels
             )
             if should_ocr:
-                if ocr is None or ocr_version == "unavailable":
+                if ocr_version == "unavailable":
+                    raise OcrUnavailable(
+                        f"OCR is unavailable for page {page_number}"
+                    )
+                if ocr is None:
                     method = "supervised"
                     error = {
                         "code": "ocr_unavailable",
                         "message": "image-only page requires local OCR",
                     }
                 else:
-                    try:
-                        ocr_page: OcrPage = ocr.extract_page(
-                            source, page_number
-                        )
-                        text = ocr_page.text.strip()
-                        coordinates = ocr_page.coordinates or None
-                        page_quality.update(ocr_page.quality)
-                        method = "ocr" if text else "supervised"
-                        if not text:
-                            error = {
-                                "code": "ocr_empty",
-                                "message": "OCR returned no text",
-                            }
-                    except Exception as exc:
-                        method = "supervised"
+                    ocr_page: OcrPage = ocr.extract_page(
+                        source, page_number
+                    )
+                    text = ocr_page.text.strip()
+                    coordinates = ocr_page.coordinates or None
+                    page_quality.update(ocr_page.quality)
+                    method = "ocr" if text else "supervised"
+                    if not text:
                         error = {
-                            "code": "ocr_failed",
-                            "message": str(exc)[:500],
+                            "code": "ocr_empty",
+                            "message": "OCR returned no text",
                         }
             elif not native:
                 method = "empty"
@@ -285,96 +327,86 @@ class ExtractionStore:
         byte_count: int,
         media_type: str,
     ) -> ExtractionManifest:
-        payload = _canonical(manifest.to_dict()) + b"\n"
-        manifest_sha256 = _sha256(payload)
-        path = self._manifest_path(
-            manifest.content_sha256, manifest.manifest_key
-        )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        with temporary.open("wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-        relative = path.relative_to(self.root).as_posix()
-        with self._connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                connection.execute(
-                    """
-                    INSERT OR IGNORE INTO artifact_versions(
-                        content_sha256, media_type, byte_count, created_at
-                    ) VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        manifest.content_sha256,
-                        media_type,
-                        int(byte_count),
-                        manifest.created_at,
-                    ),
-                )
-                artifact = connection.execute(
-                    """
-                    SELECT media_type, byte_count FROM artifact_versions
-                    WHERE content_sha256=?
-                    """,
-                    (manifest.content_sha256,),
-                ).fetchone()
-                if (
-                    artifact is None
-                    or str(artifact["media_type"]) != media_type
-                    or int(artifact["byte_count"]) != int(byte_count)
-                ):
-                    raise ValueError("artifact version metadata conflict")
-                connection.execute(
-                    """
-                    INSERT OR IGNORE INTO extraction_manifests(
-                        manifest_key, content_sha256, extractor_version,
-                        options_sha256, status, page_count, manifest_sha256,
-                        manifest_path, coordinates_available, quality_json,
-                        error_json, duration_ms, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        manifest.manifest_key,
-                        manifest.content_sha256,
-                        manifest.extractor_version,
-                        manifest.options_sha256,
-                        manifest.status,
-                        len(manifest.pages),
-                        manifest_sha256,
-                        relative,
-                        1 if manifest.coordinates_available else 0,
-                        _canonical(manifest.quality).decode("utf-8"),
+        with _manifest_lock(self.root, manifest.manifest_key):
+            indexed_manifest = self._read_indexed(manifest.manifest_key)
+            if indexed_manifest is not None:
+                return indexed_manifest
+            payload = _canonical(manifest.to_dict()) + b"\n"
+            manifest_sha256 = _sha256(payload)
+            path = self._manifest_path(
+                manifest.content_sha256, manifest.manifest_key
+            )
+            _durable_mkdir(path.parent)
+            temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            with temporary.open("wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            _fsync_directory(path.parent)
+            relative = path.relative_to(self.root).as_posix()
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                try:
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO artifact_versions(
+                            content_sha256, media_type, byte_count, created_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
                         (
-                            _canonical(manifest.errors).decode("utf-8")
-                            if manifest.errors
-                            else None
+                            manifest.content_sha256,
+                            media_type,
+                            int(byte_count),
+                            manifest.created_at,
                         ),
-                        manifest.duration_ms,
-                        manifest.created_at,
-                    ),
-                )
-                indexed = connection.execute(
-                    """
-                    SELECT manifest_sha256 FROM extraction_manifests
-                    WHERE manifest_key=?
-                    """,
-                    (manifest.manifest_key,),
-                ).fetchone()
-                if (
-                    indexed is None
-                    or str(indexed["manifest_sha256"]) != manifest_sha256
-                ):
-                    raise ValueError("extraction manifest conflict")
-                connection.execute("COMMIT")
-            except Exception:
-                connection.execute("ROLLBACK")
-                raise
+                    )
+                    artifact = connection.execute(
+                        """
+                        SELECT media_type, byte_count FROM artifact_versions
+                        WHERE content_sha256=?
+                        """,
+                        (manifest.content_sha256,),
+                    ).fetchone()
+                    if (
+                        artifact is None
+                        or str(artifact["media_type"]) != media_type
+                        or int(artifact["byte_count"]) != int(byte_count)
+                    ):
+                        raise ValueError("artifact version metadata conflict")
+                    connection.execute(
+                        """
+                        INSERT INTO extraction_manifests(
+                            manifest_key, content_sha256, extractor_version,
+                            options_sha256, status, page_count, manifest_sha256,
+                            manifest_path, coordinates_available, quality_json,
+                            error_json, duration_ms, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            manifest.manifest_key,
+                            manifest.content_sha256,
+                            manifest.extractor_version,
+                            manifest.options_sha256,
+                            manifest.status,
+                            len(manifest.pages),
+                            manifest_sha256,
+                            relative,
+                            1 if manifest.coordinates_available else 0,
+                            _canonical(manifest.quality).decode("utf-8"),
+                            (
+                                _canonical(manifest.errors).decode("utf-8")
+                                if manifest.errors
+                                else None
+                            ),
+                            manifest.duration_ms,
+                            manifest.created_at,
+                        ),
+                    )
+                    connection.execute("COMMIT")
+                except Exception:
+                    connection.execute("ROLLBACK")
+                    path.unlink(missing_ok=True)
+                    _fsync_directory(path.parent)
+                    raise
         return manifest

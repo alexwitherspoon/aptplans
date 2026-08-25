@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "dataset_id": "brookings-airport-budget-v1",
+  "source_path": "files/brookings-fy2025-26-adopted-budget.pdf",
+  "source_sha256": "da0928d71169b2b27cc1eaec29fd861541cde8ed3d2b8a2b1217448260ce57ad",
+  "pages": [
+    {
+      "page": 57,
+      "assertions": [
+        {
+          "id": "resources-heading",
+          "kind": "all_of",
+          "terms": ["City of Brookings", "Airport", "Resources"]
+        },
+        {
+          "id": "net-working-capital",
+          "kind": "window",
+          "anchor": "Net Working Capital",
+          "terms": ["33-09-4910", "140,000"],
+          "max_characters": 200
+        },
+        {
+          "id": "grant-revenue",
+          "kind": "window",
+          "anchor": "Grant Revenue",
+          "terms": ["33-03-4050", "226,200"],
+          "max_characters": 200
+        },
+        {
+          "id": "airport-fees",
+          "kind": "window",
+          "anchor": "Fees",
+          "terms": ["33-04-4105", "3,100"],
+          "max_characters": 200
+        },
+        {
+          "id": "airport-rents",
+          "kind": "window",
+          "anchor": "Rents",
+          "terms": ["33-04-4115", "34,500"],
+          "max_characters": 200
+        },
+        {
+          "id": "total-resources",
+          "kind": "all_of",
+          "terms": ["Total Resources", "404,300"]
+        }
+      ]
+    },
+    {
+      "page": 58,
+      "assertions": [
+        {
+          "id": "expenditures-heading",
+          "kind": "all_of",
+          "terms": ["City of Brookings", "Airport", "Expenditures"]
+        },
+        {
+          "id": "salaries-and-wages",
+          "kind": "window",
+          "anchor": "Salaries & Wages",
+          "terms": ["33-10-5005", "12,687"],
+          "max_characters": 200
+        },
+        {
+          "id": "pers",
+          "kind": "window",
+          "anchor": "PERS",
+          "terms": ["33-10-5015", "3,800"],
+          "max_characters": 200
+        },
+        {
+          "id": "construction",
+          "kind": "window",
+          "anchor": "Construction",
+          "terms": ["33-10-7025", "233,200"],
+          "max_characters": 200
+        },
+        {
+          "id": "contingency",
+          "kind": "window",
+          "anchor": "Contingency",
+          "terms": ["33-10-9200", "131,003"],
+          "max_characters": 200
+        },
+        {
+          "id": "total-expenditures",
+          "kind": "all_of",
+          "terms": ["Total Expenditures", "404,300"]
+        }
+      ]
+    }
+  ]
+}

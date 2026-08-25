@@ -26,7 +26,12 @@ from pipeline.release_store import ReleaseStore
 MANIFEST_PATH = ROOT / "catalog" / "references" / "oregon_benchmark.json"
 REFERENCES = MANIFEST_PATH.parent
 INCOMPLETE_MODALITIES = frozenset(
-    {"missing", "normalized_fixture_only", "source_fixture_only"}
+    {
+        "gold_labeled_ci_only",
+        "missing",
+        "normalized_fixture_only",
+        "source_fixture_only",
+    }
 )
 MANIFEST_FIELDS = frozenset(
     {

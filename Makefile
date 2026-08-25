@@ -84,11 +84,11 @@ up: site ## Build the site and start local Caddy (Docker)
 	$(COMPOSE) up --build site
 
 stack: site ## Build the site and start local Caddy, search, worker, and Ollama
-	mkdir -p data/files data/public-files data/queue data/catalog data/models data/text data/search data/reject
+	mkdir -p data/files data/public-files data/queue data/catalog data/models data/text data/extractions data/search data/reject
 	$(COMPOSE) up --build
 
 stack-egress: site ## Like stack, but worker scrapes through PIA VPN egress (needs .env VPN creds)
-	mkdir -p data/files data/public-files data/queue data/catalog data/models data/text data/search data/reject
+	mkdir -p data/files data/public-files data/queue data/catalog data/models data/text data/extractions data/search data/reject
 	$(COMPOSE_EGRESS) up --build
 
 down: ## Stop local Docker services
@@ -104,7 +104,7 @@ build: ## Build Docker images
 pipeline: worker ## Run one serial worker job
 
 worker: ## Run one serial worker job (does not start Ollama)
-	mkdir -p data/files data/public-files data/queue data/catalog data/text data/reject
+	mkdir -p data/files data/public-files data/queue data/catalog data/text data/extractions data/reject
 	$(COMPOSE) run --rm --no-deps worker python3 pipeline/run_once.py
 
 links: ## Check due official URLs (no live FAA, no Ollama)

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import hashlib
 import io
 import os
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
 from typing import Callable
+
+from PIL import Image
 
 
 class OcrUnavailable(RuntimeError):
@@ -38,6 +41,32 @@ def ocr_enabled() -> bool:
     }
 
 
+def _environment() -> dict[str, str]:
+    return {
+        **os.environ,
+        "LANG": "C",
+        "LC_ALL": "C",
+        "OMP_THREAD_LIMIT": "1",
+    }
+
+
+def _traineddata_sha256(language: str) -> str:
+    roots: list[Path] = []
+    if os.environ.get("TESSDATA_PREFIX"):
+        roots.append(Path(os.environ["TESSDATA_PREFIX"]))
+    roots.extend(
+        [
+            Path("/usr/share/tesseract-ocr/5/tessdata"),
+            Path("/usr/share/tessdata"),
+        ]
+    )
+    for root in roots:
+        path = root / f"{language}.traineddata"
+        if path.is_file():
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+    return "unresolved"
+
+
 class TesseractOcr:
     """Render with Poppler and OCR locally with Tesseract TSV output."""
 
@@ -58,38 +87,46 @@ class TesseractOcr:
 
     @property
     def version(self) -> str:
-        command = _command("APTPLANS_TESSERACT_BIN", "tesseract")
-        environment = {
-            **os.environ,
-            "LANG": "C",
-            "LC_ALL": "C",
-            "OMP_THREAD_LIMIT": "1",
-        }
+        tesseract = _command("APTPLANS_TESSERACT_BIN", "tesseract")
+        renderer = _command("APTPLANS_PDFTOPPM_BIN", "pdftoppm")
         try:
-            result = self.run(
-                [command, "--version"],
+            tesseract_result = self.run(
+                [tesseract, "--version"],
                 check=True,
                 capture_output=True,
                 text=True,
                 timeout=15,
-                env=environment,
+                env=_environment(),
+            )
+            renderer_result = self.run(
+                [renderer, "-v"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=_environment(),
             )
         except (FileNotFoundError, subprocess.SubprocessError) as exc:
-            raise OcrUnavailable("Tesseract is unavailable") from exc
-        first = (result.stdout or result.stderr or "").splitlines()
-        if not first:
-            raise OcrUnavailable("Tesseract did not report a version")
-        return first[0].strip()
+            raise OcrUnavailable("OCR toolchain is unavailable") from exc
+        tesseract_lines = (
+            tesseract_result.stdout or tesseract_result.stderr or ""
+        ).splitlines()
+        renderer_lines = (
+            renderer_result.stdout or renderer_result.stderr or ""
+        ).splitlines()
+        if not tesseract_lines or not renderer_lines:
+            raise OcrUnavailable("OCR toolchain did not report versions")
+        traineddata = _traineddata_sha256(self.language)
+        return (
+            f"{tesseract_lines[0].strip()}; "
+            f"{renderer_lines[0].strip()}; "
+            f"{self.language}.traineddata/{traineddata}"
+        )
 
     def extract_page(self, source: Path, page_number: int) -> OcrPage:
         renderer = _command("APTPLANS_PDFTOPPM_BIN", "pdftoppm")
         tesseract = _command("APTPLANS_TESSERACT_BIN", "tesseract")
-        environment = {
-            **os.environ,
-            "LANG": "C",
-            "LC_ALL": "C",
-            "OMP_THREAD_LIMIT": "1",
-        }
+        environment = _environment()
         with TemporaryDirectory(prefix="aptplans-ocr-") as raw:
             prefix = Path(raw) / "page"
             try:
@@ -113,6 +150,8 @@ class TesseractOcr:
                     timeout=self.timeout_seconds,
                     env=environment,
                 )
+                with Image.open(prefix.with_suffix(".png")) as image:
+                    image_size = image.size
                 result = self.run(
                     [
                         tesseract,
@@ -143,7 +182,18 @@ class TesseractOcr:
                 raise RuntimeError(
                     f"OCR failed on page {page_number}: {detail[:500]}"
                 ) from exc
-        return _parse_tsv(result.stdout)
+        parsed = _parse_tsv(result.stdout)
+        return OcrPage(
+            text=parsed.text,
+            coordinates=parsed.coordinates,
+            quality={
+                **parsed.quality,
+                "coordinate_space": "rendered_pixels",
+                "render_width": image_size[0],
+                "render_height": image_size[1],
+                "render_dpi": self.dpi,
+            },
+        )
 
 
 def _parse_tsv(payload: str) -> OcrPage:

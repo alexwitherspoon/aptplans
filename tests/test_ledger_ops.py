@@ -2,7 +2,9 @@ from pathlib import Path
 import json
 
 import pytest
+from pypdf import PdfWriter
 
+from pipeline.extraction_store import ExtractionStore
 from pipeline.ledger_ops import backup, integrity, reset, restore
 from pipeline.queue import ControlQueue, JobQueue, QueueJob
 
@@ -76,3 +78,37 @@ def test_restore_rejects_changed_backup_bytes(tmp_path: Path) -> None:
             destination,
             confirmed_offline=True,
         )
+
+
+def test_backup_restore_preserves_indexed_extractions(tmp_path: Path) -> None:
+    source_pdf = tmp_path / "source.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    with source_pdf.open("wb") as handle:
+        writer.write(handle)
+
+    root = tmp_path / "queue"
+    source_extractions = tmp_path / "source-extractions"
+    manifest = ExtractionStore(root, source_extractions).extract_pdf(
+        source_pdf
+    )
+    destination = tmp_path / "backup"
+    backup(
+        root,
+        destination,
+        extraction_root=source_extractions,
+    )
+
+    restored = tmp_path / "restored"
+    restored_extractions = tmp_path / "restored-extractions"
+    restore(
+        restored,
+        destination,
+        confirmed_offline=True,
+        extraction_root=restored_extractions,
+    )
+    indexed = ExtractionStore(
+        restored, restored_extractions
+    ).get(manifest.manifest_key)
+    assert indexed is not None
+    assert indexed.manifest_sha256 == manifest.manifest_sha256

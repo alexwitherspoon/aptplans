@@ -104,7 +104,7 @@ def test_oregon_substrate_benchmark_round_trips_frozen_core() -> None:
     assert result["incomplete_modalities"] == ["image_only_pdf_ocr"]
     assert (
         result["modality_coverage"]["image_only_pdf_ocr"]
-        == "source_fixture_only"
+        == "gold_labeled_ci_only"
     )
 
 

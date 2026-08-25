@@ -57,6 +57,7 @@
         "enum": [
           "covered",
           "covered_full_only",
+          "gold_labeled_ci_only",
           "missing",
           "normalized_fixture_only",
           "source_fixture_only"

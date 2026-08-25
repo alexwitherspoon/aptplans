@@ -73,6 +73,12 @@
       "bytes": 3618200,
       "sha256": "da0928d71169b2b27cc1eaec29fd861541cde8ed3d2b8a2b1217448260ce57ad",
       "purpose": "Official adopted budget with image-only airport fund tables"
+    },
+    {
+      "path": "ocr_gold.json",
+      "bytes": 2492,
+      "sha256": "3c4f0240d8bce6646ae0fa421a8dce61e24bc584d10ab5f47cf3ca255e4c796a",
+      "purpose": "Human-verified Brookings OCR account and amount assertions"
     }
   ],
   "airports": ["PDX", "TTD", "4S9", "4S2"],
@@ -258,7 +264,7 @@
     "alp_drawing_pdf": "covered",
     "large_born_digital_pdf": "covered_full_only",
     "scanned_pdf_with_ocr_text_layer": "covered_full_only",
-    "image_only_pdf_ocr": "source_fixture_only",
+    "image_only_pdf_ocr": "gold_labeled_ci_only",
     "official_budget_table": "covered_full_only",
     "official_grant_spreadsheet": "covered"
   },
@@ -270,7 +276,7 @@
     "milestone_6_completion_contract": "blocked"
   },
   "known_gaps": [
-    "The Brookings image-only tables have not yet been OCR-gold-labeled or benchmarked with Tesseract on origin hardware.",
+    "Origin-hardware Tesseract measurements define Brookings OCR latency and operating thresholds.",
     "Self-hosted model quality and latency require an origin-hardware benchmark and are not a CI gate."
   ]
 }

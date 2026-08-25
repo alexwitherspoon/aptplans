@@ -3,10 +3,10 @@ import sqlite3
 import subprocess
 
 import pytest
+from PIL import Image
 
 from catalog import REFERENCE_FILES
 from pipeline.extraction_store import ExtractionStore
-from pipeline import ocr_benchmark
 from pipeline.ocr import OcrPage, TesseractOcr, _parse_tsv
 from pipeline.queue import JobQueue
 
@@ -22,6 +22,7 @@ class FakeOcr:
     language = "eng"
     dpi = 200
     page_segmentation_mode = 12
+    timeout_seconds = 180
 
     def __init__(self) -> None:
         self.calls: list[int] = []
@@ -114,6 +115,36 @@ def test_missing_ocr_records_supervised_pages_without_losing_native_text(
             )
 
 
+def test_ocr_failure_is_not_cached(tmp_path: Path) -> None:
+    class FailingOcr(FakeOcr):
+        def extract_page(
+            self, _source: Path, page_number: int
+        ) -> OcrPage:
+            raise RuntimeError(f"transient OCR failure on page {page_number}")
+
+    store = ExtractionStore(tmp_path / "ledger", tmp_path / "extractions")
+    with pytest.raises(RuntimeError, match="transient OCR failure"):
+        store.extract_pdf(
+            BROOKINGS,
+            content_sha256=BROOKINGS_SHA256,
+            ocr=FailingOcr(),
+            minimum_image_pixels=6_000_000,
+        )
+
+    with sqlite3.connect(JobQueue(tmp_path / "ledger").path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM extraction_manifests"
+        ).fetchone()[0] == 0
+
+    recovered = store.extract_pdf(
+        BROOKINGS,
+        content_sha256=BROOKINGS_SHA256,
+        ocr=FakeOcr(),
+        minimum_image_pixels=6_000_000,
+    )
+    assert recovered.status == "completed"
+
+
 def test_tesseract_tsv_preserves_word_coordinates() -> None:
     page = _parse_tsv(
         "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\t"
@@ -129,14 +160,6 @@ def test_tesseract_tsv_preserves_word_coordinates() -> None:
     }
 
 
-def test_origin_ocr_benchmark_contract_uses_airport_table_pages() -> None:
-    ocr = FakeOcr()
-    result = ocr_benchmark.run(ocr=ocr, minimum_page_characters=5)
-    assert result["status"] == "passed"
-    assert ocr.calls == [57, 58]
-    assert {row["page"] for row in result["pages"]} == {57, 58}
-
-
 def test_tesseract_adapter_uses_bounded_local_commands(tmp_path: Path) -> None:
     calls: list[tuple[list[str], dict]] = []
     tsv = (
@@ -147,6 +170,10 @@ def test_tesseract_adapter_uses_bounded_local_commands(tmp_path: Path) -> None:
 
     def fake_run(argv, **kwargs):
         calls.append((argv, kwargs))
+        if argv[0] == "pdftoppm":
+            Image.new("RGB", (120, 80), "white").save(
+                Path(argv[-1]).with_suffix(".png")
+            )
         output = tsv if argv[0] == "tesseract" else ""
         return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
 
@@ -154,6 +181,8 @@ def test_tesseract_adapter_uses_bounded_local_commands(tmp_path: Path) -> None:
         tmp_path / "source.pdf", 7
     )
     assert page.text == "Airport"
+    assert page.quality["coordinate_space"] == "rendered_pixels"
+    assert page.quality["render_width"] == 120
     assert calls[0][0][:5] == ["pdftoppm", "-f", "7", "-l", "7"]
     assert calls[1][0][0] == "tesseract"
     assert calls[1][0][calls[1][0].index("--oem") + 1] == "1"
@@ -163,3 +192,28 @@ def test_tesseract_adapter_uses_bounded_local_commands(tmp_path: Path) -> None:
         assert kwargs["env"]["OMP_THREAD_LIMIT"] == "1"
         assert kwargs["timeout"] == 180
         assert "shell" not in kwargs
+
+
+def test_tesseract_identity_includes_renderer_and_language_data(
+    tmp_path: Path, monkeypatch
+) -> None:
+    traineddata = tmp_path / "eng.traineddata"
+    traineddata.write_bytes(b"language-data")
+    monkeypatch.setenv("TESSDATA_PREFIX", str(tmp_path))
+
+    def fake_run(argv, **_kwargs):
+        if argv[0] == "tesseract":
+            return subprocess.CompletedProcess(
+                argv, 0, stdout="tesseract 5.3.0\n", stderr=""
+            )
+        return subprocess.CompletedProcess(
+            argv, 0, stdout="", stderr="pdftoppm version 22.12.0\n"
+        )
+
+    identity = TesseractOcr(run=fake_run).version
+    assert "tesseract 5.3.0" in identity
+    assert "pdftoppm version 22.12.0" in identity
+    assert (
+        "eng.traineddata/"
+        "02c3d2552730b1bf8aa0463a9f8fb93f281473c205b1a445db82b34e8922c1fe"
+    ) in identity

@@ -211,9 +211,11 @@ def test_boot_sync_skips_without_meili(monkeypatch) -> None:
 
 def test_backfill_text_writes_missing_sidecar(tmp_path) -> None:
     import hashlib
+    import sqlite3
 
     from catalog import REFERENCE_FILES
     from catalog.store import Catalog
+    from pipeline.queue import JobQueue
     from pipeline.search import backfill_text
 
     pdf = REFERENCE_FILES / "4s9-2008-inventory.pdf"
@@ -245,9 +247,18 @@ def test_backfill_text_writes_missing_sidecar(tmp_path) -> None:
         ledger_root=tmp_path / "ledger",
     ) == 0
     assert "Mulino" in (tmp_path / "text" / f"{digest}.jsonl").read_text(encoding="utf-8")
-    import sqlite3
-
-    from pipeline.queue import JobQueue
+    (tmp_path / "text" / f"{digest}.jsonl").write_text(
+        "not-json\n", encoding="utf-8"
+    )
+    assert backfill_text(
+        catalog,
+        files_dir=files,
+        dest=tmp_path / "text",
+        ledger_root=tmp_path / "ledger",
+    ) == 1
+    assert "Mulino" in (tmp_path / "text" / f"{digest}.jsonl").read_text(
+        encoding="utf-8"
+    )
 
     with sqlite3.connect(JobQueue(tmp_path / "ledger").path) as connection:
         assert connection.execute(

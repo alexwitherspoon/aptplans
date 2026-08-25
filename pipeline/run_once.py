@@ -586,6 +586,8 @@ def process_fetch(
                     text_dir(files_dir),
                     stored.sha256,
                     manifest.page_text(),
+                    manifest_key=manifest.manifest_key,
+                    manifest_sha256=manifest.manifest_sha256,
                 )
         except Exception:
             log.exception("text sidecar failed; preserve still counts")

@@ -1,6 +1,6 @@
 # Immutable extraction contract
 
-Status: accepted for the Milestone 3 extraction cutover.
+Status: accepted.
 
 ## Decision
 
@@ -25,14 +25,21 @@ the job ledger is served by Caddy.
 or routing behavior requires a new extractor version or options hash; it never
 rewrites prior results.
 
+Typed inference results use the artifact hash, extraction manifest key, task
+type and version, logical lane, model digest, and options hash as their cache
+identity. Completed results and cited evidence are immutable. A mutable
+checkpoint stores the completed unit cursor and bounded task state; cursor
+regression is rejected, and successful completion removes the checkpoint in the
+same SQLite transaction that records the result.
+
 ## Routing
 
 The first pass is deterministic:
 
 1. Keep native PDF text when it meets the configured character floor.
 2. Route low-text pages with a sufficiently large raster image to local OCR.
-3. Mark an image-only page `supervised` when OCR is unavailable, fails, or
-   returns no text.
+3. Mark an image-only page `supervised` when OCR is disabled or returns no
+   text. Tool failures abort the extraction so the job can retry.
 4. Keep genuinely empty low-image pages as `empty`.
 
 The production worker uses Poppler to render selected pages and Tesseract to
@@ -40,7 +47,7 @@ produce TSV. TSV word boxes and confidence values are retained as evidence.
 OCR is self-hosted and controlled by `APTPLANS_OCR`; no document bytes leave the
 worker.
 
-The legacy page JSONL used by search is now a projection of the extraction
+The legacy page JSONL used by search is a projection of the extraction
 manifest. It remains an interchange/search input, not authoritative extraction
 state.
 
@@ -52,7 +59,9 @@ does not write extraction state.
 
 The Brookings FY2025-26 adopted budget is the first image-only gate. Its airport
 narrative is native text on page 56; pages 57-58 are full-page airport fund
-scans (page 59 begins a different fund). CI uses a
-deterministic fake OCR backend to test routing, coordinates, immutability, and
-cache reuse. Deployment-hardware measurements are still required before setting
-final DPI, timeout, batch, and escalation thresholds.
+scans (page 59 begins a different fund). Unit tests use a deterministic fake
+OCR backend for routing, coordinates, immutability, and cache reuse. CI
+evaluates Poppler and Tesseract output against human-verified account and amount
+assertions for pages 57-58. Worker baselines use 200 DPI and a 180-second page
+timeout. Origin-hardware measurements validate or replace those values and
+define batch and escalation thresholds.

@@ -31,7 +31,7 @@ Maintenance jobs are enqueued by **systemd timers**; the worker transactionally 
 | `aptplans-intake` | Hourly | GitHub intake poll |
 | `aptplans-airports` | Monthly 1st 03:00 | `overlay_refresh` |
 
-When `overlay_refresh` completes, the worker chains grant classify, overview, search sync, site build, and discovery (dataset gates apply). Airport `fetch`/`vet` jobs still enqueue scoped `pipeline_snapshot` and `site_build` reactively.
+When `overlay_refresh` completes, the worker chains grant classify, overview, search sync, site build, and discovery (dataset gates apply). Airport `fetch`/`vet` jobs enqueue scoped `pipeline_snapshot` and `site_build` reactively.
 
 ```bash
 systemctl list-timers 'aptplans-*'
@@ -110,7 +110,7 @@ docker inspect aptplans-worker-1 --format '{{.Name}} {{.HostConfig.CpusetCpus}}'
 
 The origin worker builds every public surface from one pinned domain generation. It stages HTML/RSS/JSON/sitemaps, the visible file projection, and a generation-tagged Meilisearch index under `/var/lib/aptplans/releases/<generation>`, validates them, then atomically advances `current`. Caddy mounts the release root and follows that symlink per request.
 
-Public HTML, RSS, JSON, sitemaps, assets, and `/files/` currently send `no-store`. Review and vet transitions commit desired domain state, then synchronously attempt a complete release before leaving the active queue. A failed projection retries continuously while the prior release remains served; authoritative review state is not rolled back.
+Public HTML, RSS, JSON, sitemaps, assets, and `/files/` send `no-store`. Review and vet transitions commit desired domain state, then synchronously attempt a complete release before leaving the active queue. A failed projection retries continuously while the prior release remains served; authoritative review state is not rolled back.
 
 Rebuild after a bulk text restore or Meilisearch wipe by enqueueing a full release. Staging extracts missing page sidecars, builds a complete new search index, and swaps it only after validation:
 
@@ -150,7 +150,7 @@ docker compose --env-file /home/aptplans/.env.production \
 
 The public site should expose corpus counts and coverage status (`complete` / `link_only` / `missing`, and so on). Treat `complete` count over months as the success metric. Queue depth should sit near zero once backfill is done.
 
-Run the frozen clean-cutover benchmark with `make oregon-benchmark`. It hash-checks all eight committed Oregon plan PDFs plus eleven source/reference inputs, extracts the complete PDF set, verifies the official ODAV budget and FAA workbook, checks the Brookings image-only airport pages, reconciles reviewed funding lifecycle totals, and compares semantic digests from two independent empty domain/release roots. Pending replay documents must remain absent from public files, pages, and static search. The report deliberately returns `passed_with_known_gaps` until Brookings OCR quality and the self-hosted model lanes are measured on origin hardware. The faster `python3 -m pipeline.oregon_benchmark` is only a core smoke run; `--require-complete-corpus` fails while those modality gaps remain.
+Run the frozen clean-cutover benchmark with `make oregon-benchmark`. It hash-checks all eight committed Oregon plan PDFs plus twelve source/reference inputs, extracts the complete PDF set, verifies the official ODAV budget and FAA workbook, checks the Brookings image-only airport pages and OCR gold contract, reconciles reviewed funding lifecycle totals, and compares semantic digests from two independent empty domain/release roots. Pending replay documents must remain absent from public files, pages, and static search. The report returns `passed_with_known_gaps` because origin-hardware OCR and self-hosted model measurements are outside the deterministic gate. The faster `python3 -m pipeline.oregon_benchmark` is a core smoke run; `--require-complete-corpus` rejects unmeasured modalities.
 
 Official URL health is a daily pass (`python3 -m pipeline.check`): live, moved, or dead. Live URLs are rechecked after 7 days; dead after 30. 5xx and robots denials are errors, not dead. A dead official URL with a preserved copy becomes `preserved_only`. Without a copy it becomes `missing` and the worker tries listed mirrors, then Wayback CDX when `APTPLANS_WAYBACK=1`. A moved URL queues a fetch of the new location. Same URL plus a new SHA-256 is a content version on the next fetch.
 
@@ -231,23 +231,25 @@ python3 -m pipeline.ledger_ops integrity
 $COMPOSE_PROD logs --tail=80 worker
 ```
 
-The API mounts `jobs.sqlite3` read-only and writes review commands/human audit only to `/var/lib/aptplans/control/control.sqlite3`; the worker imports commands idempotently. Both use WAL mode. Back them up online and test an offline restore:
+The API mounts `jobs.sqlite3` read-only and writes review commands/human audit only to `/var/lib/aptplans/control/control.sqlite3`; the worker imports commands idempotently. Both use WAL mode. Ledger backup also copies each immutable extraction manifest indexed by the jobs snapshot and verifies its checksum. Create backups online and test restores offline:
 
 ```bash
 APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control \
   python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/queue \
-  backup /var/backups/aptplans/ledger-$(date +%F)
+  backup /var/backups/aptplans/ledger-$(date +%F) \
+  --extraction-dir /var/lib/aptplans/extractions
 $COMPOSE_PROD down
 APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control-restore-test \
   python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test \
-  restore /var/backups/aptplans/ledger-YYYY-MM-DD --confirm-offline
+  restore /var/backups/aptplans/ledger-YYYY-MM-DD --confirm-offline \
+  --extraction-dir /var/lib/aptplans/extractions-restore-test
 APTPLANS_CONTROL_QUEUE=/var/lib/aptplans/control-restore-test \
   python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test integrity
 ```
 
-The coordinated pre-production JSONL-to-domain procedure is in [DEPLOYMENT.md](DEPLOYMENT.md). Do not initialize an empty domain ledger while legacy overlays still contain the only catalog copy, and do not enable generation publication before the import and first validated release.
+The coordinated pre-production JSONL-to-domain procedure is in [DEPLOYMENT.md](DEPLOYMENT.md). Do not initialize an empty domain ledger if legacy overlays contain the only catalog copy, and do not enable generation publication before the import and first validated release.
 
-**Discovery priority triage** (`pipeline/discovery_priority.py`) reorders scoped airports before each discovery pass. Every airport is still visited; only the order changes. Tiers (searched sooner → later):
+**Discovery priority triage** (`pipeline/discovery_priority.py`) reorders scoped airports before each discovery pass. Every airport is visited; only the order changes. Tiers (searched sooner → later):
 
 1. Funded (federal, state, or local grants) and not evaluated within the recency window
 2. Not evaluated within the recency window
@@ -266,7 +268,7 @@ Within a tier, never-evaluated airports precede stale ones, then higher total gr
 sudo docker rm -f $(sudo docker ps -aq --filter name=worker-run) 2>/dev/null || true
 ```
 
-**`.env.secrets` sourcing errors** (for example `East: command not found`) mean an unquoted value has spaces. Redeploy from GitHub Actions (CD now quotes values) or fix `/home/aptplans/.env.secrets` manually, e.g. `PIA_SERVER_REGIONS="US East"`.
+**`.env.secrets` sourcing errors** (for example `East: command not found`) mean an unquoted value has spaces. Redeploy from GitHub Actions (CD quotes values) or fix `/home/aptplans/.env.secrets` manually, e.g. `PIA_SERVER_REGIONS="US East"`.
 
 **Troubleshooting stuck `egress`**
 
@@ -288,7 +290,7 @@ grep -q '^EGRESS_PATH=' /home/aptplans/.env.production || \
 $COMPOSE_PROD up -d --force-recreate egress
 $COMPOSE_PROD logs -f egress   # wait for Initialization Sequence Completed
 
-# 4. If UDP still fails, the origin network may block UDP 1197; production uses TCP OpenVPN.
+# 4. If UDP continues to fail, the origin network may block UDP 1197; production uses TCP OpenVPN.
 ```
 
 After `egress` is healthy, `worker` starts automatically (`depends_on: service_healthy`).
@@ -299,11 +301,11 @@ PDFs live on origin RAID1. Watch used space on `/var/lib/aptplans/files` and `/v
 
 ## Failures
 
-Low-confidence unofficial wording can still go live when outer gates passed **and** the record was vetted (`review_status` auto_pass or published). A hashed snapshot stays `pending` until that vet step. Hash mismatches and SSI-looking files must not publish. Those bytes, plus newsletters and other kind-gate failures, are kept in `/var/lib/aptplans/reject` for 90 days so scoring work can pull them over the review API. They never go under Caddy `/files/`. Open or update a GitHub issue and leave `review_status` as `needs_human` only for integrity or safety cases that still need a human.
+Low-confidence unofficial wording can publish when outer gates passed **and** the record was vetted (`review_status` auto_pass or published). A hashed snapshot stays `pending` until that vet step. Hash mismatches and SSI-looking files must not publish. Those bytes, plus newsletters and other kind-gate failures, are kept in `/var/lib/aptplans/reject` for 90 days so scoring work can pull them over the review API. They never go under Caddy `/files/`. Open or update a GitHub issue and leave `review_status` as `needs_human` only for integrity or safety cases that require a human.
 
 On origin, `https://aptplans.org/review` is the private review API (HTTPS, API key; Caddy `:443` only). CD writes `APTPLANS_REVIEW_TOKEN` from the GitHub Actions secret into `/home/aptplans/.env.secrets` so Compose interpolates it. A laptop or Cursor agent uses the same key in gitignored `.env` with `APTPLANS_REVIEW_URL=https://aptplans.org/review`.
 
-`GET /v1/status` and `GET /v1/logs` are the health loop. `GET /v1/stats`, `GET /v1/outcomes?bucket=uncertain`, `GET /v1/signals`, and `GET /v1/rejects` measure the live mix. `GET /v1/rejects/{sha256}/bytes` copies a failed artifact for local training (still not a publish), and `GET /v1/documents/{id}/bytes` returns a full preserved source only when explicitly requested with operator authentication. `POST /v1/label` records a gold packet without publishing. `PATCH /v1/documents/{id}` must include the reviewed `expected_content_sha256` for a preserved-document publication; a stale hash returns `409`. Accepted requests return `202` and queue the transition. The serial worker applies it and synchronizes `/files/`, search, and generated pages. `make pull-outcomes` writes `data/score/review/` (including `rejects/` files) for scoring work; then `python3 scripts/train_evidence.py --outcomes data/score/review/gold.json`. Merge new official URLs plus labels into `catalog/references/score_gold.json` (no excerpts). Do not log the token or full payload.
+`GET /v1/status` and `GET /v1/logs` are the health loop. `GET /v1/stats`, `GET /v1/outcomes?bucket=uncertain`, `GET /v1/signals`, and `GET /v1/rejects` measure the live mix. `GET /v1/rejects/{sha256}/bytes` copies a failed artifact for local training without publishing, and `GET /v1/documents/{id}/bytes` returns a full preserved source only when explicitly requested with operator authentication. `POST /v1/label` records a gold packet without publishing. `PATCH /v1/documents/{id}` must include the reviewed `expected_content_sha256` for a preserved-document publication; a stale hash returns `409`. Accepted requests return `202` and queue the transition. The serial worker applies it and synchronizes `/files/`, search, and generated pages. `make pull-outcomes` writes `data/score/review/` (including `rejects/` files) for scoring work; then `python3 scripts/train_evidence.py --outcomes data/score/review/gold.json`. Merge new official URLs plus labels into `catalog/references/score_gold.json` (no excerpts). Do not log the token or full payload.
 
 Skip filenames and appendices that look like SSI or security-restricted drawings.
 
