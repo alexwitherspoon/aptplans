@@ -12,6 +12,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
+from pypdf import PdfReader
+
 from catalog.grants import parse_aip_grants_bytes
 from catalog.models import Airport, Budget, Document, Grant
 from catalog.seed import seed_catalog_snapshot
@@ -23,7 +25,9 @@ from pipeline.release_store import ReleaseStore
 
 MANIFEST_PATH = ROOT / "catalog" / "references" / "oregon_benchmark.json"
 REFERENCES = MANIFEST_PATH.parent
-INCOMPLETE_MODALITIES = frozenset({"missing", "normalized_fixture_only"})
+INCOMPLETE_MODALITIES = frozenset(
+    {"missing", "normalized_fixture_only", "source_fixture_only"}
+)
 MANIFEST_FIELDS = frozenset(
     {
         "schema_version",
@@ -305,12 +309,62 @@ def _official_source_gate(manifest: dict, *, full: bool) -> dict:
 
     budget_actual = extract_pdf("odav_budget_pdf", "ODAV budget PDF")
     scan_actual = extract_pdf("historical_plan_scan", "historical plan scan")
+    brookings = expectations["brookings_airport_budget"]
+    brookings_row = inputs.get(str(brookings["path"]))
+    if brookings_row is None:
+        raise ValueError("Brookings budget is not a frozen reference input")
+    brookings_path = _verify_frozen_input(brookings_row)
+    brookings_actual: dict[str, object] = {
+        "bytes": brookings_path.stat().st_size,
+        "inspected": False,
+    }
+    if full:
+        reader = PdfReader(brookings_path)
+        if len(reader.pages) != int(brookings["document_pages"]):
+            raise ValueError("Brookings budget page count changed")
+        producer = str((reader.metadata or {}).get("/Producer") or "")
+        if str(brookings["producer_contains"]).lower() not in producer.lower():
+            raise ValueError("Brookings budget scanner metadata changed")
+        narrative_page = int(brookings["airport_narrative_page"])
+        narrative = reader.pages[narrative_page - 1].extract_text() or ""
+        if "airport budget 2025-26" not in narrative.lower():
+            raise ValueError("Brookings airport budget narrative moved")
+        image_metrics: list[dict[str, int]] = []
+        minimum_pixels = int(brookings["minimum_full_page_image_pixels"])
+        for page_number in brookings["airport_image_only_pages"]:
+            page = reader.pages[int(page_number) - 1]
+            if (page.extract_text() or "").strip():
+                raise ValueError(
+                    f"Brookings airport page {page_number} is no longer image-only"
+                )
+            image_pixels = [
+                image.image.size[0] * image.image.size[1]
+                for image in page.images
+            ]
+            largest = max(image_pixels, default=0)
+            if largest < minimum_pixels:
+                raise ValueError(
+                    f"Brookings airport page {page_number} lost its full-page scan"
+                )
+            image_metrics.append(
+                {"page": int(page_number), "largest_image_pixels": largest}
+            )
+        brookings_actual.update(
+            {
+                "inspected": True,
+                "pages": len(reader.pages),
+                "producer": producer,
+                "airport_narrative_page": narrative_page,
+                "airport_image_only_pages": image_metrics,
+            }
+        )
     return {
         "status": "passed",
         "seconds": round(perf_counter() - started, 3),
         "faa_grant_workbook": workbook_actual,
         "odav_budget_pdf": budget_actual,
         "historical_plan_scan": scan_actual,
+        "brookings_airport_budget": brookings_actual,
     }
 
 

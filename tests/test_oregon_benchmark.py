@@ -35,6 +35,7 @@ def test_manifest_covers_every_committed_oregon_pdf_and_blocks_later_claims() ->
     assert "files/faa-fy2025-aip-grants.xlsx" in reference_paths
     assert "files/odav-2025-27-lab.pdf" in reference_paths
     assert "files/cottage-grove-1988-master-plan.pdf" in reference_paths
+    assert "files/brookings-fy2025-26-adopted-budget.pdf" in reference_paths
     assert manifest["claims"]["oregon_complete"] is False
     assert all(
         manifest["claims"][name] == "blocked"
@@ -80,6 +81,10 @@ def test_oregon_substrate_benchmark_round_trips_frozen_core() -> None:
         result["official_source_gate"]["historical_plan_scan"]["extracted"]
         is False
     )
+    assert (
+        result["official_source_gate"]["brookings_airport_budget"]["inspected"]
+        is False
+    )
     assert result["domain_release_gate"]["status"] == "passed"
     assert result["domain_release_gate"]["repeat_clean_runs"] == 2
     assert {
@@ -97,6 +102,10 @@ def test_oregon_substrate_benchmark_round_trips_frozen_core() -> None:
         == "core_smoke_only"
     )
     assert result["incomplete_modalities"] == ["image_only_pdf_ocr"]
+    assert (
+        result["modality_coverage"]["image_only_pdf_ocr"]
+        == "source_fixture_only"
+    )
 
 
 def test_complete_corpus_gate_refuses_known_modality_gaps(monkeypatch) -> None:

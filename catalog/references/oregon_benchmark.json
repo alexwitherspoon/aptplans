@@ -67,6 +67,12 @@
       "bytes": 10486654,
       "sha256": "809a7ebfb94207df624f18bf9b3ff9e80c2fdfc9d241520766de79625ac25fff",
       "purpose": "State Library scan with an embedded OCR text layer"
+    },
+    {
+      "path": "files/brookings-fy2025-26-adopted-budget.pdf",
+      "bytes": 3618200,
+      "sha256": "da0928d71169b2b27cc1eaec29fd861541cde8ed3d2b8a2b1217448260ce57ad",
+      "purpose": "Official adopted budget with image-only airport fund tables"
     }
   ],
   "airports": ["PDX", "TTD", "4S9", "4S2"],
@@ -223,6 +229,16 @@
           "Federal Aviation Administration"
         ]
       }
+    },
+    "brookings_airport_budget": {
+      "path": "files/brookings-fy2025-26-adopted-budget.pdf",
+      "source_url": "https://www.brookings.or.us/DocumentCenter/View/3048/2025-26-Proposed-Budget-DRAFT",
+      "fiscal_year": "2025-26",
+      "document_pages": 81,
+      "airport_narrative_page": 56,
+      "airport_image_only_pages": [57, 58, 59, 60, 61, 62, 63, 64],
+      "minimum_full_page_image_pixels": 6000000,
+      "producer_contains": "Canon"
     }
   },
   "funding_expectations": {
@@ -242,7 +258,7 @@
     "alp_drawing_pdf": "covered",
     "large_born_digital_pdf": "covered_full_only",
     "scanned_pdf_with_ocr_text_layer": "covered_full_only",
-    "image_only_pdf_ocr": "missing",
+    "image_only_pdf_ocr": "source_fixture_only",
     "official_budget_table": "covered_full_only",
     "official_grant_spreadsheet": "covered"
   },
@@ -254,7 +270,7 @@
     "milestone_6_completion_contract": "blocked"
   },
   "known_gaps": [
-    "The historical scan has an embedded OCR text layer; no image-only fixture exercises an AptPlans-owned OCR engine.",
+    "The Brookings budget supplies image-only airport tables, but no AptPlans-owned OCR engine extracts them yet.",
     "Self-hosted model quality and latency require an origin-hardware benchmark and are not a CI gate."
   ]
 }

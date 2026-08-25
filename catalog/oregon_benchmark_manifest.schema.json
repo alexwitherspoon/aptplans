@@ -58,7 +58,8 @@
           "covered",
           "covered_full_only",
           "missing",
-          "normalized_fixture_only"
+          "normalized_fixture_only",
+          "source_fixture_only"
         ]
       }
     },
@@ -148,7 +149,8 @@
       "required": [
         "faa_grant_workbook",
         "odav_budget_pdf",
-        "historical_plan_scan"
+        "historical_plan_scan",
+        "brookings_airport_budget"
       ],
       "properties": {
         "faa_grant_workbook": {
@@ -194,6 +196,38 @@
             "source_record_url": {"type": "string", "format": "uri"},
             "text_layer": {"const": "embedded_ocr"},
             "extract_full_only": {"$ref": "#/$defs/extraction"}
+          }
+        },
+        "brookings_airport_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "source_url",
+            "fiscal_year",
+            "document_pages",
+            "airport_narrative_page",
+            "airport_image_only_pages",
+            "minimum_full_page_image_pixels",
+            "producer_contains"
+          ],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "source_url": {"type": "string", "format": "uri"},
+            "fiscal_year": {"const": "2025-26"},
+            "document_pages": {"type": "integer", "minimum": 1},
+            "airport_narrative_page": {"type": "integer", "minimum": 1},
+            "airport_image_only_pages": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "integer", "minimum": 1}
+            },
+            "minimum_full_page_image_pixels": {
+              "type": "integer",
+              "minimum": 1000000
+            },
+            "producer_contains": {"type": "string", "minLength": 1}
           }
         }
       }
