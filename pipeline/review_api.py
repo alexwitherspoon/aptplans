@@ -7,11 +7,13 @@ stay on origin for 90 days and can be pulled over this API for local training.
 
 from __future__ import annotations
 
+from functools import wraps
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 import hmac
 import json
+import logging
 import os
 import re
 import sys
@@ -42,6 +44,29 @@ from pipeline.review_client import load_review_env
 from pipeline.queue import ControlQueue, QueueJob
 from pipeline.service_log import logs_dir_from_env
 from pipeline.status import queue_dir_from_env, service_logs, system_status
+
+log = logging.getLogger("aptplans.review_api")
+
+
+def _api_errors(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except Exception as exc:
+            log.exception("review API request failed: %s", self.path)
+            detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+            try:
+                _json(
+                    self,
+                    500,
+                    {"error": "internal_error", "detail": detail},
+                )
+            except OSError:
+                pass
+            return None
+
+    return wrapped
 
 REJECT_SHA = re.compile(r"^/v1/rejects/([a-f0-9]{64})(/bytes)?$")
 DOCUMENT_PATH = re.compile(r"^/v1/documents/([^/]+)$")
@@ -124,6 +149,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             pass
         return [compact_reject(row) for row in live_rejects(dest=self.reject_dir)]
 
+    @_api_errors
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/v1/health":
@@ -259,6 +285,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         _json(self, 404, {"error": "not found"})
 
+    @_api_errors
     def do_POST(self) -> None:
         if not self._authorized():
             _json(self, 401, {"error": "unauthorized"})
@@ -322,6 +349,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         )
         _json(self, 201, {"ok": True, "outcome": row})
 
+    @_api_errors
     def do_PATCH(self) -> None:
         if not self._authorized():
             _json(self, 401, {"error": "unauthorized"})

@@ -373,6 +373,48 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
         server.shutdown()
 
 
+def test_review_api_returns_authenticated_internal_errors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+    import threading
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    def fail_stats(*_args, **_kwargs):
+        raise sqlite3.OperationalError("missing production table")
+
+    monkeypatch.setattr("pipeline.review_api.outcome_stats", fail_stats)
+    token = "test-review-token"
+    server = make_server(
+        tmp_path / "overlay",
+        token,
+        host="127.0.0.1",
+        port=0,
+        queue_dir=tmp_path / "queue",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    try:
+        request = Request(
+            f"http://{host}:{port}/v1/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request, timeout=2)
+        assert caught.value.code == 500
+        payload = json.loads(caught.value.read())
+        assert payload == {
+            "error": "internal_error",
+            "detail": "OperationalError: missing production table",
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_review_env_file_loads_token(tmp_path: Path, monkeypatch) -> None:
     import os
 
