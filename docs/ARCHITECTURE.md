@@ -33,7 +33,7 @@ reference fixtures only     versioned static releases
 Visitors hit Cloudflare, then Caddy on the origin. The public site is static HTML, RSS, and PDF downloads. There is no app server with sessions, no accounts, and no public chat.
 
 ```
-discover -> fetch/hash -> store on disk -> parse -> summary/diff -> review -> publish catalog + HTML + RSS
+discover -> fetch/hash -> store on disk -> immutable extract/OCR -> typed tasks -> review -> generation release
 ```
 
 Jobs, attempts, priorities, durable continuations, retry times, leases, domain generations, and append-only execution events live in WAL-mode `queue/jobs.sqlite3`. Compose runs four services: `site` (Caddy), `search` (Meilisearch), `worker`, and `ollama`. The worker transactionally claims eligible work and heartbeats its lease; an expired lease is recovered after a crash. Child jobs are stored as continuation specifications and do not enter the claimable queue until parent success commits. By default the worker handles one airport at a time (`APTPLANS_AIRPORT_CONCURRENCY=1`). The authenticated review API mounts that ledger read-only and writes operator commands and human audit rows to the physically separate `/var/lib/aptplans/control/control.sqlite3`; only the worker imports commands into the job ledger.
@@ -182,7 +182,7 @@ Debian 13 (trixie) on an OVH Eco KS-6 (US East). GitHub Actions CD bootstraps th
 
 Disk is the two host spindles in software RAID1. HTML, the catalog checkout, model weights, and PDFs share that mirror. Expected corpus is well under the usable capacity.
 
-Parse and summary jobs run locally on CPU, one at a time, from the preserved copy. Native text is preferred; otherwise layout/OCR on CPU, then a local document pass for TOC, facts, and a one-page unofficial summary. Pairwise change notes run when a prior version exists. Thinking stays off on `/api/generate` until chain-of-thought can be kept out of the published paragraph. Large PDFs are not fed whole into a vision stack; selected page or ALP sheet images may be captioned after render.
+Parse and summary jobs run locally on CPU, one at a time, from the preserved copy. Native text is preferred; image-only pages route to local Poppler/Tesseract OCR and retain word coordinates. Extraction manifests are immutable and keyed by artifact hash, extractor version, and options hash; see [EXTRACTION.md](EXTRACTION.md). A local document pass can then handle TOC, facts, and a one-page unofficial summary. Pairwise change notes run when a prior version exists. Thinking stays off on `/api/generate` until chain-of-thought can be kept out of the published paragraph. Large PDFs are not fed whole into a vision stack; selected page or ALP sheet images may be captioned after render.
 
 ### Model calls
 

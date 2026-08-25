@@ -232,9 +232,27 @@ def test_backfill_text_writes_missing_sidecar(tmp_path) -> None:
             )
         ]
     )
-    assert backfill_text(catalog, files_dir=files, dest=tmp_path / "text") == 1
-    assert backfill_text(catalog, files_dir=files, dest=tmp_path / "text") == 0
+    assert backfill_text(
+        catalog,
+        files_dir=files,
+        dest=tmp_path / "text",
+        ledger_root=tmp_path / "ledger",
+    ) == 1
+    assert backfill_text(
+        catalog,
+        files_dir=files,
+        dest=tmp_path / "text",
+        ledger_root=tmp_path / "ledger",
+    ) == 0
     assert "Mulino" in (tmp_path / "text" / f"{digest}.jsonl").read_text(encoding="utf-8")
+    import sqlite3
+
+    from pipeline.queue import JobQueue
+
+    with sqlite3.connect(JobQueue(tmp_path / "ledger").path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM extraction_manifests"
+        ).fetchone()[0] == 1
 
 
 def test_backfill_text_skips_notices(tmp_path) -> None:
@@ -254,7 +272,12 @@ def test_backfill_text_skips_notices(tmp_path) -> None:
     )
     (tmp_path / "files").mkdir()
     (tmp_path / "files" / "abc.pdf").write_bytes(b"%PDF")
-    assert backfill_text(catalog, files_dir=tmp_path / "files", dest=tmp_path / "text") == 0
+    assert backfill_text(
+        catalog,
+        files_dir=tmp_path / "files",
+        dest=tmp_path / "text",
+        ledger_root=tmp_path / "ledger",
+    ) == 0
     assert not (tmp_path / "text" / "abc.jsonl").exists()
 
 

@@ -129,6 +129,7 @@ Worker overlay and queue:
 | `/var/lib/aptplans/files` | private content-addressed source bytes |
 | `/var/lib/aptplans/reject` | 90-day private copies of artifacts that failed a check (not Caddy) |
 | `/var/lib/aptplans/text` | gated page JSONL (not served) |
+| `/var/lib/aptplans/extractions` | immutable full extraction/OCR manifests and coordinates (not served) |
 | `/var/lib/aptplans/search` | Meilisearch data (no host port) |
 | `/var/lib/aptplans/catalog` | legacy cutover input and operational snapshots, not entity authority |
 | `/var/lib/aptplans/queue` | jobs, domain generations, worker audit, and release journal |
@@ -149,7 +150,7 @@ docker compose --env-file /home/aptplans/.env.production \
 
 The public site should expose corpus counts and coverage status (`complete` / `link_only` / `missing`, and so on). Treat `complete` count over months as the success metric. Queue depth should sit near zero once backfill is done.
 
-Run the frozen clean-cutover benchmark with `make oregon-benchmark`. It hash-checks all eight committed Oregon PDFs plus seven reference/HTML inputs, extracts the complete PDF set, reconciles reviewed funding lifecycle totals, and compares semantic digests from two independent empty domain/release roots. Pending replay documents must remain absent from public files, pages, and static search. The report deliberately returns `passed_with_known_gaps` until the corpus includes a real scanned/OCR plan, official budget-table bytes, an official grant workbook, and an origin-hardware model run. The faster `python3 -m pipeline.oregon_benchmark` is only a core smoke run; `--require-complete-corpus` fails while those modality gaps remain.
+Run the frozen clean-cutover benchmark with `make oregon-benchmark`. It hash-checks all eight committed Oregon plan PDFs plus eleven source/reference inputs, extracts the complete PDF set, verifies the official ODAV budget and FAA workbook, checks the Brookings image-only airport pages, reconciles reviewed funding lifecycle totals, and compares semantic digests from two independent empty domain/release roots. Pending replay documents must remain absent from public files, pages, and static search. The report deliberately returns `passed_with_known_gaps` until Brookings OCR quality and the self-hosted model lanes are measured on origin hardware. The faster `python3 -m pipeline.oregon_benchmark` is only a core smoke run; `--require-complete-corpus` fails while those modality gaps remain.
 
 Official URL health is a daily pass (`python3 -m pipeline.check`): live, moved, or dead. Live URLs are rechecked after 7 days; dead after 30. 5xx and robots denials are errors, not dead. A dead official URL with a preserved copy becomes `preserved_only`. Without a copy it becomes `missing` and the worker tries listed mirrors, then Wayback CDX when `APTPLANS_WAYBACK=1`. A moved URL queues a fetch of the new location. Same URL plus a new SHA-256 is a content version on the next fetch.
 

@@ -15,7 +15,6 @@ from catalog.grants import grant_title
 from catalog.models import Airport, Document, Grant, State, visible_on_site
 from catalog.seed import seed_catalog
 from catalog.store import Catalog
-from pipeline.parse import extract_pages
 from pipeline.refresh import ROOT, overlay_dir_from_env
 from pipeline.textstore import pages_path, read_pages, text_dir, write_pages
 
@@ -351,21 +350,38 @@ def backfill_text(
     catalog: Catalog,
     files_dir: Path | None = None,
     dest: Path | None = None,
+    *,
+    ledger_root: Path | None = None,
 ) -> int:
-    """Extract page JSONL for preserved PDFs that have no sidecar yet."""
+    """Backfill immutable extraction manifests and their search projection."""
+    from pipeline.extraction_store import ExtractionStore, extraction_dir
+    from pipeline.ocr import TesseractOcr, ocr_enabled
+    from pipeline.status import queue_dir_from_env
+
     files_dir = files_dir or Path(os.environ.get("APTPLANS_FILES", ROOT / "data" / "files"))
     dest = dest or text_dir(files_dir)
+    ledger_root = ledger_root or queue_dir_from_env()
+    store = ExtractionStore(ledger_root, extraction_dir(files_dir))
+    ocr = TesseractOcr() if ocr_enabled() else None
     written = 0
     for document in catalog.documents:
         if document.kind == "notice" or not document.content_sha256:
             continue
-        if pages_path(dest, document.content_sha256).is_file():
-            continue
         pdf = files_dir / f"{document.content_sha256}.pdf"
         if not pdf.is_file():
             continue
-        write_pages(dest, document.content_sha256, extract_pages(pdf.read_bytes()))
-        written += 1
+        manifest = store.extract_pdf(
+            pdf,
+            content_sha256=document.content_sha256,
+            ocr=ocr,
+        )
+        if not pages_path(dest, document.content_sha256).is_file():
+            write_pages(
+                dest,
+                document.content_sha256,
+                manifest.page_text(),
+            )
+            written += 1
     if written:
         log.info("wrote %s text sidecars from preserved PDFs", written)
     return written

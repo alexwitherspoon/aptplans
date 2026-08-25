@@ -1,4 +1,4 @@
-FROM python:3.14-slim-bookworm
+FROM python:3.14-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52
 
 WORKDIR /app
 
@@ -9,6 +9,10 @@ COPY pyproject.toml LICENSE README.md /app/
 COPY site /app/site
 COPY catalog /app/catalog
 COPY pipeline /app/pipeline
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir ".[worker]"
 

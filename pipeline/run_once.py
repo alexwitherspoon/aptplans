@@ -555,7 +555,6 @@ def process_fetch(
     pages: list[dict] = []
     if kind != "notice":
         try:
-            from pipeline.parse import extract_pages
             from pipeline.textstore import text_dir, write_pages
 
             if media == "html":
@@ -567,7 +566,27 @@ def process_fetch(
                     [page_excerpt(data.decode("utf-8", "replace"), 20_000)],
                 )
             else:
-                pages = write_pages(text_dir(files_dir), stored.sha256, extract_pages(data))
+                from pipeline.extraction_store import (
+                    ExtractionStore,
+                    extraction_dir,
+                )
+                from pipeline.ocr import TesseractOcr, ocr_enabled
+                from pipeline.status import queue_dir_from_env
+
+                ledger_root = queue.root if queue is not None else queue_dir_from_env()
+                manifest = ExtractionStore(
+                    ledger_root,
+                    extraction_dir(files_dir),
+                ).extract_pdf(
+                    stored.path,
+                    content_sha256=stored.sha256,
+                    ocr=TesseractOcr() if ocr_enabled() else None,
+                )
+                pages = write_pages(
+                    text_dir(files_dir),
+                    stored.sha256,
+                    manifest.page_text(),
+                )
         except Exception:
             log.exception("text sidecar failed; preserve still counts")
     if previous is None:
