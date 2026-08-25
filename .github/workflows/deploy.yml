@@ -217,5 +217,5 @@ jobs:
 
       - name: Smoke check from runner
         run: |
-          curl -fsS -o /dev/null --retry 5 --retry-delay 3 "http://${DEPLOY_HOST}/" \
-            || curl -kfsS -o /dev/null --retry 5 --retry-delay 3 "https://${DEPLOY_HOST}/"
+          curl -kfsS -o /dev/null --retry 5 --retry-delay 3 \
+            "https://${DEPLOY_HOST}/review/v1/health"

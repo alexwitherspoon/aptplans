@@ -61,8 +61,8 @@ fi
 echo "Waiting for Caddy"
 caddy_ok=0
 for _ in $(seq 1 30); do
-    if curl -fsS -o /dev/null http://127.0.0.1/; then
-        echo "origin http://127.0.0.1/ ok"
+    if curl -kfsS -o /dev/null https://127.0.0.1/review/v1/health; then
+        echo "origin review health endpoint ok"
         caddy_ok=1
         break
     fi

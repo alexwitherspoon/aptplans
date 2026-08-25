@@ -7,6 +7,7 @@ SYSTEMD = ROOT / "systemd"
 BOOTSTRAP = ROOT / "scripts" / "host" / "bootstrap.sh"
 REMOTE_DEPLOY = ROOT / "scripts" / "host" / "remote-deploy.sh"
 DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
+COMPOSE_PROD = ROOT / "docker" / "docker-compose.prod.yml"
 
 DISABLED_TIMERS = frozenset({"aptplans-pipeline.timer"})
 
@@ -59,3 +60,10 @@ def test_cd_invokes_remote_deploy_only() -> None:
     text = DEPLOY.read_text(encoding="utf-8")
     assert "sudo /opt/aptplans/scripts/host/remote-deploy.sh" in text
     assert "scripts/host/bootstrap.sh" not in text
+
+
+def test_deploy_health_does_not_require_an_active_site_release() -> None:
+    endpoint = "https://127.0.0.1/review/v1/health"
+    assert endpoint in REMOTE_DEPLOY.read_text(encoding="utf-8")
+    assert endpoint in COMPOSE_PROD.read_text(encoding="utf-8")
+    assert "/review/v1/health" in DEPLOY.read_text(encoding="utf-8")
