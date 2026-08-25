@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -10,6 +11,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 
 from catalog.models import (
     Airport,
@@ -30,7 +32,6 @@ from pipeline.github import GitHubIntake, github_from_env
 from pipeline.intake import IntakeHint, hint_can_queue, parse_issue_body, resolve_intake
 from pipeline.parse import change_note, content_changed, content_fingerprint
 from pipeline.stages import apply_review_transition, review_after_snapshot, review_after_vet
-from pipeline.lock import worker_lock
 from pipeline.pace import airport_concurrency
 from pipeline.outcomes import record_outcome, score_job_signal
 from pipeline.pipeline_status import build_public_snapshot, record_job, record_queue_completion
@@ -1053,7 +1054,10 @@ def _execute_claimed(
                     job.document_id,
                 )
             raise JobRetry(job.attempts) from exc
+        if job.retry_class == "continuous":
+            raise JobRetry(job.attempts) from exc
         if job.attempts >= MAX_ATTEMPTS:
+            job.dead_letter_reason = f"{type(exc).__name__}: {exc}"
             log.exception(
                 "giving up after %s attempts job=%s url=%s",
                 job.attempts,
@@ -1074,19 +1078,20 @@ def _claim_next_job(
     queue_dir: Path,
     files_dir: Path,
 ) -> QueueJob | None:
-    with worker_lock(queue_dir):
-        try:
-            purged = purge_expired(files_dir=files_dir)
-            if purged.get("dropped"):
-                log.info(
-                    "reject purge dropped=%s removed_files=%s kept=%s",
-                    purged.get("dropped"),
-                    purged.get("removed_files"),
-                    purged.get("kept"),
-                )
-        except Exception:
-            log.exception("reject purge failed")
-        return JobQueue(queue_dir).claim(airport_limit=airport_concurrency())
+    try:
+        purged = purge_expired(files_dir=files_dir)
+        if purged.get("dropped"):
+            log.info(
+                "reject purge dropped=%s removed_files=%s kept=%s",
+                purged.get("dropped"),
+                purged.get("removed_files"),
+                purged.get("kept"),
+            )
+    except Exception:
+        log.exception("reject purge failed")
+    queue = JobQueue(queue_dir)
+    queue.ingest_controls()
+    return queue.claim(airport_limit=airport_concurrency())
 
 
 def _schedule_after_job(
@@ -1100,7 +1105,10 @@ def _schedule_after_job(
     """Enqueue follow-up maintenance work; never run heavy jobs inline."""
     if job.kind == "overlay_refresh":
         try:
-            followups = enqueue_post_overlay_refresh(queue_dir)
+            followups = enqueue_post_overlay_refresh(
+                queue_dir,
+                parent_job_id=job.id,
+            )
             if followups:
                 log.info("post-overlay jobs enqueued: %s", ",".join(followups))
         except Exception:
@@ -1113,7 +1121,11 @@ def _schedule_after_job(
             from pipeline.site_build import enqueue_site_build
             from pipeline.site_scope import scope_about
 
-            enqueue_site_build(queue_dir, scope=scope_about())
+            enqueue_site_build(
+                queue_dir,
+                scope=scope_about(),
+                parent_job_id=job.id,
+            )
         except Exception:
             log.exception("about rebuild enqueue failed")
             if strict:
@@ -1126,15 +1138,40 @@ def _schedule_after_job(
         from pipeline.site_build import enqueue_site_build
         from pipeline.site_scope import scope_after_airport_job
 
-        enqueue_pipeline_snapshot(queue_dir)
+        enqueue_pipeline_snapshot(queue_dir, parent_job_id=job.id)
         if job.kind in SITE_BUILD_TRIGGER_KINDS and job.kind not in {"review", "vet"}:
             catalog = seed_catalog(catalog_root, overlay_dir=overlay_dir)
             scope = scope_after_airport_job(job, catalog)
-            enqueue_site_build(queue_dir, scope=scope)
+            enqueue_site_build(
+                queue_dir,
+                scope=scope,
+                parent_job_id=job.id,
+            )
     except Exception:
         log.exception("post-job enqueue failed job=%s", job.kind)
         if strict:
             raise
+
+
+@contextmanager
+def _lease_heartbeat(queue: JobQueue, job: QueueJob):
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(30.0):
+            try:
+                queue.heartbeat(job)
+            except Exception:
+                log.exception("job heartbeat failed job=%s", job.id)
+                return
+
+    thread = threading.Thread(target=beat, name=f"heartbeat-{job.id}", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=2.0)
 
 
 def _finish_job(
@@ -1144,22 +1181,34 @@ def _finish_job(
     overlay_dir: Path,
     catalog_root: Path,
 ) -> None:
-    _execute_claimed(
-        JobQueue(queue_dir),
-        job,
-        files_dir,
-        overlay_dir,
-        catalog_root,
-    )
-    if job.kind in {"fetch", "explore", "vet", "review", "check"}:
-        try:
-            from pipeline.datasets import reconcile_catalog
+    queue = JobQueue(queue_dir)
+    try:
+        with _lease_heartbeat(queue, job):
+            _execute_claimed(
+                queue,
+                job,
+                files_dir,
+                overlay_dir,
+                catalog_root,
+            )
+            if job.kind in {"fetch", "explore", "vet", "review", "check"}:
+                try:
+                    from pipeline.datasets import reconcile_catalog
 
-            reconcile_catalog(overlay_dir)
-        except Exception:
-            log.exception("dataset reconcile failed")
-    with worker_lock(queue_dir):
-        JobQueue(queue_dir).complete(job)
+                    reconcile_catalog(overlay_dir)
+                except Exception:
+                    log.exception("dataset reconcile failed")
+            if job.dead_letter_reason:
+                queue.dead_letter(job, error=job.dead_letter_reason)
+            else:
+                queue.complete(job)
+    except JobRetry as exc:
+        queue.retry(
+            job,
+            delay_seconds=exc.delay_seconds(),
+            error=str(exc.__cause__ or exc),
+        )
+        raise
 
 
 def process_next(
@@ -1193,6 +1242,22 @@ def process_next(
     if not pull_intake:
         return False
 
+    if not enqueue_intake_once(queue_dir):
+        return False
+
+
+    job = _claim_next_job(queue_dir, files_dir)
+    if job is None:
+        return False
+    _finish_job(queue_dir, job, files_dir, overlay_dir, catalog_root)
+    return True
+
+
+def enqueue_intake_once(queue_dir: Path | None = None) -> bool:
+    """Poll GitHub once and enqueue only; the worker remains the sole dispatcher."""
+    root = queue_dir or Path(
+        os.environ.get("APTPLANS_QUEUE", ROOT / "data" / "queue")
+    )
     try:
         incoming = _intake_job_from_github()
     except Exception:
@@ -1200,18 +1265,13 @@ def process_next(
         return False
     if incoming is None:
         return False
-
-    with worker_lock(queue_dir):
-        queue = JobQueue(queue_dir)
-        if incoming.issue_number is not None and queue.has_issue(incoming.issue_number):
-            log.info("intake issue %s already queued; skip", incoming.issue_number)
-            return False
-        queue.enqueue(incoming)
-
-    job = _claim_next_job(queue_dir, files_dir)
-    if job is None:
+    queue = JobQueue(root)
+    if incoming.issue_number is not None:
+        incoming.dedupe_key = f"github-issue:{incoming.issue_number}"
+    if incoming.issue_number is not None and queue.has_issue(incoming.issue_number):
+        log.info("intake issue %s already queued; skip", incoming.issue_number)
         return False
-    _finish_job(queue_dir, job, files_dir, overlay_dir, catalog_root)
+    queue.enqueue(incoming)
     return True
 
 

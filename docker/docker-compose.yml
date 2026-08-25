@@ -3,7 +3,7 @@ name: aptplans
 # One stack: static site (Caddy), Meilisearch, serial worker, CPU Ollama.
 # Ollama has no host ports. It is only on the internal `llm` network.
 # Search has no host ports. Caddy proxies POST /search/query.
-# The worker drains pending/ with concurrency 1. Local `make up` starts
+# The worker drains the SQLite job ledger with concurrency 1. Local `make up` starts
 # `site` only. `make stack` starts the full stack with gitignored data/
 # binds and without live FAA refresh or LLM. Origin CD starts the full
 # stack with APTPLANS_REFRESH_AIRPORTS=1 and APTPLANS_LLM=1.

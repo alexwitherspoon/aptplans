@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from pathlib import Path
 import hashlib
 
@@ -8,7 +7,6 @@ import pytest
 
 from catalog import REFERENCE_FILES
 from catalog.seed import seed_catalog
-from pipeline.lock import worker_lock
 from pipeline.boot_jobs import MAINTENANCE_JOB_KINDS
 from pipeline.queue import JobQueue, JobRetry, QueueJob
 from pipeline.run_once import process_fetch, process_next, process_review, run_once
@@ -226,7 +224,7 @@ def test_process_next_rolls_back_promotion_when_durable_release_fails(
         )
     assert load_overlay(overlay_dir)["durable-plan"]["review_status"] == "pending"
     assert not (tmp_path / "public-files" / f"{sha}.pdf").exists()
-    assert list((queue_dir / "active").glob("*.json"))
+    assert JobQueue(queue_dir).counts()["pending"] == 1
 
 
 def test_changed_published_bytes_return_to_pending_before_vet(tmp_path: Path) -> None:
@@ -576,19 +574,10 @@ def test_process_next_does_not_refresh_airports(tmp_path: Path, monkeypatch) -> 
 
 def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:
     order: list[str] = []
-    real_lock = worker_lock
-
-    @contextmanager
-    def tracking_lock(queue_dir: Path):
-        order.append("lock")
-        with real_lock(queue_dir):
-            yield
-        order.append("unlock")
 
     def rebuild() -> None:
         order.append("rebuild")
 
-    monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
     monkeypatch.setattr("pipeline.site_build.enqueue_site_build", lambda *_args, **_kwargs: rebuild())
     queue = JobQueue(tmp_path / "queue")
     queue.enqueue(
@@ -609,24 +598,15 @@ def test_process_next_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None
         )
         is True
     )
-    assert order == ["lock", "unlock", "rebuild", "lock", "unlock"]
+    assert order == ["rebuild"]
 
 
 def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> None:
     order: list[str] = []
-    real_lock = worker_lock
-
-    @contextmanager
-    def tracking_lock(queue_dir: Path):
-        order.append("lock")
-        with real_lock(queue_dir):
-            yield
-        order.append("unlock")
 
     def rebuild() -> None:
         order.append("rebuild")
 
-    monkeypatch.setattr("pipeline.run_once.worker_lock", tracking_lock)
     monkeypatch.setattr("pipeline.site_build.run_site_build", lambda *_args, **_kwargs: rebuild())
     monkeypatch.setattr("pipeline.run_once.process_vet", lambda *_args, **_kwargs: "auto_pass")
     queue = JobQueue(tmp_path / "queue")
@@ -648,7 +628,7 @@ def test_process_next_vet_rebuilds_after_unlock(tmp_path: Path, monkeypatch) -> 
         )
         is True
     )
-    assert order == ["lock", "unlock", "rebuild", "lock", "unlock"]
+    assert order == ["rebuild"]
 
 
 def test_publication_job_retries_when_snapshot_enqueue_fails(
@@ -663,7 +643,7 @@ def test_publication_job_retries_when_snapshot_enqueue_fails(
         "pipeline.run_once.enqueue_pipeline_snapshot",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("queue unavailable")),
     )
-    JobQueue(tmp_path / "queue").enqueue(
+    queued = JobQueue(tmp_path / "queue").enqueue(
         QueueJob(
             kind="vet",
             document_id="4s9-2008-inventory",
@@ -680,15 +660,17 @@ def test_publication_job_retries_when_snapshot_enqueue_fails(
 
     with pytest.raises(JobRetry):
         process_next(**kwargs)
-    assert list((tmp_path / "queue" / "active").glob("*.json"))
-    assert not list((tmp_path / "queue" / "done").glob("*.json"))
+    queue = JobQueue(tmp_path / "queue")
+    assert queue.counts()["pending"] == 1
+    assert queue.counts()["done"] == 0
 
     monkeypatch.setattr(
         "pipeline.run_once.enqueue_pipeline_snapshot",
         lambda *_args, **_kwargs: True,
     )
+    queue.reschedule_now(queued.id)
     assert process_next(**kwargs) is True
-    assert list((tmp_path / "queue" / "done").glob("*.json"))
+    assert queue.counts()["done"] == 1
 
 
 def test_site_build_error_retries_instead_of_completing(
@@ -696,7 +678,7 @@ def test_site_build_error_retries_instead_of_completing(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr("pipeline.run_once.process_site_build", lambda _job: "error")
-    JobQueue(tmp_path / "queue").enqueue(
+    queued = JobQueue(tmp_path / "queue").enqueue(
         QueueJob(
             kind="site_build",
             document_id=None,
@@ -713,8 +695,9 @@ def test_site_build_error_retries_instead_of_completing(
                 overlay_dir=tmp_path / "overlay",
                 catalog_root=ROOT / "catalog",
             )
-    assert list((tmp_path / "queue" / "active").glob("*.json"))
-    assert not list((tmp_path / "queue" / "done").glob("*.json"))
+        JobQueue(tmp_path / "queue").reschedule_now(queued.id)
+    assert JobQueue(tmp_path / "queue").counts()["pending"] == 1
+    assert JobQueue(tmp_path / "queue").counts()["done"] == 0
 
 
 def test_process_next_retries_then_gives_up(tmp_path: Path, monkeypatch) -> None:
@@ -723,7 +706,7 @@ def test_process_next_retries_then_gives_up(tmp_path: Path, monkeypatch) -> None
 
     monkeypatch.setattr("pipeline.run_once.process_fetch", boom)
     queue = JobQueue(tmp_path / "queue")
-    queue.enqueue(
+    queued = queue.enqueue(
         QueueJob(
             kind="fetch",
             document_id="4s9-2008-inventory",
@@ -741,12 +724,14 @@ def test_process_next_retries_then_gives_up(tmp_path: Path, monkeypatch) -> None
     with pytest.raises(JobRetry) as first:
         process_next(**kwargs)
     assert first.value.attempts == 1
+    queue.reschedule_now(queued.id)
     with pytest.raises(JobRetry) as second:
         process_next(**kwargs)
     assert second.value.attempts == 2
+    queue.reschedule_now(queued.id)
     assert process_next(**kwargs) is True
-    assert list((tmp_path / "queue" / "active").glob("*.json")) == []
-    assert list((tmp_path / "queue" / "done").glob("*.json"))
+    assert queue.counts()["active"] == 0
+    assert queue.counts()["dead"] == 1
 
 
 def test_process_next_skips_github_when_disk_has_work(tmp_path: Path, monkeypatch) -> None:
@@ -955,4 +940,4 @@ def test_process_next_pull_discovery_enqueues_job(tmp_path: Path, monkeypatch) -
     )
     queue = JobQueue(tmp_path / "queue")
     assert queue.has_kind("discovery")
-    assert not list((tmp_path / "queue" / "done").glob("*.json"))
+    assert queue.counts()["done"] == 0

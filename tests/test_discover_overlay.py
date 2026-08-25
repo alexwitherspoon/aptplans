@@ -53,11 +53,9 @@ def test_discover_enqueues_fixture_hits(tmp_path: Path, monkeypatch) -> None:
     assert result["airports"] == ["4S9"]
     assert result["explore_jobs"] == 1
     assert result["fetch_jobs"] == 1
-    pending = list((queue_dir / "pending").glob("*.json"))
+    pending = JobQueue(queue_dir).jobs(state="pending")
     assert len(pending) == 2
-    kinds = set()
-    for path in pending:
-        kinds.add(json.loads(path.read_text(encoding="utf-8"))["kind"])
+    kinds = {job.kind for job in pending}
     assert kinds == {"explore", "fetch"}
 
 
@@ -127,4 +125,4 @@ def test_discover_skips_when_live_search_off(tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setenv("CI", "true")
     result = discover_next_airports(tmp_path, tmp_path / "queue")
     assert result["skipped"] == "live_search_off"
-    assert not list(JobQueue(tmp_path / "queue").pending.glob("*.json"))
+    assert JobQueue(tmp_path / "queue").counts()["pending"] == 0

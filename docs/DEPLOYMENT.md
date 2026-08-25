@@ -81,7 +81,7 @@ sudo /opt/aptplans/scripts/host/remote-deploy.sh
 
 ## Reboots
 
-Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The worker drains `pending/` with one airport in flight by default (`APTPLANS_AIRPORT_CONCURRENCY`).
+Kernel and Docker Engine updates land during the week via unattended-upgrades. The host reboots **Monday at 12:00 America/Los_Angeles** (Pacific Time, PST or PDT). `site`, `worker`, and `ollama` use `restart: unless-stopped`. The worker drains renewable SQLite leases with one airport in flight by default (`APTPLANS_AIRPORT_CONCURRENCY`).
 
 ```bash
 systemctl list-timers 'aptplans-*'

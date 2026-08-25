@@ -39,8 +39,7 @@ from pipeline.reject import (
     training_case,
 )
 from pipeline.review_client import load_review_env
-from pipeline.lock import worker_lock
-from pipeline.queue import JobQueue, QueueJob
+from pipeline.queue import ControlQueue, QueueJob
 from pipeline.service_log import logs_dir_from_env
 from pipeline.status import queue_dir_from_env, service_logs, system_status
 
@@ -389,8 +388,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             requested_by="operator",
             request_reason=str(payload.get("reason") or "").strip() or None,
         )
-        with worker_lock(self.queue_dir):
-            JobQueue(self.queue_dir).enqueue(job)
+        ControlQueue(self.queue_dir).enqueue(job)
         _json(
             self,
             202,

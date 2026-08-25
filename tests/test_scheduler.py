@@ -178,8 +178,6 @@ def test_pipeline_snapshot_job_writes_json(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_discovery_job_enqueues_explore(tmp_path: Path, monkeypatch) -> None:
-    import json
-
     monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
     monkeypatch.setenv("APTPLANS_CATALOG_OVERLAY", str(tmp_path / "overlay"))
     (tmp_path / "overlay").mkdir(parents=True)
@@ -209,10 +207,7 @@ def test_discovery_job_enqueues_explore(tmp_path: Path, monkeypatch) -> None:
 
     status = run_discovery(tmp_path / "overlay", tmp_path / "queue")
     assert status == "ok"
-    kinds = {
-        json.loads(path.read_text(encoding="utf-8"))["kind"]
-        for path in (tmp_path / "queue" / "pending").glob("*.json")
-    }
+    kinds = set(JobQueue(tmp_path / "queue").kinds("pending"))
     assert "explore" in kinds
 
 

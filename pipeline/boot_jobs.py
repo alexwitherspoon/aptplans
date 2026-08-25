@@ -51,16 +51,28 @@ SCHEDULER_JOB_KINDS = (
 MAINTENANCE_JOB_KINDS = BOOT_JOB_KINDS + SCHEDULER_JOB_KINDS
 
 
-def maintenance_job(kind: str) -> QueueJob:
+def maintenance_job(kind: str, *, parent_job_id: str | None = None) -> QueueJob:
     return QueueJob(
         kind=kind,
         document_id=None,
         source_url=None,
         airport_lid=None,
+        dedupe_key=f"maintenance:{kind}",
+        retry_class=(
+            "continuous"
+            if kind in {"pipeline_snapshot", "site_build", "search_sync"}
+            else "bounded"
+        ),
+        parent_job_id=parent_job_id,
     )
 
 
-def enqueue_job(queue_dir: Path | None, kind: str) -> bool:
+def enqueue_job(
+    queue_dir: Path | None,
+    kind: str,
+    *,
+    parent_job_id: str | None = None,
+) -> bool:
     """Enqueue one maintenance job when that kind is not already pending or active."""
     if kind not in MAINTENANCE_JOB_KINDS:
         raise ValueError(f"unknown maintenance job kind: {kind}")
@@ -69,18 +81,28 @@ def enqueue_job(queue_dir: Path | None, kind: str) -> bool:
     if queue.has_kind(kind):
         log.info("%s already queued", kind)
         return False
-    queue.enqueue(maintenance_job(kind))
+    queue.enqueue(maintenance_job(kind, parent_job_id=parent_job_id))
     log.info("%s queued", kind)
     return True
 
 
-def enqueue_pipeline_snapshot(queue_dir: Path | None = None) -> bool:
-    return enqueue_job(queue_dir, "pipeline_snapshot")
+def enqueue_pipeline_snapshot(
+    queue_dir: Path | None = None,
+    *,
+    parent_job_id: str | None = None,
+) -> bool:
+    return enqueue_job(
+        queue_dir,
+        "pipeline_snapshot",
+        parent_job_id=parent_job_id,
+    )
 
 
 def enqueue_discovery_if_ready(
     queue_dir: Path | None = None,
     overlay_dir: Path | None = None,
+    *,
+    parent_job_id: str | None = None,
 ) -> bool:
     """Enqueue discovery when overlay airports (and grants, when triage is on) are ready."""
     overlay = overlay_dir_from_env(overlay_dir)
@@ -89,7 +111,11 @@ def enqueue_discovery_if_ready(
     if not ready:
         log.info("discovery not enqueued: %s", reason)
         return False
-    return enqueue_job(queue_dir, "discovery")
+    return enqueue_job(
+        queue_dir,
+        "discovery",
+        parent_job_id=parent_job_id,
+    )
 
 
 def enqueue_boot_jobs(queue_dir: Path | None = None) -> list[str]:
@@ -293,19 +319,23 @@ def run_ollama_warm() -> str:
     return "ok"
 
 
-def enqueue_post_overlay_refresh(queue_dir: Path | None = None) -> list[str]:
+def enqueue_post_overlay_refresh(
+    queue_dir: Path | None = None,
+    *,
+    parent_job_id: str | None = None,
+) -> list[str]:
     """Queue follow-up work after overlay_refresh completes."""
     enqueued: list[str] = []
-    if enqueue_job(queue_dir, "pipeline_snapshot"):
+    if enqueue_job(queue_dir, "pipeline_snapshot", parent_job_id=parent_job_id):
         enqueued.append("pipeline_snapshot")
     if llm_calls_enabled():
         for kind in ("grant_spend", "budget_enrich"):
-            if enqueue_job(queue_dir, kind):
+            if enqueue_job(queue_dir, kind, parent_job_id=parent_job_id):
                 enqueued.append(kind)
     for kind in ("overview_refresh", "search_sync", "site_build"):
-        if enqueue_job(queue_dir, kind):
+        if enqueue_job(queue_dir, kind, parent_job_id=parent_job_id):
             enqueued.append(kind)
-    if enqueue_discovery_if_ready(queue_dir):
+    if enqueue_discovery_if_ready(queue_dir, parent_job_id=parent_job_id):
         enqueued.append("discovery")
     return enqueued
 
@@ -322,16 +352,9 @@ def run_intake_once(
     overlay_dir: Path | None = None,
     catalog_root: Path | None = None,
 ) -> bool:
-    from pipeline.run_once import process_next
+    from pipeline.run_once import enqueue_intake_once
 
-    return process_next(
-        queue_dir=queue_dir,
-        files_dir=files_dir,
-        overlay_dir=overlay_dir,
-        catalog_root=catalog_root,
-        pull_intake=True,
-        pull_discovery=False,
-    )
+    return enqueue_intake_once(queue_dir)
 
 
 def main() -> int:

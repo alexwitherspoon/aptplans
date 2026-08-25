@@ -12,7 +12,7 @@ def test_seed_reference_fetches_queues_link_only_pdfs(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "queue")
     count = seed_reference_fetches(queue, ROOT / "catalog")
     assert count > 0
-    assert len(list(queue.pending.glob("*.json"))) == count
+    assert queue.counts()["pending"] == count
     job = queue.claim()
     assert job is not None
     assert job.kind == "fetch"

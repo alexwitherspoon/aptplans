@@ -336,11 +336,7 @@ def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_JOBS) -> list[Q
     """Next jobs in the pending queue. Airport jobs dedupe by LID; maintenance jobs keep FIFO."""
     rows: list[QueueJob] = []
     seen_lids: set[str] = set()
-    for path in sorted(queue.pending.glob("*.json")):
-        try:
-            job = QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError, TypeError, KeyError):
-            continue
+    for job in queue.jobs(state="pending"):
         lid = _normalize_lid(job.airport_lid)
         if lid:
             if lid in seen_lids:
@@ -354,18 +350,9 @@ def _next_queue_jobs(queue: JobQueue, *, limit: int = NEXT_QUEUE_JOBS) -> list[Q
 
 def _queue_snapshot(queue_dir: Path) -> dict:
     queue = JobQueue(queue_dir)
-    active_jobs = []
-    for path in sorted(queue.active.glob("*.json")):
-        try:
-            active_jobs.append(QueueJob.from_dict(json.loads(path.read_text(encoding="utf-8"))))
-        except (OSError, json.JSONDecodeError, TypeError, KeyError):
-            continue
+    active_jobs = queue.jobs(state="active")
     pending_jobs = _next_queue_jobs(queue)
-    counts = {
-        "pending": sum(1 for _ in queue.pending.glob("*.json")),
-        "active": sum(1 for _ in queue.active.glob("*.json")),
-        "done": sum(1 for _ in queue.done.glob("*.json")),
-    }
+    counts = queue.counts()
     return {
         "counts": counts,
         "active": [_job_public(job) for job in active_jobs],

@@ -293,23 +293,17 @@ def scope_from_job(job: QueueJob, catalog: Catalog | None = None) -> BuildScope 
     return None
 
 
-def pending_site_build_scope(queue: JobQueue) -> tuple[BuildScope | None, Path | None]:
-    """Return (scope, path) for a pending site_build job (not active/claimed)."""
-    for path in queue.pending.glob("*.json"):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError):
-            continue
-        if data.get("kind") != "site_build":
-            continue
-        job = QueueJob.from_dict(data)
-        return scope_from_job(job), path
-    return None, None
+def pending_site_build_scope(
+    queue: JobQueue,
+) -> tuple[BuildScope | None, QueueJob | None]:
+    """Return the scope and pending site-build ledger row."""
+    job = queue.pending_job("site_build")
+    return (scope_from_job(job), job) if job is not None else (None, None)
 
 
-def find_pending_site_build_path(queue: JobQueue) -> Path | None:
-    _scope, path = pending_site_build_scope(queue)
-    return path
+def find_pending_site_build_path(queue: JobQueue) -> QueueJob | None:
+    _scope, job = pending_site_build_scope(queue)
+    return job
 
 
 def scope_cli_flags(args, catalog: Catalog) -> BuildScope | None:

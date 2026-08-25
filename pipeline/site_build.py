@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import subprocess
@@ -49,15 +48,20 @@ def _scope_log(scope) -> str:
     return "partial(" + " ".join(parts) + ")" if parts else "partial"
 
 
-def enqueue_site_build(queue_dir: Path | None = None, scope=None) -> bool:
+def enqueue_site_build(
+    queue_dir: Path | None = None,
+    scope=None,
+    *,
+    parent_job_id: str | None = None,
+) -> bool:
     """Queue one HTML rebuild, merging scope into an existing pending job when possible."""
     from catalog.seed import seed_catalog
 
     root = queue_dir_from_env(queue_dir)
     queue = JobQueue(root)
     catalog = seed_catalog(ROOT / "catalog")
-    existing_scope, path = pending_site_build_scope(queue)
-    if path is not None:
+    existing_scope, existing = pending_site_build_scope(queue)
+    if existing is not None:
         merged = merge_scopes(existing_scope, scope)
         if existing_scope is None:
             log.info("site_build already queued (full)")
@@ -65,14 +69,8 @@ def enqueue_site_build(queue_dir: Path | None = None, scope=None) -> bool:
         if merged == existing_scope:
             log.info("site_build already queued with equal or wider scope")
             return False
-        job = QueueJob(
-            kind="site_build",
-            document_id=None,
-            source_url=None,
-            airport_lid=None,
-        )
-        apply_scope_to_job(job, merged)
-        path.write_text(json.dumps(job.to_dict(), indent=2) + "\n", encoding="utf-8")
+        apply_scope_to_job(existing, merged)
+        queue.update_pending(existing)
         log.info("site_build scope widened to %s", _scope_log(merged))
         return True
     job = QueueJob(
@@ -80,6 +78,9 @@ def enqueue_site_build(queue_dir: Path | None = None, scope=None) -> bool:
         document_id=None,
         source_url=None,
         airport_lid=None,
+        dedupe_key="maintenance:site_build",
+        retry_class="continuous",
+        parent_job_id=parent_job_id,
     )
     apply_scope_to_job(job, scope)
     queue.enqueue(job)

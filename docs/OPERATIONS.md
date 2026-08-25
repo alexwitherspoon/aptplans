@@ -18,7 +18,7 @@ cat /var/log/unattended-upgrades/unattended-upgrades.log
 
 ## Timers
 
-Maintenance jobs are enqueued by **systemd timers**; the worker only drains `pending/`. **Boot** (worker container start) warms Ollama and refreshes stale FAA overlays when `APTPLANS_REFRESH_AIRPORTS=1`; it does not enqueue snapshot, site build, or discovery.
+Maintenance jobs are enqueued by **systemd timers**; the worker transactionally drains eligible rows from the SQLite job ledger. **Boot** (worker container start) warms Ollama and refreshes stale FAA overlays when `APTPLANS_REFRESH_AIRPORTS=1`; it does not enqueue snapshot, site build, or discovery.
 
 | Timer | Schedule (Pacific) | Job |
 |-------|-------------------|-----|
@@ -44,7 +44,7 @@ docker compose --env-file /home/aptplans/.env.production \
   logs --tail 100 worker
 ```
 
-The document queue is drained by the Compose `worker` process. `aptplans-pipeline.timer` should stay disabled. Origin Compose uses `.env.production`, `.env.secrets`, and `.env.search` (Meilisearch master key, written once by bootstrap). The worker polls `pending/` about once a minute when idle. Uncaught errors retry with backoff and stop after three attempts. One extra job by hand (waits if the worker is in a job):
+The document queue is drained by the Compose `worker` process. `aptplans-pipeline.timer` should stay disabled. Origin Compose uses `.env.production`, `.env.secrets`, and `.env.search` (Meilisearch master key, written once by bootstrap). The worker polls `jobs.sqlite3` about once a minute when idle. Uncaught errors receive a durable retry time and ordinary work dead-letters after three attempts. Publication synchronization retries continuously. One extra job by hand:
 
 ```bash
 cd /opt/aptplans
@@ -220,11 +220,31 @@ If `egress` is unhealthy or VPN creds are missing, worker fetches fail closed ra
 
 ## Deploy and background jobs
 
-CD restarts the worker and returns once Caddy answers. HTML rebuild, FAA overlay refresh, search sync, and LLM warm-up run as **queue jobs** (`pipeline_snapshot`, `site_build`, `overlay_refresh`, `grant_spend`, `budget_enrich`, `overview_refresh`, `search_sync`, `ollama_warm`, `discovery`, `link_check`). `site_build` jobs carry a JSON scope (or `report_type=full`); the worker merges wider scopes into a **pending** job only. Inspect pending work:
+CD restarts the worker and returns once Caddy answers. HTML rebuild, FAA overlay refresh, search sync, and LLM warm-up run as **queue jobs** (`pipeline_snapshot`, `site_build`, `overlay_refresh`, `grant_spend`, `budget_enrich`, `overview_refresh`, `search_sync`, `ollama_warm`, `discovery`, `link_check`). `site_build` jobs carry a JSON scope (or `report_type=full`); the worker merges wider scopes into a **pending** ledger row only. Inspect work and verify both databases:
 
 ```bash
-ls -1 /var/lib/aptplans/queue/pending/
+python3 -c "from pipeline.queue import JobQueue; from pipeline.status import queue_dir_from_env; print(JobQueue(queue_dir_from_env()).counts())"
+python3 -m pipeline.ledger_ops integrity
 $COMPOSE_PROD logs --tail=80 worker
+```
+
+The API writes review commands only to `control.sqlite3`; the worker imports them idempotently into `jobs.sqlite3`. Both use WAL mode. Back them up online and test an offline restore:
+
+```bash
+python3 -m pipeline.ledger_ops backup /var/backups/aptplans/ledger-$(date +%F)
+$COMPOSE_PROD down
+python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test \
+  restore /var/backups/aptplans/ledger-YYYY-MM-DD --confirm-offline
+python3 -m pipeline.ledger_ops --queue-dir /var/lib/aptplans/restore-test integrity
+```
+
+For the pre-production cutover, stop the worker, discard the legacy `pending/`, `active/`, `done/`, and `.airport_cursor` paths with the other derived runtime state, then initialize empty versioned ledgers:
+
+```bash
+$COMPOSE_PROD down
+rm -rf /var/lib/aptplans/queue/pending /var/lib/aptplans/queue/active \
+  /var/lib/aptplans/queue/done /var/lib/aptplans/queue/.airport_cursor
+python3 -m pipeline.ledger_ops reset --confirm-preproduction-reset
 ```
 
 **Discovery priority triage** (`pipeline/discovery_priority.py`) reorders scoped airports before each discovery pass. Every airport is still visited; only the order changes. Tiers (searched sooner → later):

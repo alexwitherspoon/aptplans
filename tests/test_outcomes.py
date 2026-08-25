@@ -361,7 +361,9 @@ def test_review_api_health_stats_and_label(tmp_path: Path) -> None:
         )
         assert queued_review["requested_review_status"] == "published"
         assert load_overlay(overlay)["pending-document"]["review_status"] == "pending"
-        queued = JobQueue(queue_dir).claim()
+        job_queue = JobQueue(queue_dir)
+        assert job_queue.ingest_controls() == 1
+        queued = job_queue.claim()
         assert queued is not None
         assert queued.kind == "review"
         assert queued.document_id == "pending-document"

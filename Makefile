@@ -2,7 +2,7 @@
 #
 # See docs/LOCAL_SETUP.md and docs/TESTING.md
 
-.PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes
+.PHONY: help site test test-unit ci dev up stack down down-clean build clean pipeline worker links model llm eval-search eval-evidence train-evidence review-api pull-outcomes ledger-integrity ledger-backup
 
 COMPOSE_ENV_FILE := $(wildcard .env)
 COMPOSE := docker compose $(if $(COMPOSE_ENV_FILE),--env-file .env,) -f docker/docker-compose.yml -f docker/docker-compose.local.yml
@@ -32,13 +32,20 @@ help: ## Show this help message
 	@grep -E '^(test|test-unit|ci|eval-search|eval-evidence|train-evidence|review-api|pull-outcomes):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'Build & cleanup:'
-	@grep -E '^(build|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^(build|clean|ledger-integrity|ledger-backup):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 	@echo ''
 	@echo 'See docs/LOCAL_SETUP.md for setup'
 	@echo ''
 
 site: ## Build the static site into dist/
 	$(PY) site/build.py --out dist
+
+ledger-integrity: ## Verify SQLite job and control ledgers
+	$(PY) -m pipeline.ledger_ops --queue-dir "$(QUEUE_PATH)" integrity
+
+ledger-backup: ## Back up ledgers to LEDGER_BACKUP_DIR
+	@test -n "$(LEDGER_BACKUP_DIR)" || (echo "set LEDGER_BACKUP_DIR" >&2; exit 2)
+	$(PY) -m pipeline.ledger_ops --queue-dir "$(QUEUE_PATH)" backup "$(LEDGER_BACKUP_DIR)"
 
 test-unit: ## Run unit tests only (reference fixtures via tests/conftest.py)
 	$(PY) -m pytest tests -q

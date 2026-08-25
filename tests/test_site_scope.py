@@ -82,37 +82,31 @@ def test_enqueue_site_build_merges_pending_scope(tmp_path: Path, monkeypatch) ->
     assert enqueue_site_build(tmp_path / "queue", scope=first) is True
     assert enqueue_site_build(tmp_path / "queue", scope=second) is True
     queue = JobQueue(tmp_path / "queue")
-    pending = scope_from_job(
-        QueueJob.from_dict(
-            __import__("json").loads(next((tmp_path / "queue" / "pending").glob("*.json")).read_text())
-        ),
-        catalog,
-    )
+    pending_job = queue.pending_job("site_build")
+    assert pending_job is not None
+    pending = scope_from_job(pending_job, catalog)
     assert pending is not None
     assert pending.wants_airport("4S9")
     assert pending.include_about
 
 
 def test_enqueue_site_build_ignores_active_job(tmp_path: Path, monkeypatch) -> None:
-    import json
-
     monkeypatch.setenv("APTPLANS_QUEUE", str(tmp_path / "queue"))
     catalog = seed_catalog(ROOT / "catalog")
     queue = JobQueue(tmp_path / "queue")
     active_job = QueueJob(kind="site_build", document_id=None, source_url=None, airport_lid=None)
     apply_scope_to_job(active_job, scope_for_airport(catalog, "PDX"))
-    active_path = queue.active / f"{active_job.id}.json"
-    active_path.parent.mkdir(parents=True, exist_ok=True)
-    active_path.write_text(json.dumps(active_job.to_dict(), indent=2) + "\n", encoding="utf-8")
-
-    active_body = active_path.read_text(encoding="utf-8")
+    queue.enqueue(active_job)
+    claimed = queue.claim()
+    assert claimed is not None
+    active_body = queue.jobs(state="active")[0].to_dict()
     assert enqueue_site_build(tmp_path / "queue", scope=scope_about()) is True
-    pending_paths = list((tmp_path / "queue" / "pending").glob("*.json"))
-    assert len(pending_paths) == 1
-    pending = scope_from_job(QueueJob.from_dict(json.loads(pending_paths[0].read_text())), catalog)
+    pending_job = queue.pending_job("site_build")
+    assert pending_job is not None
+    pending = scope_from_job(pending_job, catalog)
     assert pending is not None
     assert pending.include_about
-    assert active_path.read_text(encoding="utf-8") == active_body
+    assert queue.jobs(state="active")[0].to_dict() == active_body
 
 
 def test_link_check_scope_refreshes_list_pages() -> None:

@@ -9,7 +9,7 @@ DEFAULT_JOB_PAUSE_SEC = 2.0
 
 
 def airport_concurrency() -> int:
-    """Max distinct airports with jobs in active/ at once. Default 1."""
+    """Maximum distinct airports with active leases. Default 1."""
     raw = os.environ.get("APTPLANS_AIRPORT_CONCURRENCY", "").strip()
     if raw:
         try:

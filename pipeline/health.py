@@ -17,7 +17,7 @@ from pipeline.datasets import (
 )
 from pipeline.meter import ledger_summary
 from pipeline.outcomes import outcome_stats
-from pipeline.queue import JobQueue
+from pipeline.queue import ControlQueue, JobQueue
 from pipeline.reject import live_rejects, purge_expired, reject_dir as reject_dir_from_env
 from pipeline.search_client import live_search_enabled
 from pipeline.service_log import worker_log_path
@@ -33,30 +33,11 @@ def _jsonl_count(path: Path) -> int:
 
 
 def _queue_counts(queue_dir: Path) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for name in ("pending", "active", "done"):
-        folder = queue_dir / name
-        if not folder.is_dir():
-            counts[name] = 0
-            continue
-        counts[name] = sum(1 for path in folder.glob("*.json"))
-    return counts
+    return JobQueue(queue_dir).counts()
 
 
 def _queue_job_kinds(queue_dir: Path, folder: str) -> list[str]:
-    kinds: list[str] = []
-    target = queue_dir / folder
-    if not target.is_dir():
-        return kinds
-    for path in target.glob("*.json"):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError):
-            continue
-        kind = data.get("kind")
-        if kind:
-            kinds.append(str(kind))
-    return kinds
+    return JobQueue(queue_dir).kinds(folder)
 
 
 def _document_stats(overlay_dir: Path) -> dict:
@@ -215,11 +196,17 @@ def system_health(
     }
     pipeline = {
         "queue": _queue_counts(queue_path),
+        "controls": ControlQueue(queue_path).counts(),
+        "ledger_integrity": queue.integrity_check(),
         "outcomes": outcome_stats(overlay_dir=overlay_dir),
         "rejects": {"n": _reject_count(rejects)},
         "logs": {"worker_lines": _jsonl_count(worker_log_path(logs))},
     }
-    ok = discovery_ready and services["worker"]["ok"]
+    ok = (
+        discovery_ready
+        and services["worker"]["ok"]
+        and pipeline["ledger_integrity"] == "ok"
+    )
     return {
         "ok": ok,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

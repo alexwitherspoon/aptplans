@@ -2,7 +2,7 @@
 Description=Manual AptPlans document job (worker loop is the scheduler)
 After=docker.service network-online.target
 Requires=docker.service
-# Optional extra run_once. The Compose worker already drains pending/.
+# Optional extra run_once. The Compose worker already drains the job ledger.
 
 [Service]
 Type=oneshot
