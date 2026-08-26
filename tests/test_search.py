@@ -32,14 +32,18 @@ def test_wait_task_only_ignores_explicit_error_codes(monkeypatch) -> None:
         search._wait_task(1)
 
 
-def test_generation_count_uses_exact_pagination(monkeypatch) -> None:
+def test_generation_count_uses_exact_facet_distribution(monkeypatch) -> None:
     observed = {}
 
     def request(method, path, payload):
         observed.update(
             {"method": method, "path": path, "payload": payload}
         )
-        return {"totalHits": 554}
+        return {
+            "facetDistribution": {
+                "_generation": {"generation": 554}
+            }
+        }
 
     monkeypatch.setattr(search, "_request", request)
     assert search._generation_document_count("staged", "generation") == 554
@@ -48,9 +52,8 @@ def test_generation_count_uses_exact_pagination(monkeypatch) -> None:
         "path": "/indexes/staged/search",
         "payload": {
             "q": "",
-            "filter": '_generation = "generation"',
-            "page": 1,
-            "hitsPerPage": 1,
+            "facets": ["_generation"],
+            "limit": 0,
         },
     }
 

@@ -486,16 +486,17 @@ def _generation_document_count(index: str, generation_id: str) -> int:
         f"/indexes/{index}/search",
         {
             "q": "",
-            "filter": f'_generation = "{generation_id}"',
-            "page": 1,
-            "hitsPerPage": 1,
+            "facets": ["_generation"],
+            "limit": 0,
         },
     )
-    if "totalHits" not in response:
+    distribution = response.get("facetDistribution") or {}
+    generations = distribution.get("_generation")
+    if not isinstance(generations, dict):
         raise RuntimeError(
-            "Meilisearch exact pagination response omitted totalHits"
+            "Meilisearch generation facet response was incomplete"
         )
-    return int(response["totalHits"])
+    return int(generations.get(generation_id) or 0)
 
 
 def stage_generation_index(
