@@ -91,7 +91,12 @@ def _request(method: str, path: str, payload: dict | list | None = None, timeout
     return json.loads(body.decode("utf-8"))
 
 
-def _wait_task(uid: int, timeout: float = 120.0) -> None:
+def _wait_task(
+    uid: int,
+    timeout: float = 120.0,
+    *,
+    ignored_error_codes: frozenset[str] = frozenset(),
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = _request("GET", f"/tasks/{uid}")
@@ -99,16 +104,28 @@ def _wait_task(uid: int, timeout: float = 120.0) -> None:
         if status == "succeeded":
             return
         if status == "failed":
-            raise RuntimeError(f"meilisearch task {uid} failed: {task.get('error')}")
+            error = task.get("error") or {}
+            if str(error.get("code") or "") in ignored_error_codes:
+                return
+            raise RuntimeError(f"meilisearch task {uid} failed: {error}")
         time.sleep(0.05)
     raise RuntimeError(f"meilisearch task {uid} timed out")
 
 
-def _enqueue(method: str, path: str, payload: dict | list | None = None) -> None:
+def _enqueue(
+    method: str,
+    path: str,
+    payload: dict | list | None = None,
+    *,
+    ignored_error_codes: frozenset[str] = frozenset(),
+) -> None:
     body = _request(method, path, payload)
     uid = body.get("taskUid")
     if uid is not None:
-        _wait_task(int(uid))
+        _wait_task(
+            int(uid),
+            ignored_error_codes=ignored_error_codes,
+        )
 
 
 def outlook_band(overview: dict | None) -> str | None:
@@ -473,11 +490,11 @@ def stage_generation_index(
     if not configured():
         return None
     index = generation_index_uid(generation_id)
-    try:
-        _enqueue("DELETE", f"/indexes/{index}")
-    except RuntimeError as exc:
-        if "404" not in str(exc):
-            raise
+    _enqueue(
+        "DELETE",
+        f"/indexes/{index}",
+        ignored_error_codes=frozenset({"index_not_found"}),
+    )
     ensure_index(index)
     backfill_text(catalog, dest=dest)
     sync_catalog(catalog, index=index, generation_id=generation_id)

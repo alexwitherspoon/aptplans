@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from catalog.models import Airport, Document, Grant
+import pipeline.search as search
 from pipeline.search import (
     SETTINGS,
     airport_record,
@@ -10,6 +13,23 @@ from pipeline.search import (
     page_record,
 )
 from pipeline.textstore import read_pages, write_pages
+
+
+def test_wait_task_only_ignores_explicit_error_codes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        search,
+        "_request",
+        lambda *_args, **_kwargs: {
+            "status": "failed",
+            "error": {"code": "index_not_found"},
+        },
+    )
+    search._wait_task(
+        1,
+        ignored_error_codes=frozenset({"index_not_found"}),
+    )
+    with pytest.raises(RuntimeError, match="index_not_found"):
+        search._wait_task(1)
 
 
 def test_configured_requires_url_and_key(monkeypatch) -> None:
