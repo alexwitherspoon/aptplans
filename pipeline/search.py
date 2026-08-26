@@ -480,6 +480,24 @@ def generation_index_uid(generation_id: str) -> str:
     return f"aptplans_g_{safe[:24]}"
 
 
+def _generation_document_count(index: str, generation_id: str) -> int:
+    response = _request(
+        "POST",
+        f"/indexes/{index}/search",
+        {
+            "q": "",
+            "filter": f'_generation = "{generation_id}"',
+            "page": 1,
+            "hitsPerPage": 1,
+        },
+    )
+    if "totalHits" not in response:
+        raise RuntimeError(
+            "Meilisearch exact pagination response omitted totalHits"
+        )
+    return int(response["totalHits"])
+
+
 def stage_generation_index(
     catalog: Catalog,
     generation_id: str,
@@ -507,16 +525,10 @@ def stage_generation_index(
         raise RuntimeError(
             f"staged search index incomplete: {count} documents, expected at least {minimum}"
         )
-    generation_stats = _request(
-        "POST",
-        f"/indexes/{index}/search",
-        {
-            "q": "",
-            "filter": f'_generation = "{generation_id}"',
-            "limit": 0,
-        },
+    generation_count = _generation_document_count(
+        index,
+        generation_id,
     )
-    generation_count = int(generation_stats.get("estimatedTotalHits") or 0)
     if generation_count != count:
         raise RuntimeError(
             f"staged search generation mismatch: {generation_count} of {count} records"
