@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: github/codeql-action/init@e4d2851c4593439ac10bdcd57c5b06cac73b4775 # v3.37.8
+      - uses: github/codeql-action/init@42947a340483f03ba47bb1a039b2c519aab3df85 # v3.37.8
         with:
           languages: ${{ matrix.language }}
 
@@ -35,4 +35,4 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,worker]"
 
-      - uses: github/codeql-action/analyze@e4d2851c4593439ac10bdcd57c5b06cac73b4775 # v3.37.8
+      - uses: github/codeql-action/analyze@42947a340483f03ba47bb1a039b2c519aab3df85 # v3.37.8
